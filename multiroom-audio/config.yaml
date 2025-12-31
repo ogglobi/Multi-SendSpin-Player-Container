@@ -1,11 +1,11 @@
 name: Multi-Room Audio Controller
-version: "1.1.0"
+version: "1.1.1"
 slug: multiroom-audio
 description: >-
   Manage multiple audio players (Squeezelite, Sendspin, Snapcast) from one
   interface. Create whole-home audio with USB DACs connected to your HA server.
 url: https://github.com/chrisuthe/Multi-SendSpin-Player-Container
-image: ghcr.io/chrisuthe/multiroom-audio-hassio-{arch}
+image: ghcr.io/chrisuthe/multiroom-audio-hassio
 startup: services
 arch:
   - aarch64

@@ -112,7 +112,7 @@ jobs:
             VCS_REF=${{ github.sha }}
 
   # ==========================================================================
-  # Home Assistant Add-on Image (GHCR only) - Multi-arch via matrix
+  # Home Assistant Add-on Image (GHCR only) - Multi-arch manifest
   # ==========================================================================
   build-hassio:
     needs: type-check
@@ -120,13 +120,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-          - arch: aarch64
-            platform: linux/arm64
 
     steps:
       - name: Checkout repository
@@ -150,24 +143,22 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.HASSIO_IMAGE }}
-          flavor: |
-            suffix=-${{ matrix.arch }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=sha,prefix=sha-,format=short
 
-      - name: Build and push HAOS add-on (${{ matrix.arch }})
+      - name: Build and push HAOS add-on (multi-arch)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: multiroom-audio/Dockerfile
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=hassio-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=hassio-${{ matrix.arch }}
+          cache-from: type=gha,scope=hassio
+          cache-to: type=gha,mode=max,scope=hassio
           build-args: |
             BUILD_FROM=ghcr.io/hassio-addons/base-python:18.0.0
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
