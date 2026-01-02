@@ -168,6 +168,24 @@ else:
 
 Be respectful, helpful, and inclusive. This is a community project for everyone to enjoy better multi-room audio!
 
+## For Maintainers: Release Process
+
+When releasing a new version of the HAOS add-on:
+
+1. **Do NOT manually edit** `multiroom-audio/config.yaml` version
+2. Update `multiroom-audio/CHANGELOG.md` with release notes
+3. Create and push a tag:
+   ```bash
+   git tag -a v1.2.7 -m "v1.2.7 - Brief description"
+   git push --tags
+   ```
+4. CI will automatically:
+   - Build the Docker image
+   - Update `config.yaml` version after successful build
+   - HAOS users see the update only when the image is ready
+
+See [CLAUDE.md](CLAUDE.md#release-process-haos-add-on) for detailed explanation.
+
 ## Questions?
 
 Open an issue for discussion before major changes. We're happy to help guide contributions!
