@@ -4,6 +4,10 @@
 
 set -e
 
+# Ensure PATH includes all common binary locations
+# pip on Alpine may install to /usr/local/bin or Python-specific paths
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:$PATH"
+
 # Read options from Home Assistant add-on config
 CONFIG_PATH="/data/options.json"
 
@@ -36,25 +40,46 @@ if command -v pactl &> /dev/null; then
     pactl list sinks short 2>/dev/null || bashio::log.warning "Could not list PulseAudio sinks"
 fi
 
-# Check for player binaries
+# Check for player binaries and log their locations
 bashio::log.info "Checking player binaries..."
-if command -v squeezelite &> /dev/null; then
-    bashio::log.info "✓ squeezelite available"
+bashio::log.info "PATH: ${PATH}"
+
+SQUEEZELITE_PATH=$(which squeezelite 2>/dev/null || true)
+if [ -n "$SQUEEZELITE_PATH" ]; then
+    bashio::log.info "✓ squeezelite found at: ${SQUEEZELITE_PATH}"
 else
-    bashio::log.warning "✗ squeezelite not found"
+    bashio::log.warning "✗ squeezelite not found in PATH"
+    # Check common locations manually
+    for loc in /usr/bin/squeezelite /usr/local/bin/squeezelite; do
+        if [ -x "$loc" ]; then
+            bashio::log.info "  Found at $loc (adding to PATH)"
+            export PATH="$(dirname $loc):$PATH"
+        fi
+    done
 fi
 
-if command -v snapclient &> /dev/null; then
-    bashio::log.info "✓ snapclient available"
+SNAPCLIENT_PATH=$(which snapclient 2>/dev/null || true)
+if [ -n "$SNAPCLIENT_PATH" ]; then
+    bashio::log.info "✓ snapclient found at: ${SNAPCLIENT_PATH}"
 else
-    bashio::log.warning "✗ snapclient not found"
+    bashio::log.warning "✗ snapclient not found (optional)"
 fi
 
-if command -v sendspin &> /dev/null; then
-    bashio::log.info "✓ sendspin available"
+SENDSPIN_PATH=$(which sendspin 2>/dev/null || true)
+if [ -n "$SENDSPIN_PATH" ]; then
+    bashio::log.info "✓ sendspin found at: ${SENDSPIN_PATH}"
 else
-    bashio::log.warning "✗ sendspin not found (will be installed via pip)"
+    bashio::log.warning "✗ sendspin not found in PATH"
+    # Check Python script locations
+    for loc in /usr/bin/sendspin /usr/local/bin/sendspin; do
+        if [ -x "$loc" ]; then
+            bashio::log.info "  Found at $loc (adding to PATH)"
+            export PATH="$(dirname $loc):$PATH"
+        fi
+    done
 fi
+
+bashio::log.info "Final PATH: ${PATH}"
 
 # Start the Flask application
 bashio::log.info "Starting web interface on port 8080..."

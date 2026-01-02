@@ -387,9 +387,17 @@
         // Load available providers from API
         async function loadProviders() {
             try {
+                console.log('Loading providers from /api/providers...');
                 const response = await fetch('/api/providers');
+                console.log('Providers response status:', response.status);
+                if (!response.ok) {
+                    console.error('Providers API error:', response.status, response.statusText);
+                    return [];
+                }
                 const result = await response.json();
+                console.log('Providers API result:', result);
                 availableProviders = result.providers || [];
+                console.log('Loaded', availableProviders.length, 'providers');
                 return availableProviders;
             } catch (error) {
                 console.error('Error loading providers:', error);
@@ -418,21 +426,36 @@
                 const option = document.createElement('option');
                 option.value = provider.type;
                 // Add description based on provider type
+                let label;
                 if (provider.type === 'squeezelite') {
-                    option.textContent = 'Squeezelite (LMS/SlimProto)';
+                    label = 'Squeezelite (LMS/SlimProto)';
                 } else if (provider.type === 'sendspin') {
-                    option.textContent = 'Sendspin (Music Assistant)';
+                    label = 'Sendspin (Music Assistant)';
+                } else if (provider.type === 'snapcast') {
+                    label = 'Snapcast (Synchronized Audio)';
                 } else {
-                    option.textContent = provider.display_name;
+                    label = provider.display_name || provider.type;
                 }
+                // Mark unavailable providers
+                if (provider.available === false) {
+                    label += ' (not installed)';
+                    option.disabled = true;
+                }
+                option.textContent = label;
                 selectElement.appendChild(option);
             });
 
-            // Set selected value or default to first option
-            if (selectedValue && availableProviders.some(p => p.type === selectedValue)) {
+            // Set selected value or default to first available option
+            if (selectedValue && availableProviders.some(p => p.type === selectedValue && p.available !== false)) {
                 selectElement.value = selectedValue;
-            } else if (availableProviders.length > 0) {
-                selectElement.value = availableProviders[0].type;
+            } else {
+                // Find first available provider
+                const firstAvailable = availableProviders.find(p => p.available !== false);
+                if (firstAvailable) {
+                    selectElement.value = firstAvailable.type;
+                } else if (availableProviders.length > 0) {
+                    selectElement.value = availableProviders[0].type;
+                }
             }
         }
 
@@ -464,8 +487,14 @@
             const endpoint = isSendspin ? '/api/devices/portaudio' : '/api/devices';
 
             try {
+                console.log('Loading devices from', endpoint, 'for provider', provider);
                 const response = await fetch(endpoint);
+                console.log('Devices response status:', response.status);
+                if (!response.ok) {
+                    console.error('Devices API error:', response.status, response.statusText);
+                }
                 const result = await response.json();
+                console.log('Devices API result:', result);
 
                 deviceSelect.innerHTML = '<option value="">Select an audio device...</option>';
 

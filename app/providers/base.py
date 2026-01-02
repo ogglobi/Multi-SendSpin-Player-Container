@@ -5,9 +5,13 @@ Defines the interface that all player providers must implement,
 enabling a pluggable architecture for different audio backends.
 """
 
+import logging
+import os
 import shutil
 from abc import ABC, abstractmethod
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Type alias for player configuration
 PlayerConfig = dict[str, Any]
@@ -168,7 +172,15 @@ class PlayerProvider(ABC):
         Returns:
             True if the provider's binary is available, False otherwise.
         """
-        return shutil.which(self.binary_name) is not None
+        binary_path = shutil.which(self.binary_name)
+        if binary_path:
+            logger.debug(f"Provider {self.provider_type}: binary '{self.binary_name}' found at {binary_path}")
+            return True
+        else:
+            # Log PATH for debugging when binary not found
+            current_path = os.environ.get("PATH", "")
+            logger.warning(f"Provider {self.provider_type}: binary '{self.binary_name}' not found. PATH={current_path}")
+            return False
 
     def get_player_identifier(self, player: PlayerConfig) -> str:
         """

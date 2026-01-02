@@ -93,6 +93,39 @@ def create_flask_app():
         )
 
         app.register_blueprint(swaggerui_blueprint)
+
+        # Add CORS headers to all responses for cross-origin access
+        # This is needed when accessing the add-on directly vs through Ingress
+        @app.after_request
+        def add_cors_headers(response):
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            return response
+
+        # Handle OPTIONS preflight requests
+        @app.before_request
+        def handle_preflight():
+            if request.method == "OPTIONS":
+                response = app.make_default_options_response()
+                response.headers["Access-Control-Allow-Origin"] = "*"
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+                response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                return response
+
+        # Global error handler to return JSON for all 500 errors
+        @app.errorhandler(500)
+        def handle_internal_error(error):
+            """Return JSON for internal server errors instead of HTML"""
+            logger.error(f"Internal server error: {error}")
+            return jsonify({"success": False, "error": "Internal server error", "details": str(error)}), 500
+
+        @app.errorhandler(Exception)
+        def handle_exception(error):
+            """Catch-all exception handler to return JSON"""
+            logger.error(f"Unhandled exception: {type(error).__name__}: {error}")
+            return jsonify({"success": False, "error": str(error)}), 500
+
         logger.info("Flask app, SocketIO, and Swagger UI initialized successfully")
         return app, socketio
 
@@ -145,7 +178,13 @@ def register_routes(app, manager):
     @app.route("/api/devices", methods=["GET"])
     def get_devices():
         """API endpoint to get audio devices (ALSA)"""
-        return jsonify({"devices": manager.get_audio_devices()})
+        try:
+            devices = manager.get_audio_devices()
+            logger.info(f"GET /api/devices returning {len(devices)} devices")
+            return jsonify({"devices": devices})
+        except Exception as e:
+            logger.error(f"Error in get_devices: {e}")
+            return jsonify({"devices": [], "error": str(e)}), 500
 
     @app.route("/api/devices/portaudio", methods=["GET"])
     def get_portaudio_devices():
@@ -229,38 +268,54 @@ def register_routes(app, manager):
     @app.route("/api/devices/test", methods=["POST"])
     def test_audio_device():
         """API endpoint to play a test tone on an audio device"""
-        data = request.json or {}
-        device = data.get("device")
+        try:
+            data = request.json or {}
+            device = data.get("device")
 
-        if not device:
-            return jsonify({"success": False, "message": "Device is required"}), 400
+            if not device:
+                return jsonify({"success": False, "message": "Device is required"}), 400
 
-        # Check if manager has audio manager with test tone capability
-        if hasattr(manager, "audio") and hasattr(manager.audio, "play_test_tone"):
-            success, message = manager.audio.play_test_tone(device)
-            return jsonify({"success": success, "message": message})
-        else:
-            return jsonify({"success": False, "message": "Test tone not available in this version"}), 501
+            # Check if manager has audio manager with test tone capability
+            if hasattr(manager, "audio") and hasattr(manager.audio, "play_test_tone"):
+                success, message = manager.audio.play_test_tone(device)
+                return jsonify({"success": success, "message": message})
+            else:
+                return jsonify({"success": False, "message": "Test tone not available in this version"}), 501
+        except Exception as e:
+            logger.error(f"Error in test_audio_device: {e}")
+            return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
 
     @app.route("/api/providers", methods=["GET"])
     def get_providers():
         """API endpoint to get available player providers"""
-        # Check if manager has get_available_providers method (PlayerManager)
-        if hasattr(manager, "get_available_providers"):
-            return jsonify({"providers": manager.get_available_providers()})
-        else:
-            # For SqueezeliteManager, return default squeezelite provider
-            return jsonify(
-                {
-                    "providers": [
-                        {
-                            "type": "squeezelite",
-                            "name": "Squeezelite",
-                            "description": "Logitech Media Server compatible player",
-                        }
-                    ]
-                }
-            )
+        try:
+            # Check if manager has get_available_providers method (PlayerManager)
+            if hasattr(manager, "get_available_providers"):
+                providers = manager.get_available_providers()
+                logger.info(f"GET /api/providers found {len(providers)} available providers")
+                # If no providers are available, log a warning and return all registered providers
+                if not providers and hasattr(manager, "providers"):
+                    logger.warning("No available providers found, returning all registered providers")
+                    providers = manager.providers.get_provider_info(available_only=False)
+                    logger.info(f"Returning {len(providers)} total registered providers")
+                return jsonify({"providers": providers})
+            else:
+                # For SqueezeliteManager, return default squeezelite provider
+                return jsonify(
+                    {
+                        "providers": [
+                            {
+                                "type": "squeezelite",
+                                "name": "Squeezelite",
+                                "description": "Logitech Media Server compatible player",
+                                "available": True,
+                            }
+                        ]
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Error in get_providers: {e}")
+            return jsonify({"success": False, "error": str(e), "providers": []}), 500
 
     @app.route("/api/players", methods=["POST"])
     def create_player():

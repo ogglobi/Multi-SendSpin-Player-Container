@@ -40,8 +40,8 @@ RUN apk add --no-cache --virtual .build-deps \
     git clone --depth 1 https://github.com/ralph-irving/squeezelite.git /tmp/squeezelite && \
     cd /tmp/squeezelite && \
     make OPTS="-DRESAMPLE -DDSD -DLINKALL" && \
-    cp squeezelite /usr/local/bin/ && \
-    chmod +x /usr/local/bin/squeezelite && \
+    cp squeezelite /usr/bin/ && \
+    chmod +x /usr/bin/squeezelite && \
     cd / && rm -rf /tmp/squeezelite && \
     apk del .build-deps
 
@@ -52,7 +52,11 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
+    echo "Verifying installed binaries..." && \
+    which sendspin && sendspin --version || echo "sendspin binary location:" && find /usr -name "sendspin" 2>/dev/null && \
+    which squeezelite && echo "squeezelite OK" && \
+    which snapclient && echo "snapclient OK" || echo "snapclient not available (optional)"
 
 # Copy application code from parent directory
 COPY app/ /app/

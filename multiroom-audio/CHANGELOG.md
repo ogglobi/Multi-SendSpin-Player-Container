@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.8] - Fix Provider Detection & API Error Handling
+
+### Fixed
+- **Empty player type dropdown**: Providers now fall back to showing all registered providers (with availability status) when no binaries are found in PATH
+- **JSON parsing errors on device test**: Added global error handlers to return JSON instead of HTML for all 500 errors
+- **Binary detection on HAOS**: Moved squeezelite to `/usr/bin/` and added explicit PATH configuration in startup script
+- **Cross-origin access issues**: Added CORS headers to support both Ingress and direct access
+
+### Added
+- Detailed logging for provider availability checks (shows PATH when binary not found)
+- Console logging in JavaScript for API debugging
+- Binary verification step during Docker build
+- Fallback PATH discovery for binaries in non-standard locations
+
+### Changed
+- Startup script now logs full PATH and binary locations for easier debugging
+- Provider dropdown shows "(not installed)" for unavailable providers
+
+---
+
 ## [1.2.7] - Fix Audio Device Detection on HAOS
 
 ### Fixed
