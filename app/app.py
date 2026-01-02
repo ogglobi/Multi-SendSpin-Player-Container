@@ -47,11 +47,15 @@ from providers import ProviderRegistry, SendspinProvider, SnapcastProvider, Sque
 # LOGGING CONFIGURATION
 # =============================================================================
 
+# Get log path from environment and ensure directory exists
+LOG_PATH = os.environ.get("LOG_PATH", "/app/logs")
+os.makedirs(LOG_PATH, exist_ok=True)
+
 # Configure logging first
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("/app/logs/application.log")],
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(os.path.join(LOG_PATH, "application.log"))],
 )
 logger = logging.getLogger(__name__)
 
@@ -100,8 +104,11 @@ WINDOWS_MODE = os.environ.get("SQUEEZELITE_WINDOWS_MODE", "0") == "1"
 if WINDOWS_MODE:
     logger.warning("Running in Windows compatibility mode - audio device access is limited")
 
+# Get paths from environment variables
+CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config")
+
 # Ensure required directories exist
-required_dirs = ["/app/config", "/app/logs", "/app/data"]
+required_dirs = [CONFIG_PATH, LOG_PATH, "/app/data"]
 for directory in required_dirs:
     try:
         os.makedirs(directory, exist_ok=True)
@@ -113,12 +120,12 @@ for directory in required_dirs:
 app, socketio = create_flask_app()
 
 # Configuration paths
-CONFIG_FILE = "/app/config/players.yaml"
-PLAYERS_DIR = "/app/config/players"
-LOG_DIR = "/app/logs"
+CONFIG_FILE = os.path.join(CONFIG_PATH, "players.yaml")
+PLAYERS_DIR = os.path.join(CONFIG_PATH, "players")
+LOG_DIR = LOG_PATH
 
 # Ensure directories exist
-os.makedirs("/app/config", exist_ok=True)
+os.makedirs(CONFIG_PATH, exist_ok=True)
 os.makedirs(PLAYERS_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 

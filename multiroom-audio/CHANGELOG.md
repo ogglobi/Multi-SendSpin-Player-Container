@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.5] - Fix HAOS Startup Crash
+
+### Fixed
+- **FileNotFoundError on HAOS startup**: App now correctly uses `LOG_PATH` and `CONFIG_PATH` environment variables instead of hardcoded `/app/logs` and `/app/config` paths
+- Creates log directory before initializing file logging handler
+- HAOS add-on sets these paths to `/data/logs` and `/data` which weren't being respected
+
+---
+
 ## [1.2.4] - Simplify Add-on Config
 
 ### Changed
