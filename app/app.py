@@ -35,13 +35,37 @@ Usage:
 # Enable faulthandler FIRST - this prints Python stack traces on segfaults
 # Must be before any other imports that might load C extensions
 import faulthandler
+import os
 import sys
 
+# Determine log path early for faulthandler
+_LOG_PATH = os.environ.get("LOG_PATH", "/app/logs")
+os.makedirs(_LOG_PATH, exist_ok=True)
+
+# Create crash log file for faulthandler (must stay open for process lifetime)
+_CRASH_LOG_PATH = os.path.join(_LOG_PATH, "crash.log")
+_crash_file = open(_CRASH_LOG_PATH, "a", buffering=1)  # noqa: SIM115 - intentionally kept open
+
+# Check for previous crash on startup
+if os.path.exists(_CRASH_LOG_PATH) and os.path.getsize(_CRASH_LOG_PATH) > 0:
+    print("=" * 60, file=sys.stderr)
+    print("PREVIOUS CRASH DETECTED - Contents of crash.log:", file=sys.stderr)
+    with open(_CRASH_LOG_PATH) as f:
+        print(f.read(), file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    # Clear the crash log for next run
+    open(_CRASH_LOG_PATH, "w").close()  # noqa: SIM115
+    _crash_file = open(_CRASH_LOG_PATH, "a", buffering=1)  # noqa: SIM115
+
+# Enable faulthandler to write to both stderr AND the crash file
+faulthandler.enable(file=_crash_file, all_threads=True)
+# Also enable on stderr for immediate visibility
 faulthandler.enable(file=sys.stderr, all_threads=True)
+
+print(f"Faulthandler enabled - crash traces will be written to {_CRASH_LOG_PATH}", file=sys.stderr)
 
 # ruff: noqa: E402 - imports must be after faulthandler.enable()
 import logging
-import os
 import signal
 import traceback
 from typing import Any
@@ -55,9 +79,8 @@ from providers import ProviderRegistry, SendspinProvider, SnapcastProvider, Sque
 # LOGGING CONFIGURATION
 # =============================================================================
 
-# Get log path from environment and ensure directory exists
-LOG_PATH = os.environ.get("LOG_PATH", "/app/logs")
-os.makedirs(LOG_PATH, exist_ok=True)
+# Use the already-determined log path
+LOG_PATH = _LOG_PATH
 
 # Configure logging first
 logging.basicConfig(

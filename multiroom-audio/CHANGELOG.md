@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.12] - Persistent Crash Logging
+
+### Changed
+- **Crash traces now written to file**: Faulthandler output is saved to `/data/logs/crash.log` (in addition to stderr)
+- **Previous crash detection**: On startup, if a crash.log exists from a previous run, its contents are printed to the supervisor log
+- This ensures crash diagnostics are captured even if stderr buffer doesn't flush before the segfault
+
+### Notes
+- After a crash, restart the add-on and check the supervisor logs for "PREVIOUS CRASH DETECTED" message
+- The crash.log is cleared after being displayed to avoid repeated warnings
+
+---
+
 ## [1.2.11] - Crash Diagnostics
 
 ### Added
