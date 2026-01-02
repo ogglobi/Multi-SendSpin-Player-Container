@@ -1,14 +1,19 @@
 """
 Audio Manager for device detection and volume control.
 
-Handles ALSA audio device enumeration, mixer control detection,
-and volume get/set operations via amixer. Also supports PortAudio
-devices for test tones via the sounddevice library.
+Handles ALSA and PulseAudio device enumeration, mixer control detection,
+and volume get/set operations. Also supports PortAudio devices for test
+tones via the sounddevice library.
+
+On HAOS (Home Assistant OS), uses PulseAudio via pactl.
+On standalone Docker, uses ALSA via aplay/amixer.
 """
 
 import logging
 import re
 import subprocess
+
+from environment import is_hassio
 
 # sounddevice/numpy are imported lazily in _play_test_tone_portaudio()
 # to avoid PortAudio C extension segfaults on Alpine Linux during module load
@@ -94,15 +99,16 @@ class AudioManager:
         """
         Get list of available audio devices.
 
-        Queries ALSA via `aplay -l` to enumerate hardware audio devices.
-        Always includes fallback virtual devices (null, default, dmix).
+        On HAOS: Uses PulseAudio via `pactl list sinks short`.
+        On standalone Docker: Uses ALSA via `aplay -l`.
+        Always includes fallback virtual devices.
 
         Returns:
             List of audio device dictionaries, each containing:
-            - id: ALSA device identifier (e.g., 'hw:0,0', 'null', 'default')
+            - id: Device identifier (PulseAudio sink name or ALSA device like 'hw:0,0')
             - name: Human-readable device name
-            - card: ALSA card number or identifier
-            - device: ALSA device number
+            - card: Card identifier
+            - device: Device number
         """
         if self.windows_mode:
             logger.info("Windows mode detected - returning simulated audio devices")
@@ -112,6 +118,87 @@ class AudioManager:
                 {"id": "tcp:host.docker.internal:4713", "name": "Network Audio Stream", "card": "net", "device": "0"},
             ]
 
+        # Use PulseAudio on HAOS, ALSA on standalone Docker
+        if is_hassio():
+            return self._get_pulseaudio_devices()
+        else:
+            return self._get_alsa_devices()
+
+    def _get_pulseaudio_devices(self) -> list[AudioDevice]:
+        """
+        Get PulseAudio sinks for HAOS environment.
+
+        Uses `pactl list sinks short` to enumerate available audio outputs.
+
+        Returns:
+            List of audio device dictionaries with PulseAudio sink names.
+        """
+        # Fallback devices for PulseAudio
+        fallback_devices = [
+            {"id": "null", "name": "Null Audio Device (Silent)", "card": "null", "device": "0"},
+            {"id": "default", "name": "Default PulseAudio Output", "card": "default", "device": "0"},
+        ]
+
+        try:
+            logger.debug("Attempting to detect PulseAudio sinks with pactl")
+            result = subprocess.run(
+                ["pactl", "list", "sinks", "short"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            logger.debug(f"pactl list sinks short output:\n{result.stdout}")
+            if result.stderr:
+                logger.debug(f"pactl stderr:\n{result.stderr}")
+
+            devices = []
+            # Parse output: "0\talsa_output.pci-0000_00_1f.3.analog-stereo\tmodule-alsa-card.c\ts16le 2ch 44100Hz\tIDLE"
+            for line in result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    sink_index = parts[0].strip()
+                    sink_name = parts[1].strip()
+                    # Create a friendly display name
+                    display_name = sink_name.replace("alsa_output.", "").replace("_", " ").replace(".", " ")
+                    devices.append(
+                        {
+                            "id": sink_name,
+                            "name": f"{display_name} (sink {sink_index})",
+                            "card": sink_index,
+                            "device": "0",
+                        }
+                    )
+                    logger.debug(f"Found PulseAudio sink: {sink_name}")
+
+            if devices:
+                logger.info(f"Found {len(devices)} PulseAudio sinks")
+                return fallback_devices + devices
+            else:
+                logger.warning("No PulseAudio sinks found, using fallback devices only")
+                return fallback_devices
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout running pactl, using fallback devices")
+            return fallback_devices
+        except FileNotFoundError:
+            logger.warning("pactl command not found, using fallback devices only")
+            return fallback_devices
+        except Exception as e:
+            logger.error(f"Unexpected error getting PulseAudio devices: {e}")
+            return fallback_devices
+
+    def _get_alsa_devices(self) -> list[AudioDevice]:
+        """
+        Get ALSA devices for standalone Docker environment.
+
+        Uses `aplay -l` to enumerate hardware audio devices.
+
+        Returns:
+            List of audio device dictionaries with ALSA device identifiers.
+        """
         # Always provide fallback devices
         fallback_devices = [
             {"id": "null", "name": "Null Audio Device (Silent)", "card": "null", "device": "0"},

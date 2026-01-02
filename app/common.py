@@ -157,6 +157,12 @@ def register_routes(app, manager):
                 text=True,
                 timeout=10,
             )
+
+            # Log both stdout and stderr for debugging
+            logger.debug(f"sendspin --list-audio-devices stdout: {result.stdout}")
+            if result.stderr:
+                logger.warning(f"sendspin --list-audio-devices stderr: {result.stderr}")
+
             # Parse the output - sendspin lists devices as "[0] Device Name"
             devices = []
             for line in result.stdout.strip().split("\n"):
@@ -166,15 +172,34 @@ def register_routes(app, manager):
                     index = match.group(1)
                     name = match.group(2)
                     devices.append({"index": index, "name": name, "raw": line})
-            return jsonify(
-                {
-                    "success": True,
-                    "devices": devices,
-                    "raw_output": result.stdout,
-                    "note": "Use device index (0, 1, 2) with --audio-device for sendspin",
-                }
-            )
+
+            # Also check stderr for device listings (some versions output there)
+            if not devices and result.stderr:
+                for line in result.stderr.strip().split("\n"):
+                    line = line.strip()
+                    match = SENDSPIN_DEVICE_PATTERN.match(line)
+                    if match:
+                        index = match.group(1)
+                        name = match.group(2)
+                        devices.append({"index": index, "name": name, "raw": line})
+
+            response = {
+                "success": True,
+                "devices": devices,
+                "raw_output": result.stdout,
+                "note": "Use device index (0, 1, 2) with --audio-device for sendspin",
+            }
+
+            # Include stderr info if there were issues but we still got some output
+            if result.stderr and not devices:
+                response["stderr"] = result.stderr
+                response["success"] = len(devices) > 0
+                if not devices:
+                    response["message"] = "No devices found. Check stderr for errors."
+
+            return jsonify(response)
         except FileNotFoundError:
+            logger.error("sendspin binary not found")
             return jsonify(
                 {
                     "success": False,
@@ -183,6 +208,7 @@ def register_routes(app, manager):
                 }
             )
         except subprocess.TimeoutExpired:
+            logger.error("Timeout running sendspin --list-audio-devices")
             return jsonify(
                 {
                     "success": False,
@@ -191,6 +217,7 @@ def register_routes(app, manager):
                 }
             )
         except Exception as e:
+            logger.error(f"Error running sendspin --list-audio-devices: {e}")
             return jsonify(
                 {
                     "success": False,

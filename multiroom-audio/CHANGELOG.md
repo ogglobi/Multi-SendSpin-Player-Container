@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.7] - Fix Audio Device Detection on HAOS
+
+### Fixed
+- **No audio devices on HAOS**: Now uses PulseAudio (`pactl list sinks`) for device detection on HAOS instead of ALSA (`aplay -l`)
+- **Sendspin shows no devices**: Added stderr capture and logging for `sendspin --list-audio-devices` to diagnose PortAudio issues
+- **Devices missing after reboot**: PulseAudio detection is more reliable than ALSA on HAOS
+
+### Changed
+- AudioManager now auto-detects environment and uses appropriate backend (PulseAudio on HAOS, ALSA on standalone Docker)
+
+---
+
 ## [1.2.6] - Fix PortAudio Segfault on HAOS
 
 ### Fixed
