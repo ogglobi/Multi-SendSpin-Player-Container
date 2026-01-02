@@ -435,6 +435,28 @@ class AudioManager:
         """
         return device in VIRTUAL_AUDIO_DEVICES
 
+    def _is_pulseaudio_sink(self, device: str) -> bool:
+        """
+        Check if a device identifier looks like a PulseAudio sink name.
+
+        PulseAudio sinks typically have names like:
+        - alsa_output.pci-0000_00_1f.3.analog-stereo
+        - bluez_sink.6C_5C_3D_3B_15_3F.a2dp_sink
+        - combined
+
+        Args:
+            device: Device identifier to check.
+
+        Returns:
+            True if device looks like a PulseAudio sink name.
+        """
+        # PulseAudio sink patterns
+        pulse_prefixes = ("alsa_output.", "bluez_sink.", "combined", "null_sink")
+        if any(device.startswith(prefix) for prefix in pulse_prefixes):
+            return True
+        # Generic check: contains underscores and dots (typical PA naming)
+        return "_" in device and "." in device and not device.startswith("hw:")
+
     def play_test_tone(
         self,
         device: str,
@@ -447,10 +469,12 @@ class AudioManager:
         Routes to the appropriate backend based on device type:
         - ALSA devices (hw:X,Y): Uses speaker-test utility
         - PortAudio devices (numeric index): Uses sounddevice library
+        - PulseAudio sinks: Uses paplay with generated tone
 
         Args:
-            device: Device identifier. Either an ALSA device (e.g., 'hw:0,0')
-                   or a PortAudio device index (e.g., '0', '1', '2').
+            device: Device identifier. Either an ALSA device (e.g., 'hw:0,0'),
+                   a PortAudio device index (e.g., '0', '1', '2'), or a
+                   PulseAudio sink name (e.g., 'alsa_output.pci-...').
             duration_secs: How long to play the tone (default: 2 seconds).
             frequency_hz: Tone frequency in Hz (default: 440Hz, A4 note).
 
@@ -472,7 +496,11 @@ class AudioManager:
         if device == "null":
             return True, "Test tone sent to null device (silent)"
 
-        # Use ALSA speaker-test for non-PortAudio devices
+        # Check if this is a PulseAudio sink name
+        if self._is_pulseaudio_sink(device) or is_hassio():
+            return self._play_test_tone_pulseaudio(device, duration_secs, frequency_hz)
+
+        # Use ALSA speaker-test for ALSA devices
         return self._play_test_tone_alsa(device, duration_secs, frequency_hz)
 
     def _play_test_tone_portaudio(
@@ -534,6 +562,102 @@ class AudioManager:
             return False, f"PortAudio error: {e}"
         except Exception as e:
             logger.error(f"Error playing test tone on PortAudio device {device_index}: {e}")
+            return False, f"Error: {str(e)}"
+
+    def _play_test_tone_pulseaudio(
+        self,
+        device: str,
+        duration_secs: float,
+        frequency_hz: int,
+    ) -> tuple[bool, str]:
+        """
+        Play a test tone on a PulseAudio sink using paplay.
+
+        Generates a WAV file with a sine wave and plays it through the
+        specified PulseAudio sink. Used for testing audio outputs on HAOS.
+
+        Args:
+            device: PulseAudio sink name (e.g., 'alsa_output.pci-...', 'bluez_sink.XXX').
+            duration_secs: How long to play the tone.
+            frequency_hz: Tone frequency in Hz.
+
+        Returns:
+            Tuple of (success: bool, message: str).
+        """
+        import struct
+        import tempfile
+        import wave
+
+        try:
+            # Generate WAV file with sine wave
+            sample_rate = 44100
+            num_samples = int(sample_rate * duration_secs)
+
+            # Create temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                wav_path = tmp_file.name
+
+            # Generate and write WAV data
+            import math
+
+            with wave.open(wav_path, "w") as wav_file:
+                wav_file.setnchannels(2)  # Stereo
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(sample_rate)
+
+                # Generate sine wave samples
+                for i in range(num_samples):
+                    # Sine wave at specified frequency, 50% volume
+                    value = int(16383 * math.sin(2 * math.pi * frequency_hz * i / sample_rate))
+                    # Pack as stereo (left and right channels)
+                    packed = struct.pack("<hh", value, value)
+                    wav_file.writeframes(packed)
+
+            logger.info(f"Playing test tone on PulseAudio sink {device} at {frequency_hz}Hz for {duration_secs}s")
+
+            # Build paplay command
+            # paplay --device=<sink_name> <wav_file>
+            cmd = ["paplay"]
+
+            # Only add --device if it's not a default/generic name
+            if device and device not in ("default", "pulse"):
+                cmd.extend(["--device", device])
+
+            cmd.append(wav_path)
+
+            logger.debug(f"Running: {' '.join(cmd)}")
+
+            # Run paplay with timeout
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=duration_secs + 10,
+            )
+
+            # Clean up temp file
+            import contextlib
+            import os
+
+            with contextlib.suppress(OSError):
+                os.unlink(wav_path)
+
+            if result.returncode == 0:
+                logger.info(f"Test tone completed on PulseAudio sink {device}")
+                return True, f"Test tone played on {device}"
+            else:
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                logger.warning(f"paplay failed for {device}: {error_msg}")
+                return False, f"Test failed: {error_msg}"
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Test tone timed out on PulseAudio sink {device}")
+            return False, "Test tone timed out"
+        except FileNotFoundError:
+            logger.warning("paplay command not found")
+            return False, "paplay utility not available (PulseAudio not installed)"
+        except Exception as e:
+            logger.error(f"Error playing test tone on PulseAudio sink {device}: {e}")
             return False, f"Error: {str(e)}"
 
     def _play_test_tone_alsa(

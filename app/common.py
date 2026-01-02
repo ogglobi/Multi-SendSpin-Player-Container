@@ -23,6 +23,7 @@ import threading
 import time
 import traceback
 
+from environment import is_hassio
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_swagger_ui import get_swaggerui_blueprint
@@ -76,8 +77,8 @@ def create_flask_app():
         app.config["SECRET_KEY"] = secret_key
         socketio = SocketIO(app, cors_allowed_origins="*")
 
-        # Configure Swagger UI
-        SWAGGER_URL = "/api/docs"
+        # Configure Swagger UI (use /docs to avoid conflicts with /api/* routes through Ingress)
+        SWAGGER_URL = "/docs"
         API_URL = "/api/swagger.yaml"
 
         swaggerui_blueprint = get_swaggerui_blueprint(
@@ -222,12 +223,42 @@ def register_routes(app, manager):
                         name = match.group(2)
                         devices.append({"index": index, "name": name, "raw": line})
 
+            # On HAOS, if PortAudio found no devices, fall back to PulseAudio sinks
+            if not devices and is_hassio():
+                logger.info("No PortAudio devices found on HAOS, falling back to PulseAudio sinks")
+                try:
+                    pactl_result = subprocess.run(
+                        ["pactl", "list", "sinks", "short"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    # Parse PulseAudio sinks: "0\talsa_output.pci-0000_00_1f.3.analog-stereo\t..."
+                    for line in pactl_result.stdout.strip().split("\n"):
+                        if not line.strip():
+                            continue
+                        parts = line.split("\t")
+                        if len(parts) >= 2:
+                            sink_index = parts[0]
+                            sink_name = parts[1]
+                            # Use sink name as the device identifier for sendspin
+                            devices.append({"index": sink_index, "name": sink_name, "raw": line, "type": "pulseaudio"})
+                    if devices:
+                        logger.info(f"Found {len(devices)} PulseAudio sinks as fallback")
+                except Exception as e:
+                    logger.warning(f"Failed to get PulseAudio sinks as fallback: {e}")
+
             response = {
                 "success": True,
                 "devices": devices,
                 "raw_output": result.stdout,
                 "note": "Use device index (0, 1, 2) with --audio-device for sendspin",
             }
+
+            # Update note if we used PulseAudio fallback
+            if devices and any(d.get("type") == "pulseaudio" for d in devices):
+                response["note"] = "Using PulseAudio sinks. Use sink name with sendspin on HAOS."
+                response["fallback"] = "pulseaudio"
 
             # Include stderr info if there were issues but we still got some output
             if result.stderr and not devices:

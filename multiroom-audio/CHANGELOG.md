@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.9] - Fix Ingress & Sendspin Device Detection
+
+### Fixed
+- **404 on /api/providers through Ingress**: Moved Swagger UI from `/api/docs` to `/docs` to avoid route conflicts with HA Ingress proxy
+- **Empty Sendspin device list on HAOS**: Added PulseAudio sink fallback when PortAudio doesn't detect any devices
+- **Test tone fails on PulseAudio sinks**: Added `paplay` support for testing Bluetooth and PulseAudio devices (e.g., `bluez_sink.XXX.a2dp_sink`)
+- The player type dropdown was empty when accessed through HA sidebar (now fixed)
+
+---
+
 ## [1.2.8] - Fix Provider Detection & API Error Handling
 
 ### Fixed
