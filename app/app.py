@@ -32,10 +32,17 @@ Usage:
     Via supervisor: supervisord -c /etc/supervisor/conf.d/supervisord.conf
 """
 
+# Enable faulthandler FIRST - this prints Python stack traces on segfaults
+# Must be before any other imports that might load C extensions
+import faulthandler
+import sys
+
+faulthandler.enable(file=sys.stderr, all_threads=True)
+
+# ruff: noqa: E402 - imports must be after faulthandler.enable()
 import logging
 import os
 import signal
-import sys
 import traceback
 from typing import Any
 

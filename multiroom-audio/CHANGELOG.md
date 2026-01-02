@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.11] - Crash Diagnostics
+
+### Added
+- **Faulthandler enabled**: Python stack traces will now be printed on segfaults to help diagnose crashes
+- This will show exactly which Python code was running when a native library (PortAudio, etc.) crashes
+
+---
+
 ## [1.2.10] - Stability Improvements
 
 ### Added
