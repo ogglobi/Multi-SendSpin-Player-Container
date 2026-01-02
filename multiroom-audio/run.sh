@@ -20,13 +20,13 @@ fi
 # Export environment variables for the Python app
 export LOG_LEVEL="${LOG_LEVEL}"
 export CONFIG_PATH="/data"
-export LOG_PATH="/data/logs"
+export LOG_PATH="/share/multiroom-audio/logs"
 export AUDIO_BACKEND="pulse"
 export WEB_PORT="8080"
 export FLASK_ENV="production"
 
 # Ensure directories exist
-mkdir -p /data/logs
+mkdir -p /share/multiroom-audio/logs
 
 # Log startup information
 bashio::log.info "Starting Multi-Room Audio Controller..."

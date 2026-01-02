@@ -65,8 +65,8 @@ COPY app/ /app/
 COPY app/static/ /app/static/
 COPY app/templates/ /app/templates/
 
-# Create data directories
-RUN mkdir -p /data /data/logs
+# Create data directory (logs go to /share/multiroom-audio/logs at runtime)
+RUN mkdir -p /data
 
 # Copy run script
 COPY multiroom-audio/run.sh /run.sh

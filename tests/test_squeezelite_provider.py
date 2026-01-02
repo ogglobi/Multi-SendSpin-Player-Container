@@ -102,8 +102,8 @@ class TestBuildCommand:
         assert "TestPlayer" in cmd
         assert "-o" in cmd
         assert "-m" in cmd
-        assert "-f" in cmd
-        assert "/app/logs/test.log" in cmd
+        # Note: -f flag removed - logs now go to stderr for streaming capture
+        assert "-f" not in cmd
 
     def test_build_command_with_server(self, squeezelite_provider, sample_squeezelite_config):
         """Test command building with server IP specified."""

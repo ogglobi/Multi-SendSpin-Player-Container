@@ -124,8 +124,9 @@ class SqueezeliteProvider(PlayerProvider):
         if player.get("server_ip"):
             cmd.extend(["-s", player["server_ip"]])
 
-        # Add logging
-        cmd.extend(["-f", log_path])
+        # NOTE: We no longer use -f for file logging. Squeezelite outputs to stderr
+        # by default, which is captured by ProcessManager's streaming threads and
+        # forwarded to stdout (for HAOS visibility) and log files.
 
         # Add buffer and compatibility options
         cmd.extend(
@@ -172,7 +173,7 @@ class SqueezeliteProvider(PlayerProvider):
         if player.get("server_ip"):
             cmd.extend(["-s", player["server_ip"]])
 
-        cmd.extend(["-f", log_path])
+        # NOTE: No -f flag - output goes to stderr for streaming capture
 
         cmd.extend(
             [

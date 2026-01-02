@@ -98,8 +98,9 @@ class SnapcastProvider(PlayerProvider):
         player_backend = get_player_backend_for_snapcast()
         cmd.extend(["--player", player_backend])
 
-        # Logging output
-        cmd.extend(["--logsink", f"file:{log_path}"])
+        # Logging output - use stderr so ProcessManager's streaming threads
+        # can capture it and forward to stdout (for HAOS visibility) and log files
+        cmd.extend(["--logsink", "stderr"])
 
         return cmd
 

@@ -92,7 +92,8 @@ class TestBuildCommand:
         assert "--player" in cmd
         assert "alsa" in cmd
         assert "--logsink" in cmd
-        assert "file:/app/logs/test.log" in cmd
+        # Note: logsink changed to stderr for streaming capture
+        assert "stderr" in cmd
 
     def test_build_command_with_server(self, snapcast_provider, sample_snapcast_config):
         """Test command building with server IP specified."""
