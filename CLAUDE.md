@@ -77,6 +77,37 @@ cd multiroom-audio
 docker build --build-arg BUILD_FROM=ghcr.io/hassio-addons/base-python:18.0.0 -t multiroom-addon .
 ```
 
+## Release Process (HAOS Add-on)
+
+**Important:** Do NOT manually edit `multiroom-audio/config.yaml` version. The CI workflow handles this automatically.
+
+### Steps to Release a New Version
+
+1. **Make code changes** - commit to `main` as usual
+2. **Update CHANGELOG** - add entry in `multiroom-audio/CHANGELOG.md` for the new version
+3. **Create and push a tag:**
+   ```bash
+   git tag -a v1.2.7 -m "v1.2.7 - Brief description"
+   git push --tags
+   ```
+4. **Wait for CI** - GitHub Actions will:
+   - Build the Docker image for HAOS
+   - Push to `ghcr.io/chrisuthe/multiroom-audio-hassio`
+   - Auto-update `config.yaml` version after successful build
+5. **Verify** - HAOS users will see the update only after the image is ready
+
+### Why This Workflow?
+
+HAOS checks `config.yaml` for version updates. If we bump the version before the Docker image is built, users see "Update available" but the download fails. The automated workflow ensures users only see updates after the image exists.
+
+### Manual Override (Emergency Only)
+
+If you need to manually set the version:
+```bash
+# Only do this if CI is broken and you've manually pushed the image
+sed -i 's/^version: ".*"/version: "1.2.7"/' multiroom-audio/config.yaml
+```
+
 ## Code Style Guidelines
 
 ### Python
@@ -171,6 +202,7 @@ Use Pydantic schemas in `app/schemas/player_config.py` for type-safe validation.
 5. **DO NOT** use `yaml.load()` - always use `yaml.safe_load()` for security
 6. **DO NOT** use shell=True in subprocess calls - use list-based commands
 7. **DO NOT** commit hardcoded secrets - use environment variables
+8. **DO NOT** manually edit `multiroom-audio/config.yaml` version - CI auto-updates it after successful builds (see Release Process)
 
 ## Testing Guidelines
 
