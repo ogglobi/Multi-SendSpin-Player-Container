@@ -1,5 +1,6 @@
 using MultiRoomAudio.Controllers;
 using MultiRoomAudio.Services;
+using MultiRoomAudio.Utilities;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,6 +47,16 @@ builder.Services.AddCors(options =>
 
 // Add health checks
 builder.Services.AddHealthChecks();
+
+// Core services (singletons for shared state)
+builder.Services.AddSingleton<EnvironmentService>();
+builder.Services.AddSingleton<ConfigurationService>();
+builder.Services.AddSingleton(sp =>
+{
+    var env = sp.GetRequiredService<EnvironmentService>();
+    var logger = sp.GetRequiredService<ILogger<AlsaCommandRunner>>();
+    return new AlsaCommandRunner(logger, env.UsePulseAudio);
+});
 
 // Add PlayerManagerService as singleton and hosted service
 builder.Services.AddSingleton<PlayerManagerService>();
@@ -110,11 +121,11 @@ app.MapGet("/api", () => Results.Ok(new
 .WithName("ApiInfo");
 
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("Multi-Room Audio Controller starting on port {Port}", port);
+var environmentService = app.Services.GetRequiredService<EnvironmentService>();
 
-// Detect HAOS vs Docker environment
-var isHaos = File.Exists("/data/options.json")
-    || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SUPERVISOR_TOKEN"));
-logger.LogInformation("Environment: {Env}", isHaos ? "Home Assistant OS" : "Docker");
+logger.LogInformation("Multi-Room Audio Controller starting on port {Port}", port);
+logger.LogInformation("Environment: {Env}", environmentService.EnvironmentName);
+logger.LogInformation("Config path: {Path}", environmentService.ConfigPath);
+logger.LogInformation("Audio backend: {Backend}", environmentService.AudioBackend);
 
 app.Run();
