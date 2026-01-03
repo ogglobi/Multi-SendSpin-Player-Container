@@ -27,8 +27,8 @@ from environment import is_hassio
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_swagger_ui import get_swaggerui_blueprint
-from werkzeug.exceptions import HTTPException
 from schemas.player_config import INVALID_NAME_CHARS, MAX_NAME_LENGTH
+from werkzeug.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
 

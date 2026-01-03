@@ -20,6 +20,14 @@ RUN apk add --no-cache \
     alsa-lib \
     pulseaudio-utils \
     portaudio \
+    # Runtime libraries for squeezelite codecs
+    libmad \
+    faad2-libs \
+    flac \
+    libvorbis \
+    mpg123-libs \
+    opusfile \
+    soxr \
     # Build dependencies for Python packages
     gcc \
     python3-dev \
