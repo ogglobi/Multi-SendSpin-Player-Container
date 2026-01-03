@@ -2,7 +2,34 @@
 
 > This file provides context for Claude Code and other AI agents working on this project.
 
-## Project Overview
+---
+
+## NextGen Refactoring (Active Development)
+
+**We are actively refactoring this project to a pure C# implementation.**
+
+See **[nextgen.md](nextgen.md)** for the complete implementation plan.
+
+### Key Changes
+- **Language:** Python/Flask → C# ASP.NET Core 8.0
+- **Scope:** Sendspin-only (dropping Squeezelite and Snapcast)
+- **Audio:** Native SendSpin.SDK + PortAudioSharp2 (no CLI subprocess)
+- **Deployment:** Unified Alpine Docker image for both HAOS and standalone
+
+### Reference Documentation
+- **Home Assistant Add-on Development:**
+  - [Add-on Configuration](https://developers.home-assistant.io/docs/add-ons/configuration/) - config.yaml schema
+  - [Add-on Communication](https://developers.home-assistant.io/docs/add-ons/communication/) - Ingress, supervisor
+  - [Add-on Publishing](https://developers.home-assistant.io/docs/add-ons/publishing/) - Repository setup
+
+### Branch Strategy
+- **`main`** - Current Python implementation (stable)
+- **`nextgen`** - C# rewrite (active development)
+- **`C#-SDK-Based`** - SDK prototype (to be merged into nextgen)
+
+---
+
+## Project Overview (Current - Python)
 
 **Multi-Room Audio Docker Controller** - A Flask-based web application for managing multiple audio players with support for different backends (Squeezelite, Sendspin, Snapcast). Enables whole-home audio with USB DACs connected to a central server.
 
@@ -335,7 +362,9 @@ This project was developed with AI assistance. When making changes:
 
 ## Quick Links
 
+- **[NextGen Implementation Plan](nextgen.md)** - C# rewrite roadmap
 - [Architecture Documentation](docs/ARCHITECTURE.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Environment Variables](ENVIRONMENT_VARIABLES.md)
 - [API Documentation](http://localhost:8096/api/docs) (when running)
+- [Home Assistant Add-on Docs](https://developers.home-assistant.io/docs/add-ons/configuration/)
