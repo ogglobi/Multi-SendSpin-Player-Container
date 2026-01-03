@@ -146,6 +146,29 @@ SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
 
 **Warning:** The validation will warn if SECRET_KEY is set but shorter than 32 characters.
 
+### WEB_PORT
+
+Web server port number.
+
+- **Type:** Integer
+- **Default:** `8095`
+- **Valid Range:** 0-65535
+- **Description:** Port for the web UI and API. If set to `0`, the OS will assign an available port automatically. If the specified port is in use, the server will automatically find the next available port. The actual port is written to `$CONFIG_PATH/.port` for external discovery.
+
+**Examples:**
+```bash
+# Default port
+WEB_PORT=8095
+
+# Custom port
+WEB_PORT=8080
+
+# Let OS assign an available port
+WEB_PORT=0
+```
+
+**Note:** When using Docker, you must also update the port mapping in your docker-compose.yml or run command.
+
 ### AUDIO_BACKEND
 
 Audio backend selection.

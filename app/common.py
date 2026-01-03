@@ -816,7 +816,45 @@ def start_status_monitor(socketio, manager):
 # =============================================================================
 
 
-def run_server(app, socketio, host="0.0.0.0", port=8095):
+def find_available_port(start_port: int, host: str = "0.0.0.0", max_attempts: int = 100) -> int:
+    """
+    Find an available port starting from start_port.
+
+    If start_port is 0, lets the OS assign an available port.
+
+    Args:
+        start_port: Port to start searching from (0 for OS-assigned).
+        host: Host address to bind to.
+        max_attempts: Maximum number of ports to try.
+
+    Returns:
+        An available port number.
+
+    Raises:
+        RuntimeError: If no available port is found.
+    """
+    import socket
+
+    if start_port == 0:
+        # Let OS assign a port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, 0))
+            return sock.getsockname()[1]
+
+    for port in range(start_port, start_port + max_attempts):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind((host, port))
+                return port
+        except OSError:
+            continue
+
+    raise RuntimeError(f"No available port found in range {start_port}-{start_port + max_attempts - 1}")
+
+
+def run_server(app, socketio, host: str = "0.0.0.0", port: int | None = None):
     """
     Start the Flask-SocketIO server.
 
@@ -824,22 +862,35 @@ def run_server(app, socketio, host="0.0.0.0", port=8095):
         app: Flask application instance.
         socketio: SocketIO instance.
         host: Host address to bind to.
-        port: Port number to bind to.
+        port: Port number to bind to. If None, uses WEB_PORT env var or 8095.
+               If 0, lets OS assign an available port.
     """
+    # Get port from environment or use default
+    if port is None:
+        port = int(os.environ.get("WEB_PORT", "8095"))
+
     try:
+        # Find an available port
+        actual_port = find_available_port(port, host)
+
+        if actual_port != port:
+            if port == 0:
+                logger.info(f"OS assigned port {actual_port}")
+            else:
+                logger.warning(f"Port {port} in use, using port {actual_port} instead")
+
         logger.info("Starting Flask-SocketIO server...")
-        logger.info(f"Server will be available at: http://{host}:{port}")
+        logger.info(f"Server will be available at: http://{host}:{actual_port}")
 
-        # Test if port is available
-        import socket
+        # Write port to file for external discovery (useful for dynamic ports)
+        port_file = os.path.join(os.environ.get("CONFIG_PATH", "/app/config"), ".port")
+        try:
+            with open(port_file, "w") as f:
+                f.write(str(actual_port))
+        except Exception as e:
+            logger.debug(f"Could not write port file: {e}")
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex(("localhost", port))
-        if result == 0:
-            logger.warning(f"Port {port} appears to be in use, but will try to bind anyway")
-        sock.close()
-
-        socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+        socketio.run(app, host=host, port=actual_port, debug=False, allow_unsafe_werkzeug=True)
     except Exception as e:
         logger.error(f"Failed to start Flask-SocketIO server: {e}")
         traceback.print_exc()

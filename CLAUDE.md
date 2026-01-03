@@ -266,6 +266,7 @@ def test_volume_control(mock_run):
 | `SQUEEZELITE_BUFFER_PARAMS` | `500:2000` | Stream:output buffers (KB) |
 | `SQUEEZELITE_WINDOWS_MODE` | `0` | Windows compatibility mode |
 | `SECRET_KEY` | Auto-generated | Flask session security |
+| `WEB_PORT` | `8095` | Web server port (0 for auto-assign) |
 | `AUDIO_BACKEND` | Auto-detected | `alsa` or `pulse` |
 | `CONFIG_PATH` | `/app/config` | Configuration directory |
 | `LOG_PATH` | `/app/logs` | Log directory |
