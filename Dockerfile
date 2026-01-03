@@ -77,11 +77,11 @@ RUN useradd -r -s /bin/false squeezelite || true && \
 ENV SQUEEZELITE_CONTAINER=1
 
 # Expose web interface port
-EXPOSE 8080
+EXPOSE 8095
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/api/players || exit 1
+    CMD curl -f http://localhost:8095/api/players || exit 1
 
 # Use entrypoint script
 ENTRYPOINT ["/app/entrypoint.sh"]

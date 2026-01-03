@@ -56,12 +56,12 @@ Kitchen Bedroom Patio
 ```bash
 docker run -d \
   --name multiroom-audio \
-  -p 8080:8080 \
+  -p 8095:8095 \
   --device /dev/snd:/dev/snd \
   chrisuthe/squeezelitemultiroom:latest
 ```
 
-Then open `http://YOUR-SERVER-IP:8080`
+Then open `http://YOUR-SERVER-IP:8095`
 
 ### Home Assistant OS
 

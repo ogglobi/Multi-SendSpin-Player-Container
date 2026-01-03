@@ -248,7 +248,7 @@ The add-on runs the same Python application but with:
 | Config Path | /app/config | /data |
 | Log Path | /app/logs | /data/logs |
 | Base Image | Debian | Alpine |
-| Web Access | Direct port 8080 | HA Ingress |
+| Web Access | Direct port 8095 | HA Ingress |
 
 ## Extension Points
 

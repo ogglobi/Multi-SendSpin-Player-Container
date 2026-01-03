@@ -102,7 +102,7 @@ if errorlevel 1 (
 echo.
 echo %COLOR_SUCCESS%[SUCCESS]%COLOR_RESET% Container started successfully!
 echo.
-echo %COLOR_INFO%[INFO]%COLOR_RESET% Web interface will be available at: http://localhost:8080
+echo %COLOR_INFO%[INFO]%COLOR_RESET% Web interface will be available at: http://localhost:8095
 echo %COLOR_INFO%[INFO]%COLOR_RESET% Use 'docker-compose -f %COMPOSE_FILE% logs -f' to view logs
 echo.
 

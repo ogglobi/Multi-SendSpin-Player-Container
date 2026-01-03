@@ -41,7 +41,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8095
     description: Local server (use your actual host IP/URL for external access)
 
 tags:

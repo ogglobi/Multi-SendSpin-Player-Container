@@ -96,7 +96,7 @@ Squeezelite players appear if using MA's Slimproto integration.
 
 | Port | Protocol | Direction | Purpose |
 |------|----------|-----------|---------|
-| 8080 | TCP | Inbound | Web interface |
+| 8095 | TCP | Inbound | Web interface |
 | 3483 | TCP/UDP | Outbound | Squeezelite → LMS |
 | 1704 | TCP | Outbound | Snapcast client |
 | 1705 | TCP | Outbound | Snapcast control |

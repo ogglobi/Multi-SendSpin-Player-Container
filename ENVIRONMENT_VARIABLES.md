@@ -263,7 +263,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     ports:
-      - "8080:8080"
+      - "8095:8095"
 ```
 
 ## Common Issues

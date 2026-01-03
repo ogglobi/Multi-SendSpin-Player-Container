@@ -27,7 +27,7 @@ It provides:
 docker-compose -f docker-compose.no-audio.yml up --build
 ```
 
-Then open: http://localhost:8080
+Then open: http://localhost:8095
 
 ### 2. With Audio Hardware (Linux)
 
@@ -81,7 +81,7 @@ squeezelite-docker/
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Docker Container                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Flask App (app.py:8080)                                        │
+│  Flask App (app.py:8095)                                        │
 │       │                                                          │
 │  ┌────┴─────────────────────────────────────────────┐           │
 │  │  PlayerManager                                    │           │
@@ -200,7 +200,7 @@ Slider move → debounce 300ms → POST /api/players/{name}/volume
 
 ## API Quick Reference
 
-Full docs at http://localhost:8080/api/docs
+Full docs at http://localhost:8095/api/docs
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
@@ -223,7 +223,7 @@ Full docs at http://localhost:8080/api/docs
 ```bash
 cd app
 pip install -r ../requirements.txt
-python -c "from app import create_app; create_app().run(host='0.0.0.0', port=8080)"
+python -c "from app import create_app; create_app().run(host='0.0.0.0', port=8095)"
 ```
 
 Note: Audio features require Linux (ALSA) or HAOS (PulseAudio).
@@ -372,4 +372,4 @@ Key differences from standalone Docker:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed architecture
 - [BUILD-GUIDE.md](BUILD-GUIDE.md) - Build troubleshooting
 - [hassio/DOCS.md](hassio/DOCS.md) - HAOS add-on documentation
-- API docs at http://localhost:8080/api/docs
+- API docs at http://localhost:8095/api/docs

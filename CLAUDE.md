@@ -198,7 +198,7 @@ Use Pydantic schemas in `app/schemas/player_config.py` for type-safe validation.
 1. **DO NOT** add external JavaScript frameworks - project uses vanilla JS only
 2. **DO NOT** modify volume control to use provider-specific protocols - ALSA/amixer is intentionally used for consistency
 3. **DO NOT** remove fallback support from Squeezelite provider - users rely on null device fallback
-4. **DO NOT** change the default port from 8080 without updating all Docker configs
+4. **DO NOT** change the default port from 8095 without updating all Docker configs
 5. **DO NOT** use `yaml.load()` - always use `yaml.safe_load()` for security
 6. **DO NOT** use shell=True in subprocess calls - use list-based commands
 7. **DO NOT** commit hardcoded secrets - use environment variables
@@ -337,4 +337,4 @@ This project was developed with AI assistance. When making changes:
 - [Architecture Documentation](docs/ARCHITECTURE.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Environment Variables](ENVIRONMENT_VARIABLES.md)
-- [API Documentation](http://localhost:8080/api/docs) (when running)
+- [API Documentation](http://localhost:8095/api/docs) (when running)

@@ -123,7 +123,7 @@ fi
 # Show startup information
 echo ""
 echo "=== Multi Output Player Starting ==="
-echo "Web interface will be available at: http://localhost:8080"
+echo "Web interface will be available at: http://localhost:8095"
 echo "Log location: /app/logs/"
 echo "Config location: /app/config/"
 echo ""

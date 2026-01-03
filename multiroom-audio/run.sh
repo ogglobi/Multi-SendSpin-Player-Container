@@ -22,7 +22,7 @@ export LOG_LEVEL="${LOG_LEVEL}"
 export CONFIG_PATH="/data"
 export LOG_PATH="/share/multiroom-audio/logs"
 export AUDIO_BACKEND="pulse"
-export WEB_PORT="8080"
+export WEB_PORT="8095"
 export FLASK_ENV="production"
 
 # Ensure directories exist
@@ -82,7 +82,7 @@ fi
 bashio::log.info "Final PATH: ${PATH}"
 
 # Start the Flask application
-bashio::log.info "Starting web interface on port 8080..."
+bashio::log.info "Starting web interface on port 8095..."
 cd /app
 
 # Use Flask's built-in server directly

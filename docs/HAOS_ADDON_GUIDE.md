@@ -33,7 +33,7 @@ This add-on works differently than the standalone Docker container. Understand t
 | **Audio system** | PulseAudio (via hassio_audio) | ALSA (direct) |
 | **Device names** | PA sink names | ALSA hw:X,Y format |
 | **Config location** | `/data/` | `/app/config/` |
-| **Web access** | HA Ingress (sidebar) | Direct port 8080 |
+| **Web access** | HA Ingress (sidebar) | Direct port 8095 |
 | **Network** | Host network (built-in) | Bridge or host mode |
 | **Permissions** | Managed by HA | Manual --device flag |
 
@@ -270,8 +270,8 @@ If you run Music Assistant as an add-on (recommended setup):
 **Solution**:
 1. Clear browser cache and cookies
 2. Try a different browser
-3. Try direct access: `http://homeassistant.local:8080`
-4. Check if another add-on uses port 8080
+3. Try direct access: `http://homeassistant.local:8095`
+4. Check if another add-on uses port 8095
 
 ---
 
@@ -317,7 +317,7 @@ See Configuration Reference for full details on player settings.
 
 | Port | Protocol | Direction | Purpose |
 |------|----------|-----------|---------|
-| 8080 | TCP | Internal | Web interface (via ingress) |
+| 8095 | TCP | Internal | Web interface (via ingress) |
 | 3483 | TCP/UDP | Outbound | Squeezelite to LMS |
 | 1704 | TCP | Outbound | Snapcast streaming |
 | 1705 | TCP | Outbound | Snapcast control |

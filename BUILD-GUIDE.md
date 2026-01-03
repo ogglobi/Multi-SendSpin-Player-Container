@@ -131,7 +131,7 @@ Note: armv7 (32-bit ARM) is not supported as the Python 3.11+ base images are no
 ```bash
 # Run the built image locally (without HAOS integration)
 docker run --rm -it \
-  -p 8080:8080 \
+  -p 8095:8095 \
   -e AUDIO_BACKEND=alsa \
   multiroom-audio-addon:local
 ```
@@ -219,12 +219,12 @@ All scripts now use `--no-cache` to prevent:
 
 ### Standalone Docker
 Once running:
-- **Web Interface**: http://localhost:8080
+- **Web Interface**: http://localhost:8095
 - **Logs**: `docker-compose -f [compose-file] logs -f`
 - **Shell Access**: `docker exec -it squeezelite-multiroom-no-audio bash`
 
 ### HAOS Add-on
-- **Web Interface**: Via Home Assistant sidebar (Ingress) or `http://[HA_IP]:8080`
+- **Web Interface**: Via Home Assistant sidebar (Ingress) or `http://[HA_IP]:8095`
 - **Logs**: Settings → Add-ons → Multi-Room Audio Controller → Logs
 - **Shell Access**: Not recommended; use add-on logs for debugging
 
@@ -277,7 +277,7 @@ squeezelite-docker/
 
 ### For Standalone Docker
 1. Run `build-clean.bat` to resolve the current issue
-2. Access http://localhost:8080 to configure players
+2. Access http://localhost:8095 to configure players
 3. Use `manage.bat logs` to monitor operation
 4. Proceed with multi-room audio configuration
 

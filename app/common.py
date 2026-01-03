@@ -816,7 +816,7 @@ def start_status_monitor(socketio, manager):
 # =============================================================================
 
 
-def run_server(app, socketio, host="0.0.0.0", port=8080):
+def run_server(app, socketio, host="0.0.0.0", port=8095):
     """
     Start the Flask-SocketIO server.
 

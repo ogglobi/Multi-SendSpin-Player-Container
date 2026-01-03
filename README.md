@@ -93,7 +93,7 @@ This project enables you to run a single centralized server (like a NAS, Raspber
 ```bash
 docker run -d \
   --name multiroom-audio \
-  -p 8080:8080 \
+  -p 8095:8095 \
   -v audio_config:/app/config \
   -v audio_logs:/app/logs \
   --device /dev/snd:/dev/snd \
@@ -104,14 +104,14 @@ docker run -d \
 ```bash
 docker run -d \
   --name sendspin-audio \
-  -p 8080:8080 \
+  -p 8095:8095 \
   -v audio_config:/app/config \
   -v audio_logs:/app/logs \
   --device /dev/snd:/dev/snd \
   chrisuthe/squeezelitemultiroom:slim
 ```
 
-Access web interface at `http://localhost:8080`
+Access web interface at `http://localhost:8095`
 
 ### Container Platform Deployment
 
@@ -120,7 +120,7 @@ Access web interface at `http://localhost:8080`
 2. **Application Name**: `squeezelite-multiroom`
 3. **Image Repository**: `chrisuthe/squeezelitemultiroom`
 4. **Image Tag**: `latest`
-5. **Port Mapping**: Host Port `8080` → Container Port `8080`
+5. **Port Mapping**: Host Port `8095` → Container Port `8095`
 6. **Host Path Volumes**:
    - `/mnt/pool/squeezelite/config` → `/app/config`
    - `/mnt/pool/squeezelite/logs` → `/app/logs`
@@ -130,7 +130,7 @@ Access web interface at `http://localhost:8080`
 1. **Containers** → **Add Container**
 2. **Name**: `squeezelite-multiroom`
 3. **Image**: `chrisuthe/squeezelitemultiroom:latest`
-4. **Port Mapping**: `8080:8080`
+4. **Port Mapping**: `8095:8095`
 5. **Volumes**:
    - `squeezelite_config:/app/config`
    - `squeezelite_logs:/app/logs`
@@ -147,7 +147,7 @@ services:
     container_name: squeezelite-multiroom
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8095:8095"
     devices:
       - /dev/snd:/dev/snd  # Audio device access
     volumes:
@@ -156,7 +156,7 @@ services:
     environment:
       - SQUEEZELITE_NO_AUDIO_OK=1  # Allow startup without audio devices
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/players"]
+      test: ["CMD", "curl", "-f", "http://localhost:8095/api/players"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -177,7 +177,7 @@ volumes:
 Use one of the deployment methods above based on your platform.
 
 ### Step 2: Access Web Interface
-Navigate to `http://your-host-ip:8080`
+Navigate to `http://your-host-ip:8095`
 
 ### Step 3: Create Your First Player
 1. Click **"Add Player"**
@@ -205,7 +205,7 @@ environment:
   - SQUEEZELITE_NO_AUDIO_OK=1        # Allow startup without audio devices
   - SQUEEZELITE_SERVER_IP=192.168.1.100  # Default Music Assistant server
   - SQUEEZELITE_NAME_PREFIX=Docker    # Player name prefix
-  - WEB_PORT=8080                    # Web interface port (default: 8080)
+  - WEB_PORT=8095                    # Web interface port (default: 8095)
   - FLASK_ENV=production             # Production mode
 ```
 
@@ -268,31 +268,31 @@ Full programmatic control available:
 
 ```bash
 # List all players
-curl http://localhost:8080/api/players
+curl http://localhost:8095/api/players
 
 # Create Squeezelite player
-curl -X POST http://localhost:8080/api/players \
+curl -X POST http://localhost:8095/api/players \
   -H "Content-Type: application/json" \
   -d '{"name": "Patio", "provider": "squeezelite", "device": "hw:3,0", "server_ip": "192.168.1.100"}'
 
 # Create Sendspin player (Music Assistant native)
-curl -X POST http://localhost:8080/api/players \
+curl -X POST http://localhost:8095/api/players \
   -H "Content-Type: application/json" \
   -d '{"name": "Kitchen", "provider": "sendspin", "device": "hw:2,0"}'
 
 # Create Snapcast player (synchronized multiroom)
-curl -X POST http://localhost:8080/api/players \
+curl -X POST http://localhost:8095/api/players \
   -H "Content-Type: application/json" \
   -d '{"name": "Office", "provider": "snapcast", "device": "hw:1,0", "server_ip": "192.168.1.50"}'
 
 # Control volume
-curl -X POST http://localhost:8080/api/players/Patio/volume \
+curl -X POST http://localhost:8095/api/players/Patio/volume \
   -H "Content-Type: application/json" \
   -d '{"volume": 65}'
 
 # Start/stop players
-curl -X POST http://localhost:8080/api/players/Patio/start
-curl -X POST http://localhost:8080/api/players/Patio/stop
+curl -X POST http://localhost:8095/api/players/Patio/start
+curl -X POST http://localhost:8095/api/players/Patio/stop
 ```
 
 ### Home Assistant Integration
@@ -300,7 +300,7 @@ curl -X POST http://localhost:8080/api/players/Patio/stop
 # configuration.yaml
 sensor:
   - platform: rest
-    resource: http://squeezelite-host:8080/api/players
+    resource: http://squeezelite-host:8095/api/players
     name: "Audio Zones"
     json_attributes:
       - players
@@ -317,7 +317,7 @@ automation:
 
 rest_command:
   start_living_room_audio:
-    url: http://squeezelite-host:8080/api/players/Living%20Room/start
+    url: http://squeezelite-host:8095/api/players/Living%20Room/start
     method: POST
 ```
 
@@ -373,7 +373,7 @@ sudo usermod -a -G audio $USER
 ### Network Connectivity Issues
 - Verify Music Assistant server IP and accessibility
 - Check container network mode (host mode recommended)
-- Ensure ports 8080 and audio streaming ports are open
+- Ensure ports 8095 and audio streaming ports are open
 
 ## 🏗️ Development and Building
 

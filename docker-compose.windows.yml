@@ -18,7 +18,7 @@ services:
     # Use bridge networking for better Windows compatibility
     network_mode: "bridge"
     ports:
-      - "8080:8080"
+      - "8095:8095"
     
     # Windows-specific environment variables
     environment:
@@ -52,7 +52,7 @@ services:
     
     # Health check that works on Windows
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/players"]
+      test: ["CMD", "curl", "-f", "http://localhost:8095/api/players"]
       interval: 30s
       timeout: 10s
       retries: 3

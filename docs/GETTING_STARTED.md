@@ -57,14 +57,14 @@ Kitchen Bedroom Patio
 ```bash
 docker run -d \
   --name multiroom-audio \
-  -p 8080:8080 \
+  -p 8095:8095 \
   --device /dev/snd:/dev/snd \
   chrisuthe/squeezelitemultiroom:latest
 ```
 
 ### Step 2: Open the Web Interface
 
-Navigate to: `http://YOUR-SERVER-IP:8080`
+Navigate to: `http://YOUR-SERVER-IP:8095`
 
 You should see the Multi-Room Audio Controller dashboard.
 

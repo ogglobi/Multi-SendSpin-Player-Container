@@ -138,7 +138,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Success "Container started successfully!"
 Write-Host ""
-Write-Status "Web interface will be available at: http://localhost:8080"
+Write-Status "Web interface will be available at: http://localhost:8095"
 Write-Status "Use 'docker-compose -f $composeFile logs -f' to view logs"
 Write-Host ""
 
