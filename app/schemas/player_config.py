@@ -289,11 +289,78 @@ class SendspinPlayerConfig(BasePlayerConfig):
 
 
 # =============================================================================
+# SNAPCAST SCHEMA
+# =============================================================================
+
+
+class SnapcastPlayerConfig(BasePlayerConfig):
+    """
+    Configuration schema for Snapcast players.
+
+    Snapcast is a synchronous multiroom audio solution. The snapclient
+    connects to a snapserver and plays synchronized audio streams.
+
+    Required fields:
+        - name: Player display name
+
+    Optional fields:
+        - device: Audio output device (ALSA or PulseAudio sink)
+        - server_ip: Snapserver address (auto-discovered via Avahi if empty)
+        - host_id: Unique client identifier (auto-generated if empty)
+        - latency: PCM latency compensation in milliseconds
+    """
+
+    provider: Annotated[
+        Literal["snapcast"],
+        Field(
+            default="snapcast",
+            description="Provider type identifier",
+        ),
+    ]
+
+    server_ip: Annotated[
+        str,
+        Field(
+            default="",
+            description="Snapserver IP address (empty for auto-discovery via Avahi)",
+        ),
+    ] = ""
+
+    host_id: Annotated[
+        str,
+        Field(
+            default="",
+            description="Unique host identifier for server (auto-generated if empty)",
+        ),
+    ] = ""
+
+    latency: Annotated[
+        int,
+        Field(
+            default=0,
+            description="PCM latency compensation in milliseconds",
+        ),
+    ] = 0
+
+    @field_validator("server_ip")
+    @classmethod
+    def validate_server_ip(cls, v: str) -> str:
+        """Validate server IP format if provided."""
+        if not v:
+            return v
+
+        # Allow hostname or IP address format
+        if v.startswith(("http://", "https://", "ws://", "wss://")):
+            raise ValueError(f"server_ip should be an IP address or hostname, not a URL: {v!r}")
+        return v
+
+
+# =============================================================================
 # DISCRIMINATED UNION
 # =============================================================================
 
 # Union type for any valid player configuration
-PlayerConfigSchema = SqueezelitePlayerConfig | SendspinPlayerConfig
+PlayerConfigSchema = SqueezelitePlayerConfig | SendspinPlayerConfig | SnapcastPlayerConfig
 
 
 # =============================================================================
@@ -375,10 +442,12 @@ def validate_player_config(
             validated = SendspinPlayerConfig.model_validate(config)
         elif provider == "squeezelite":
             validated = SqueezelitePlayerConfig.model_validate(config)
+        elif provider == "snapcast":
+            validated = SnapcastPlayerConfig.model_validate(config)
         else:
             return (
                 False,
-                f"Unknown provider type: {provider!r}. Supported providers: squeezelite, sendspin",
+                f"Unknown provider type: {provider!r}. Supported providers: squeezelite, sendspin, snapcast",
                 None,
             )
 
@@ -454,7 +523,7 @@ def get_schema_for_provider(provider: str) -> type[BasePlayerConfig]:
     Get the appropriate schema class for a provider type.
 
     Args:
-        provider: Provider type string ('squeezelite' or 'sendspin').
+        provider: Provider type string ('squeezelite', 'sendspin', or 'snapcast').
 
     Returns:
         The corresponding Pydantic model class.
@@ -465,6 +534,7 @@ def get_schema_for_provider(provider: str) -> type[BasePlayerConfig]:
     schemas = {
         "squeezelite": SqueezelitePlayerConfig,
         "sendspin": SendspinPlayerConfig,
+        "snapcast": SnapcastPlayerConfig,
     }
 
     if provider not in schemas:
@@ -479,7 +549,7 @@ def get_default_config(provider: str) -> dict[str, Any]:
     Get default configuration for a provider type.
 
     Args:
-        provider: Provider type string ('squeezelite' or 'sendspin').
+        provider: Provider type string ('squeezelite', 'sendspin', or 'snapcast').
 
     Returns:
         Dictionary of default configuration values.

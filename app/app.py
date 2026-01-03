@@ -285,13 +285,24 @@ class PlayerManager:
         Returns:
             Tuple of (success: bool, message: str).
         """
+        import sys
+
+        logger.info(f"create_player: START name={name}, provider={provider_type}")
+        sys.stdout.flush()
+
         if self.config.player_exists(name):
             return False, "Player with this name already exists"
+
+        logger.info(f"create_player: getting provider {provider_type}")
+        sys.stdout.flush()
 
         # Get the provider
         provider = self.providers.get(provider_type)
         if provider is None:
             return False, f"Unknown provider type: {provider_type}"
+
+        logger.info(f"create_player: got provider {provider}")
+        sys.stdout.flush()
 
         # Build initial config
         player_config: PlayerManager.PlayerConfig = {
@@ -306,16 +317,29 @@ class PlayerManager:
             **extra_config,
         }
 
+        logger.info("create_player: built config, validating...")
+        sys.stdout.flush()
+
         # Validate config with provider
         is_valid, error = provider.validate_config(player_config)
         if not is_valid:
             return False, error
 
+        logger.info("create_player: validation passed, preparing config...")
+        sys.stdout.flush()
+
         # Let provider prepare config (generate MAC, client_id, etc.)
         player_config = provider.prepare_config(player_config)
 
+        logger.info("create_player: saving config...")
+        sys.stdout.flush()
+
         self.config.set_player(name, player_config)
         self.config.save()
+
+        logger.info("create_player: DONE")
+        sys.stdout.flush()
+
         return True, "Player created successfully"
 
     def update_player(
