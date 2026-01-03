@@ -41,8 +41,10 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
+  - url: /
+    description: Current server (auto-detects - works with HAOS ingress)
   - url: http://localhost:8095
-    description: Local server (use your actual host IP/URL for external access)
+    description: Direct access (standalone Docker)
 
 tags:
   - name: Players
