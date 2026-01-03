@@ -81,10 +81,12 @@ class SendspinProvider(PlayerProvider):
         ]
 
         # Add audio device if specified and compatible with PortAudio
-        # Note: Sendspin uses PortAudio, not ALSA - device can be:
-        # - A number (PortAudio device index, e.g., "0", "1", "2")
+        # Note: Sendspin uses PortAudio which accesses ALSA on Linux.
+        # On HAOS, ALSA is configured to route through PulseAudio (via alsa-plugins-pulse).
+        # Device formats:
+        # - A number (PortAudio device index, e.g., "0", "1", "2") - PREFERRED
         # - A device name prefix (e.g., "USB Audio", "MacBook")
-        # - NOT ALSA format like "hw:1,0" - those are skipped
+        # - NOT ALSA format like "hw:1,0" - those are skipped (use PortAudio index)
         # - NOT PulseAudio sink names like "alsa_output.xxx" - those are skipped
         device = player.get("device", "default")
         if device and device != "default" and device != "null":

@@ -26,9 +26,13 @@ export WEB_PORT="8096"
 export FLASK_ENV="production"
 
 # PulseAudio configuration for HAOS
-# PortAudio (used by Sendspin) needs these to find PulseAudio
-export PULSE_SERVER="unix:/run/pulse/native"
-export PULSE_RUNTIME_PATH="/run/pulse"
+# Note: When audio: true is set in config.yaml, HAOS supervisor provides
+# PULSE_SERVER and other PulseAudio env vars automatically.
+# Only set defaults if not already provided by the supervisor.
+if [ -z "$PULSE_SERVER" ]; then
+    # Fallback for non-HAOS environments or older HAOS versions
+    export PULSE_SERVER="unix:/run/pulse/native"
+fi
 
 # Ensure directories exist
 mkdir -p /share/multiroom-audio/logs
@@ -40,15 +44,22 @@ bashio::log.info "Audio backend: pulse (HAOS)"
 
 # List available audio devices
 bashio::log.info "Detecting audio devices..."
-bashio::log.info "PULSE_SERVER: ${PULSE_SERVER}"
+bashio::log.info "PULSE_SERVER: ${PULSE_SERVER:-not set}"
+
+# Verify ALSA-PulseAudio configuration
+if [ -f /etc/asound.conf ]; then
+    bashio::log.info "ALSA configured to route through PulseAudio"
+fi
+
 if command -v pactl &> /dev/null; then
     bashio::log.info "PulseAudio sinks:"
     pactl list sinks short 2>/dev/null || bashio::log.warning "Could not list PulseAudio sinks"
 
     # Also test PortAudio device detection for Sendspin
+    # With ALSA-PulseAudio bridge, PortAudio should now see PulseAudio devices
     if command -v sendspin &> /dev/null; then
-        bashio::log.info "PortAudio devices (for Sendspin):"
-        sendspin --list-audio-devices 2>/dev/null || bashio::log.warning "Could not list PortAudio devices"
+        bashio::log.info "PortAudio devices (for Sendspin via ALSA-PulseAudio bridge):"
+        sendspin --list-audio-devices 2>&1 || bashio::log.warning "Could not list PortAudio devices"
     fi
 fi
 

@@ -238,9 +238,10 @@ def register_routes(app, manager):
                         name = match.group(2)
                         devices.append({"index": index, "name": name, "raw": line})
 
-            # On HAOS, if PortAudio found no devices, fall back to PulseAudio sinks
-            if not devices and is_hassio():
-                logger.info("No PortAudio devices found on HAOS, falling back to PulseAudio sinks")
+            # If PortAudio found no devices, try PulseAudio sinks as fallback
+            # This works on HAOS and any other PulseAudio-based system
+            if not devices:
+                logger.info("No PortAudio devices found, trying PulseAudio sinks as fallback")
                 try:
                     pactl_result = subprocess.run(
                         ["pactl", "list", "sinks", "short"],
@@ -248,6 +249,12 @@ def register_routes(app, manager):
                         text=True,
                         timeout=10,
                     )
+                    logger.debug(f"pactl list sinks short stdout: '{pactl_result.stdout}'")
+                    if pactl_result.stderr:
+                        logger.debug(f"pactl list sinks short stderr: '{pactl_result.stderr}'")
+                    if pactl_result.returncode != 0:
+                        logger.warning(f"pactl returned non-zero exit code: {pactl_result.returncode}")
+
                     # Parse PulseAudio sinks: "0\talsa_output.pci-0000_00_1f.3.analog-stereo\t..."
                     for line in pactl_result.stdout.strip().split("\n"):
                         if not line.strip():
@@ -260,6 +267,10 @@ def register_routes(app, manager):
                             devices.append({"index": sink_index, "name": sink_name, "raw": line, "type": "pulseaudio"})
                     if devices:
                         logger.info(f"Found {len(devices)} PulseAudio sinks as fallback")
+                    else:
+                        logger.warning("pactl returned no sinks - PulseAudio may not have audio devices configured")
+                except FileNotFoundError:
+                    logger.debug("pactl not found - PulseAudio fallback unavailable")
                 except Exception as e:
                     logger.warning(f"Failed to get PulseAudio sinks as fallback: {e}")
 

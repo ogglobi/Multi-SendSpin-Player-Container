@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     # Audio libraries
     alsa-utils \
     alsa-lib \
+    alsa-plugins-pulse \
     pulseaudio-utils \
     portaudio \
     # Runtime libraries for squeezelite codecs
@@ -39,6 +40,17 @@ RUN apk add --no-cache \
 # Install snapclient from edge/community
 RUN apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community \
     snapcast-client || echo "snapclient not available"
+
+# Configure ALSA to route through PulseAudio
+# This allows PortAudio (used by sendspin) to output audio via PulseAudio on HAOS
+RUN echo '# Route ALSA through PulseAudio for HAOS compatibility\n\
+pcm.!default {\n\
+    type pulse\n\
+    hint.description "Default PulseAudio Output"\n\
+}\n\
+ctl.!default {\n\
+    type pulse\n\
+}\n' > /etc/asound.conf
 
 # Build squeezelite from source (not in Alpine repos)
 RUN apk add --no-cache --virtual .build-deps \
