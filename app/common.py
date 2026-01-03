@@ -392,6 +392,10 @@ def register_routes(app, manager):
                 }
 
                 logger.info(f"POST /api/players - calling manager.create_player for {provider_type}")
+                logger.info(f"POST /api/players - extra_config: {extra_config}")
+                import sys
+                sys.stdout.flush()
+                sys.stderr.flush()
                 success, message = manager.create_player(
                     name=name,
                     device=device,
