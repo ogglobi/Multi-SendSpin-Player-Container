@@ -85,17 +85,25 @@ class SendspinProvider(PlayerProvider):
         # - A number (PortAudio device index, e.g., "0", "1", "2")
         # - A device name prefix (e.g., "USB Audio", "MacBook")
         # - NOT ALSA format like "hw:1,0" - those are skipped
+        # - NOT PulseAudio sink names like "alsa_output.xxx" - those are skipped
         device = player.get("device", "default")
         if device and device != "default" and device != "null":
             # Skip ALSA-style device names (hw:X,Y format) - not compatible with PortAudio
-            if not device.startswith("hw:") and not device.startswith("plughw:"):
-                cmd.extend(["--audio-device", device])
-            else:
+            if device.startswith("hw:") or device.startswith("plughw:"):
                 logger.warning(
                     f"Sendspin player '{player['name']}' configured with ALSA device '{device}' "
                     "which is not compatible with PortAudio. Using system default audio device. "
                     "Use 'sendspin --list-audio-devices' to see available PortAudio devices."
                 )
+            # Skip PulseAudio sink names (alsa_output.xxx format) - not compatible with PortAudio
+            elif device.startswith("alsa_output.") or device.startswith("alsa_input."):
+                logger.warning(
+                    f"Sendspin player '{player['name']}' configured with PulseAudio sink '{device}' "
+                    "which is not directly compatible with PortAudio. Using system default audio device. "
+                    "On HAOS, Sendspin will use the default PulseAudio output."
+                )
+            else:
+                cmd.extend(["--audio-device", device])
 
         # Add latency compensation if specified
         delay_ms = player.get("delay_ms")
