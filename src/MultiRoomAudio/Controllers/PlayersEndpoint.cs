@@ -62,8 +62,20 @@ public static class PlayersEndpoint
         .WithName("CreatePlayer")
         .WithDescription("Create and start a new player");
 
-        // DELETE /api/players/{name} - Stop and remove player
+        // DELETE /api/players/{name} - Stop and remove player (and config)
         group.MapDelete("/{name}", async (string name, PlayerManagerService manager) =>
+        {
+            var deleted = await manager.DeletePlayerAsync(name);
+            if (!deleted)
+                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
+
+            return Results.Ok(new SuccessResponse(true, $"Player '{name}' deleted"));
+        })
+        .WithName("DeletePlayer")
+        .WithDescription("Stop and remove a player (also removes from config)");
+
+        // POST /api/players/{name}/stop - Stop player (keeps config)
+        group.MapPost("/{name}/stop", async (string name, PlayerManagerService manager) =>
         {
             var stopped = await manager.StopPlayerAsync(name);
             if (!stopped)
@@ -71,8 +83,8 @@ public static class PlayersEndpoint
 
             return Results.Ok(new SuccessResponse(true, $"Player '{name}' stopped"));
         })
-        .WithName("DeletePlayer")
-        .WithDescription("Stop and remove a player");
+        .WithName("StopPlayer")
+        .WithDescription("Stop a player (config preserved for restart)");
 
         // POST /api/players/{name}/restart - Restart player
         group.MapPost("/{name}/restart", async (string name, PlayerManagerService manager, CancellationToken ct) =>
@@ -155,6 +167,21 @@ public static class PlayersEndpoint
         })
         .WithName("SetMute")
         .WithDescription("Mute or unmute player");
+
+        // PUT /api/players/{name}/offset - Set delay offset
+        group.MapPut("/{name}/offset", (string name, OffsetRequest request, PlayerManagerService manager, ConfigurationService config) =>
+        {
+            var player = manager.GetPlayer(name);
+            if (player == null)
+                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
+
+            // Update config and save
+            config.UpdatePlayerField(name, c => c.DelayMs = request.DelayMs);
+
+            return Results.Ok(new SuccessResponse(true, $"Offset set to {request.DelayMs}ms"));
+        })
+        .WithName("SetOffset")
+        .WithDescription("Set player delay offset in milliseconds");
 
         // POST /api/players/{name}/pause - Pause playback
         group.MapPost("/{name}/pause", (string name, PlayerManagerService manager) =>

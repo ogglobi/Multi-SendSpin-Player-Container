@@ -102,6 +102,7 @@ app.MapHealthChecks("/healthz");
 app.MapHealthEndpoints();
 app.MapPlayersEndpoints();
 app.MapDevicesEndpoints();
+app.MapProvidersEndpoints();
 
 // Root endpoint redirects to index.html or shows API info
 app.MapGet("/api", () => Results.Ok(new
@@ -114,6 +115,7 @@ app.MapGet("/api", () => Results.Ok(new
         health = "/api/health",
         players = "/api/players",
         devices = "/api/devices",
+        providers = "/api/providers",
         swagger = "/docs"
     }
 }))
