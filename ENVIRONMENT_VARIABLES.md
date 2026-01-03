@@ -151,23 +151,39 @@ SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
 Web server port number.
 
 - **Type:** Integer
-- **Default:** `8095`
+- **Default:** `8096`
 - **Valid Range:** 0-65535
-- **Description:** Port for the web UI and API. If set to `0`, the OS will assign an available port automatically. If the specified port is in use, the server will automatically find the next available port. The actual port is written to `$CONFIG_PATH/.port` for external discovery.
 
-**Examples:**
+**Behavior differs between Docker and HAOS:**
+
+| Environment | Dynamic Port Fallback | Notes |
+|-------------|----------------------|-------|
+| **Standalone Docker** | ✅ Yes | If port is in use, automatically finds next available port |
+| **Home Assistant OS** | ❌ No | Must use port 8096 - ingress requires fixed port |
+
+**Standalone Docker:**
+- If set to `0`, the OS assigns an available port automatically
+- If the specified port is in use, the server finds the next available port
+- The actual port is written to `$CONFIG_PATH/.port` for external discovery
+- You must update port mappings in docker-compose.yml to match
+
+**Home Assistant OS (HAOS):**
+- Port **must** be 8096 (configured in `config.yaml` as `ingress_port`)
+- Dynamic port switching is disabled because HAOS ingress requires a fixed port
+- If port 8096 is in use by another service, the add-on will fail to start with a clear error
+- Access is via HA sidebar (ingress) - no direct port exposure needed
+
+**Examples (Standalone Docker only):**
 ```bash
 # Default port
-WEB_PORT=8095
+WEB_PORT=8096
 
-# Custom port
+# Custom port (update docker-compose.yml to match)
 WEB_PORT=8080
 
 # Let OS assign an available port
 WEB_PORT=0
 ```
-
-**Note:** When using Docker, you must also update the port mapping in your docker-compose.yml or run command.
 
 ### AUDIO_BACKEND
 
@@ -286,7 +302,7 @@ services:
     devices:
       - /dev/snd:/dev/snd
     ports:
-      - "8095:8095"
+      - "8096:8096"
 ```
 
 ## Common Issues

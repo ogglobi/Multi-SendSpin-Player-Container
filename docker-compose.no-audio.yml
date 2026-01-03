@@ -9,7 +9,7 @@ services:
     container_name: squeezelite-multiroom-no-audio
     restart: unless-stopped
     ports:
-      - "8095:8095"
+      - "8096:8096"
     # No audio devices mapped - container will use virtual/null devices
     volumes:
       # Persistent configuration storage
@@ -29,7 +29,7 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8095/api/players"]
+      test: ["CMD", "curl", "-f", "http://localhost:8096/api/players"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -43,7 +43,7 @@ info:
 servers:
   - url: /
     description: Current server (auto-detects protocol and host, works with HAOS ingress)
-  - url: http://localhost:8095
+  - url: http://localhost:8096
     description: Direct access (standalone Docker, default port)
 
 tags:
@@ -113,7 +113,7 @@ paths:
                     name: Kitchen
                     provider: sendspin
                     device: "0"
-                    server_url: ws://192.168.1.100:8095
+                    server_url: ws://192.168.1.100:8096
                     enabled: true
                     volume: 80
                   Bedroom:
@@ -159,7 +159,7 @@ paths:
                   name: Kitchen
                   provider: sendspin
                   device: "0"
-                  server_url: ws://192.168.1.100:8095
+                  server_url: ws://192.168.1.100:8096
               snapcast:
                 summary: Snapcast player for Snapserver
                 value:
@@ -976,7 +976,7 @@ components:
           description: |
             WebSocket URL for Sendspin provider.
             Format: `ws://host:port` or `wss://host:port`
-          example: ws://192.168.1.100:8095
+          example: ws://192.168.1.100:8096
         enabled:
           type: boolean
           description: Whether the player is enabled for automatic startup
@@ -1128,7 +1128,7 @@ components:
           description: |
             WebSocket URL for Music Assistant (Sendspin only).
             Format: `ws://host:port` or `wss://host:port`
-          example: ws://192.168.1.100:8095
+          example: ws://192.168.1.100:8096
         mac_address:
           type: string
           pattern: '^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
@@ -1172,7 +1172,7 @@ components:
           type: string
           format: uri
           description: WebSocket URL for Music Assistant (Sendspin only)
-          example: ws://192.168.1.100:8095
+          example: ws://192.168.1.100:8096
         mac_address:
           type: string
           pattern: '^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'

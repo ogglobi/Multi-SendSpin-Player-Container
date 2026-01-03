@@ -877,19 +877,19 @@ def run_server(app, socketio, host: str = "0.0.0.0", port: int | None = None):
         app: Flask application instance.
         socketio: SocketIO instance.
         host: Host address to bind to.
-        port: Port number to bind to. If None, uses WEB_PORT env var or 8095.
+        port: Port number to bind to. If None, uses WEB_PORT env var or 8096.
                If 0, lets OS assign an available port.
     """
     import socket
 
     # Get port from environment or use default
     if port is None:
-        port = int(os.environ.get("WEB_PORT", "8095"))
+        port = int(os.environ.get("WEB_PORT", "8096"))
 
     try:
         # Check if we're in HAOS - dynamic ports break ingress
         if is_hassio() and port != 0:
-            # In HAOS, we MUST use the configured ingress port (8095)
+            # In HAOS, we MUST use the configured ingress port (8096)
             # Check if port is available
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 try:
@@ -898,9 +898,9 @@ def run_server(app, socketio, host: str = "0.0.0.0", port: int | None = None):
                     actual_port = port
                 except OSError as e:
                     logger.error(f"Port {port} is already in use!")
-                    logger.error("In Home Assistant OS, the add-on MUST use port 8095 for ingress to work.")
+                    logger.error("In Home Assistant OS, the add-on MUST use port 8096 for ingress to work.")
                     logger.error("Something else on your system is using this port.")
-                    logger.error("Please check for other services using port 8095 and stop them.")
+                    logger.error("Please check for other services using port 8096 and stop them.")
                     raise RuntimeError(f"Port {port} required for HAOS ingress but is in use") from e
         else:
             # Standalone Docker - can use dynamic ports

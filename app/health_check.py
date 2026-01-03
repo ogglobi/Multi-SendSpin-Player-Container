@@ -12,7 +12,7 @@ Tests Performed:
     4. Audio Commands: Verifies audio player binaries exist
        - Full image: squeezelite, sendspin, and snapclient
        - Slim image (SENDSPIN_CONTAINER=1): sendspin only
-    5. Port Availability: Checks if port 8095 is available
+    5. Port Availability: Checks if port 8096 is available
 
 Exit Codes:
     0: All tests passed - container is healthy
@@ -243,13 +243,13 @@ def test_audio_commands() -> bool:
 
 def test_port_availability() -> bool:
     """
-    Test if port 8095 is available for the web server.
+    Test if port 8096 is available for the web server.
 
-    Attempts to connect to localhost:8095 to check if another process
+    Attempts to connect to localhost:8096 to check if another process
     is already using the port. The Flask application needs this port.
 
     Returns:
-        True if port 8095 is available, False if already in use.
+        True if port 8096 is available, False if already in use.
 
     Side Effects:
         - Prints port status to stdout
@@ -262,14 +262,14 @@ def test_port_availability() -> bool:
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
-        result = sock.connect_ex(("localhost", 8095))
+        result = sock.connect_ex(("localhost", 8096))
         sock.close()
 
         if result == 0:
-            print("⚠ Port 8095 is already in use")
+            print("⚠ Port 8096 is already in use")
             return False
         else:
-            print("✓ Port 8095 is available")
+            print("✓ Port 8096 is available")
             return True
 
     except Exception as e:

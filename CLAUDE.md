@@ -198,7 +198,7 @@ Use Pydantic schemas in `app/schemas/player_config.py` for type-safe validation.
 1. **DO NOT** add external JavaScript frameworks - project uses vanilla JS only
 2. **DO NOT** modify volume control to use provider-specific protocols - ALSA/amixer is intentionally used for consistency
 3. **DO NOT** remove fallback support from Squeezelite provider - users rely on null device fallback
-4. **DO NOT** change the default port from 8095 without updating all Docker configs
+4. **DO NOT** change the default port from 8096 without updating all Docker configs
 5. **DO NOT** use `yaml.load()` - always use `yaml.safe_load()` for security
 6. **DO NOT** use shell=True in subprocess calls - use list-based commands
 7. **DO NOT** commit hardcoded secrets - use environment variables
@@ -266,7 +266,7 @@ def test_volume_control(mock_run):
 | `SQUEEZELITE_BUFFER_PARAMS` | `500:2000` | Stream:output buffers (KB) |
 | `SQUEEZELITE_WINDOWS_MODE` | `0` | Windows compatibility mode |
 | `SECRET_KEY` | Auto-generated | Flask session security |
-| `WEB_PORT` | `8095` | Web server port (0 for auto-assign) |
+| `WEB_PORT` | `8096` | Web server port (0 for auto-assign) |
 | `AUDIO_BACKEND` | Auto-detected | `alsa` or `pulse` |
 | `CONFIG_PATH` | `/app/config` | Configuration directory |
 | `LOG_PATH` | `/app/logs` | Log directory |
@@ -338,4 +338,4 @@ This project was developed with AI assistance. When making changes:
 - [Architecture Documentation](docs/ARCHITECTURE.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Environment Variables](ENVIRONMENT_VARIABLES.md)
-- [API Documentation](http://localhost:8095/api/docs) (when running)
+- [API Documentation](http://localhost:8096/api/docs) (when running)

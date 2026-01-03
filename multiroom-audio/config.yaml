@@ -29,7 +29,7 @@ map:
 
 # Web interface via ingress only (no direct port exposure)
 ingress: true
-ingress_port: 8095
+ingress_port: 8096
 panel_icon: mdi:speaker-multiple
 panel_title: Multi-Room Audio
 

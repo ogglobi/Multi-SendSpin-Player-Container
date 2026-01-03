@@ -6,7 +6,7 @@ services:
     container_name: squeezelite-multiroom
     restart: unless-stopped
     ports:
-      - "8095:8095"
+      - "8096:8096"
     # Audio devices (Linux only - comment out for Windows development)
     # devices:
       # Pass through all audio devices (only if /dev/snd exists)
@@ -36,7 +36,7 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8095/api/players"]
+      test: ["CMD", "curl", "-f", "http://localhost:8096/api/players"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -33,7 +33,7 @@ This add-on works differently than the standalone Docker container. Understand t
 | **Audio system** | PulseAudio (via hassio_audio) | ALSA (direct) |
 | **Device names** | PA sink names | ALSA hw:X,Y format |
 | **Config location** | `/data/` | `/app/config/` |
-| **Web access** | HA Ingress (sidebar) | Direct port 8095 |
+| **Web access** | HA Ingress (sidebar) | Direct port 8096 |
 | **Network** | Host network (built-in) | Bridge or host mode |
 | **Permissions** | Managed by HA | Manual --device flag |
 
@@ -270,8 +270,8 @@ If you run Music Assistant as an add-on (recommended setup):
 **Solution**:
 1. Clear browser cache and cookies
 2. Try a different browser
-3. Try direct access: `http://homeassistant.local:8095`
-4. Check if another add-on uses port 8095
+3. Try direct access: `http://homeassistant.local:8096`
+4. Check if another add-on uses port 8096
 
 ---
 
@@ -317,12 +317,21 @@ See Configuration Reference for full details on player settings.
 
 | Port | Protocol | Direction | Purpose |
 |------|----------|-----------|---------|
-| 8095 | TCP | Internal | Web interface (via ingress) |
+| 8096 | TCP | Internal | Web interface (via ingress) |
 | 3483 | TCP/UDP | Outbound | Squeezelite to LMS |
 | 1704 | TCP | Outbound | Snapcast streaming |
 | 1705 | TCP | Outbound | Snapcast control |
 
 All outbound ports are used by players to connect to external servers. The add-on uses host networking, so no port mapping is needed.
+
+### Important: Port 8096 is Fixed
+
+Unlike standalone Docker deployments, **HAOS add-ons cannot use dynamic port switching**. The ingress system requires a fixed port configured in `config.yaml`.
+
+- Port 8096 is configured as `ingress_port` in the add-on
+- If another service is using port 8096, the add-on will fail to start
+- You'll see an error: "Port 8096 required for HAOS ingress but is in use"
+- Check for port conflicts: `ss -tlnp | grep 8096` via SSH
 
 ---
 

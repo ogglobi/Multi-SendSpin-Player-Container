@@ -39,7 +39,7 @@ docker build \
   -t multiroom-audio-addon:local .
 
 # Test locally (without full HAOS integration)
-docker run --rm -it -p 8095:8095 -e AUDIO_BACKEND=alsa multiroom-audio-addon:local
+docker run --rm -it -p 8096:8096 -e AUDIO_BACKEND=alsa multiroom-audio-addon:local
 ```
 
 ## Testing
@@ -69,8 +69,8 @@ Before submitting a PR, please test:
 ./manage.sh no-audio
 
 # Test API endpoints
-curl http://localhost:8095/api/players
-curl http://localhost:8095/api/devices
+curl http://localhost:8096/api/players
+curl http://localhost:8096/api/devices
 ```
 
 ### Linting

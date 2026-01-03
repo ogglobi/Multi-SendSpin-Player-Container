@@ -22,7 +22,7 @@ services:
       # - SUPERVISOR_USER=admin
       # - SUPERVISOR_PASSWORD=change-this-password
     ports:
-      - "8095:8095"
+      - "8096:8096"
       - "5678:5678"  # For debugger
     command: python3 /app/app.py
     # Override healthcheck for development

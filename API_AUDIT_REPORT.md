@@ -230,7 +230,7 @@ The updated `swagger.yaml` can be validated using:
 # Visit https://validator.swagger.io/
 
 # Using Swagger UI (built into app)
-# Access at http://localhost:8095/docs when running
+# Access at http://localhost:8096/docs when running
 
 # Using swagger-cli (if installed)
 swagger-cli validate app/swagger.yaml
