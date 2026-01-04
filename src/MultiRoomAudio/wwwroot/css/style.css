@@ -223,6 +223,13 @@
     .form-label, label {
         color: #ffffff;
     }
+
+    /* Delay control input group */
+    .delay-control .input-group-text {
+        background-color: #2d2d2d;
+        border-color: #444;
+        color: #ffffff;
+    }
 }
 
 /* Responsive improvements */

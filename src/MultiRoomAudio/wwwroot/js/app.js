@@ -258,6 +258,46 @@ async function setVolume(name, volume) {
     }
 }
 
+async function setDelay(name, delayMs) {
+    // Clamp value to valid range
+    delayMs = Math.max(-5000, Math.min(5000, parseInt(delayMs) || 0));
+
+    // Update input field to show clamped value
+    const input = document.getElementById('delayInput');
+    if (input) input.value = delayMs;
+
+    try {
+        const response = await fetch(`./api/players/${encodeURIComponent(name)}/offset`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ delayMs: delayMs })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to set delay');
+        }
+
+        // Update local state
+        if (players[name]) {
+            players[name].delayMs = delayMs;
+        }
+    } catch (error) {
+        console.error('Error setting delay:', error);
+        showAlert(error.message, 'danger');
+    }
+}
+
+function adjustDelay(name, delta) {
+    const input = document.getElementById('delayInput');
+    if (!input) return;
+
+    const currentValue = parseInt(input.value) || 0;
+    const newValue = Math.max(-5000, Math.min(5000, currentValue + delta));
+    input.value = newValue;
+    setDelay(name, newValue);
+}
+
 async function showPlayerStats(name) {
     const player = players[name];
     if (!player) return;
@@ -275,7 +315,6 @@ async function showPlayerStats(name) {
                     <tr><td><strong>Client ID</strong></td><td><code>${escapeHtml(player.clientId)}</code></td></tr>
                     <tr><td><strong>Server</strong></td><td>${escapeHtml(player.serverUrl || 'Auto-discovered')}</td></tr>
                     <tr><td><strong>Volume</strong></td><td>${player.volume}%</td></tr>
-                    <tr><td><strong>Delay</strong></td><td>${player.delayMs}ms</td></tr>
                 </table>
             </div>
             <div class="col-md-6">
@@ -290,6 +329,23 @@ async function showPlayerStats(name) {
                     ${player.errorMessage ? `<tr><td><strong>Error</strong></td><td class="text-danger">${escapeHtml(player.errorMessage)}</td></tr>` : ''}
                 </table>
             </div>
+        </div>
+        <h6 class="text-muted text-uppercase small mt-3">Delay Offset</h6>
+        <div class="delay-control d-flex align-items-center gap-2">
+            <button class="btn btn-outline-secondary btn-sm" onclick="adjustDelay('${escapeHtml(name)}', -10)" title="Decrease by 10ms">
+                <i class="fas fa-minus"></i>
+            </button>
+            <div class="input-group input-group-sm" style="max-width: 140px;">
+                <input type="number" class="form-control text-center" id="delayInput"
+                    value="${player.delayMs}" min="-5000" max="5000" step="10"
+                    onchange="setDelay('${escapeHtml(name)}', this.value)"
+                    onkeydown="if(event.key==='Enter'){setDelay('${escapeHtml(name)}', this.value); event.preventDefault();}">
+                <span class="input-group-text">ms</span>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" onclick="adjustDelay('${escapeHtml(name)}', 10)" title="Increase by 10ms">
+                <i class="fas fa-plus"></i>
+            </button>
+            <small class="text-muted ms-2">Range: -5000 to +5000ms</small>
         </div>
         ${player.metrics ? `
         <h6 class="text-muted text-uppercase small mt-3">Metrics</h6>
