@@ -107,10 +107,6 @@ streaming. No additional port configuration is required.
 2. **PulseAudio on HAOS**: Device names differ from standalone Docker deployments
 3. **Permissions**: Requires `full_access` for proper audio device access
 
-## TODO
-
-- **icon.png and logo.png**: The add-on is currently missing the required 256x256 PNG files for icon.png and logo.png in the multiroom-audio folder. These need to be created or sourced for the add-on to display properly in the Home Assistant add-on store.
-
 ## Support
 
 - [GitHub Issues](https://github.com/chrisuthe/squeezelite-docker/issues)
@@ -120,3 +116,7 @@ streaming. No additional port configuration is required.
 
 This add-on was created using AI-assisted development (Claude by Anthropic).
 See the project README for more details.
+
+## Credits
+
+- Icon: [Music note icons created by Freepik - Flaticon](https://www.flaticon.com/free-icons/music-note)
