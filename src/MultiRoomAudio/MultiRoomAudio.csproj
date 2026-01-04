@@ -20,7 +20,7 @@
     <PackageReference Include="SendSpin.SDK" Version="2.0.0" />
 
     <!-- PortAudio for Linux audio output -->
-    <PackageReference Include="PortAudioSharp2" Version="1.0.2" />
+    <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
 
     <!-- Configuration -->
     <PackageReference Include="YamlDotNet" Version="16.2.1" />
