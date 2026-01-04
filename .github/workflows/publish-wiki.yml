@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Publish docs to wiki
-        uses: Andrew-Chen-Wang/github-wiki-action@v4
+        uses: Andrew-Chen-Wang/github-wiki-action@v5
         with:
           path: docs/
           # Convert README.md -> Home.md and fix .md links
