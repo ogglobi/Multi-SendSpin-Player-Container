@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Room Audio Controller</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="header-gradient text-white py-4 mb-4">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1 class="mb-0"><i class="fas fa-music me-2"></i>Multi-Room Audio</h1>
+                    <p class="mb-0 opacity-75">Sendspin-powered multi-room audio controller</p>
+                </div>
+                <div class="col-auto">
+                    <a href="./docs" class="btn btn-outline-light me-2" target="_blank" title="API Documentation">
+                        <i class="fas fa-code me-2"></i>API Docs
+                    </a>
+                    <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#addPlayerModal">
+                        <i class="fas fa-plus me-2"></i>Add Player
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="alert-container"></div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>Active Players</h2>
+                    <div>
+                        <span id="connection-status" class="badge bg-secondary me-2">Connecting...</span>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="refreshStatus()">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div id="players-container" class="row">
+                    <div class="col-12 text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading players...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Player Modal -->
+    <div class="modal fade" id="addPlayerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i>Add New Player</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addPlayerForm">
+                        <div class="mb-3">
+                            <label for="playerName" class="form-label">Player Name</label>
+                            <input type="text" class="form-control" id="playerName" required placeholder="e.g., Kitchen Speaker">
+                        </div>
+                        <div class="mb-3">
+                            <label for="audioDevice" class="form-label">Audio Device</label>
+                            <select class="form-select" id="audioDevice">
+                                <option value="">Default Device</option>
+                            </select>
+                            <button type="button" class="btn btn-link btn-sm p-0 mt-1" onclick="refreshDevices()">
+                                <i class="fas fa-sync-alt me-1"></i>Refresh devices
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <label for="serverUrl" class="form-label">Server URL (optional)</label>
+                            <input type="text" class="form-control" id="serverUrl" placeholder="ws://server:port/sendspin">
+                            <small class="text-muted">Leave empty for automatic mDNS discovery</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="initialVolume" class="form-label">Initial Volume</label>
+                            <input type="range" class="form-range" id="initialVolume" min="0" max="100" value="75">
+                            <span id="initialVolumeValue">75%</span>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="addPlayer()">
+                        <i class="fas fa-plus me-1"></i>Add Player
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Player Stats Modal -->
+    <div class="modal fade" id="playerStatsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-chart-bar me-2"></i>Player Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="playerStatsBody">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
