@@ -4,7 +4,7 @@ slug: multiroom-audio
 description: >-
   Sendspin-powered multi-room audio controller. Stream audio from Music
   Assistant to USB DACs connected to your Home Assistant server.
-url: https://github.com/chrisuthe/Multi-SendSpin-Player-Container
+url: https://github.com/chrisuthe/squeezelite-docker
 image: ghcr.io/chrisuthe/multiroom-audio-hassio
 startup: services
 arch:
@@ -39,6 +39,9 @@ options:
 
 schema:
   log_level: list(debug|info|warning|error)
+
+# Watchdog - auto-restart if health check fails
+watchdog: http://[HOST]:[PORT:8096]/api/health
 
 # Build stage
 stage: experimental

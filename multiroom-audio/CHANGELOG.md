@@ -1,5 +1,56 @@
 # Changelog
 
+## [2.0.0] - Complete C# Rewrite
+
+### Breaking Changes
+
+- **Complete rewrite from Python to C# ASP.NET Core 8.0** - The entire application has been rebuilt from scratch
+- **Sendspin-only support** - Squeezelite and Snapcast player types have been removed
+- **Single unified Docker image** - No more slim variants; one image for all deployments
+- **New API structure** - Endpoints follow ASP.NET Core patterns (similar routes, updated responses)
+
+### Added
+
+- **SendSpin.SDK 2.0.0** - Native C# SDK for Music Assistant Sendspin protocol
+- **PortAudioSharp2** - Cross-platform audio output via PortAudio
+- **SignalR** - Real-time player status updates over WebSocket
+- **Swagger/OpenAPI** - Interactive API documentation at `/docs`
+- **Health checks** - ASP.NET Core health check endpoint at `/api/health`
+- **Self-contained deployment** - Single executable with all .NET dependencies bundled
+- **Delay offset control** - Per-player audio delay compensation for multi-room sync
+- **Unified configuration** - YAML-based player configuration with hot-reload support
+
+### Removed
+
+- **Squeezelite provider** - SlimProto/LMS support removed (use Music Assistant instead)
+- **Snapcast provider** - Snapcast client support removed
+- **Python runtime** - Flask, Pydantic, PyYAML no longer needed
+- **Multiple base images** - No more Debian vs Alpine variants
+- **Slim image variant** - Single unified image replaces all variants
+- **Process manager complexity** - SDK handles player lifecycle internally
+- **gunicorn** - ASP.NET Core Kestrel server handles all requests
+
+### Changed
+
+- **Port remains 8096** - Web interface accessible at same port
+- **Config file format** - YAML structure slightly updated for C# serialization
+- **Audio device detection** - Now uses PortAudio exclusively (no ALSA/PulseAudio split)
+- **Volume control** - Uses ALSA amixer commands on Linux (same as before)
+- **Ingress support** - Full Home Assistant ingress compatibility maintained
+
+### Migration Guide
+
+If upgrading from v1.x:
+
+1. **Backup your configuration** - Player configs may need manual recreation
+2. **Remove Squeezelite/Snapcast players** - These are no longer supported
+3. **Recreate Sendspin players** - Same device/name, but configuration format changed
+4. **Update docker-compose.yml** - New image tag, simpler configuration
+
+For LMS users: Consider running Music Assistant alongside LMS, or use a standalone Squeezelite container.
+
+---
+
 ## [1.2.13] - Fix Crash Logging
 
 ### Fixed

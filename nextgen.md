@@ -451,3 +451,10 @@ docker-compose.yml → Update for new image
 5. Image size < 200MB (compressed)
 6. Pure C# - no Python runtime required
 7. Native SendSpin.SDK audio playback works on both ALSA and PulseAudio
+
+---
+
+## Future Improvements
+
+- Add Trivy security scanning to CI/CD pipeline
+- Add SBOM (Software Bill of Materials) generation

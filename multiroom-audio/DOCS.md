@@ -1,29 +1,27 @@
 # Multi-Room Audio Controller
 
-Manage multiple audio players from one interface. Create whole-home audio with
+Manage Sendspin audio players for Music Assistant. Create whole-home audio with
 USB DACs connected to your Home Assistant server.
 
 ## Overview
 
-This add-on enables you to run multiple audio players (Squeezelite, Sendspin,
-Snapcast) on your Home Assistant server, each outputting to different audio
-devices. Perfect for creating synchronized multi-room audio zones.
+This add-on creates Sendspin players that appear in Music Assistant as available
+audio endpoints. Each player outputs to a different audio device, enabling
+multi-room audio from a single server.
 
-## Supported Player Types
+## How It Works
 
-| Player | Protocol | Server | Use Case |
-|--------|----------|--------|----------|
-| **Squeezelite** | SlimProto | LMS / Music Assistant | Traditional LMS setups |
-| **Sendspin** | Native | Music Assistant | Native MA integration |
-| **Snapcast** | Snapcast | Snapcast Server | Synchronized multiroom |
+1. Connect USB audio devices (DACs) to your Home Assistant server
+2. Create a player for each device in this add-on
+3. Players automatically register with Music Assistant via Sendspin protocol
+4. Control playback from Music Assistant's interface
 
 ## Installation
 
 1. Add this repository to your Home Assistant add-on store
 2. Install the "Multi-Room Audio Controller" add-on
-3. Configure the add-on options (see below)
-4. Start the add-on
-5. Access the web interface via the sidebar or ingress
+3. Start the add-on
+4. Access the web interface via the sidebar or ingress
 
 ## Configuration
 
@@ -32,13 +30,11 @@ devices. Perfect for creating synchronized multi-room audio zones.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `log_level` | string | `info` | Logging verbosity (debug, info, warning, error) |
-| `default_server_ip` | string | `""` | Default server IP for new players |
 
 ### Example Configuration
 
 ```yaml
 log_level: info
-default_server_ip: "192.168.1.100"
 ```
 
 ## Audio Device Setup
@@ -46,8 +42,8 @@ default_server_ip: "192.168.1.100"
 ### Accessing USB DACs
 
 USB audio devices connected to your Home Assistant server are automatically
-detected via PulseAudio. The add-on uses Home Assistant's audio system
-(`hassio_audio`) for audio output.
+detected via PortAudio. The add-on uses Home Assistant's audio system
+for audio output.
 
 ### Device Selection
 
@@ -56,11 +52,11 @@ When creating a player:
 1. Open the add-on web interface
 2. Click "Add Player"
 3. Select your audio device from the dropdown
-4. Device names appear as PulseAudio sink names
+4. Device names appear as PortAudio device names
 
 ### Troubleshooting Audio
 
-If devices aren't appearing:
+If devices are not appearing:
 
 1. Check that USB devices are properly connected
 2. Verify devices appear in HA's audio settings
@@ -75,37 +71,45 @@ If devices aren't appearing:
 2. Click "Add Player"
 3. Configure:
    - **Name**: Descriptive name (e.g., "Kitchen Speakers")
-   - **Type**: Squeezelite, Sendspin, or Snapcast
    - **Device**: Select audio output device
-   - **Server IP**: For Squeezelite/Snapcast (optional)
+   - **Server IP** (optional): Music Assistant server IP for manual discovery
 4. Click "Create"
 
 ### Managing Players
 
 - **Start/Stop**: Toggle player state
 - **Volume**: Adjust via slider
-- **Edit**: Modify player settings
+- **Delay Offset**: Adjust timing for multi-room sync (milliseconds)
 - **Delete**: Remove player
 
 ### Integration with Music Assistant
 
-Sendspin players automatically appear in Music Assistant as available targets.
-Squeezelite players appear if using MA's Slimproto integration.
+Players automatically appear in Music Assistant within 30-60 seconds of starting.
+No additional configuration is required.
+
+If a player does not appear:
+1. Verify the player is running (green status indicator)
+2. Restart Music Assistant
+3. Check that both add-ons are on the same network
 
 ## Network Requirements
 
 | Port | Protocol | Direction | Purpose |
 |------|----------|-----------|---------|
-| 8096 | TCP | Inbound | Web interface |
-| 3483 | TCP/UDP | Outbound | Squeezelite → LMS |
-| 1704 | TCP | Outbound | Snapcast client |
-| 1705 | TCP | Outbound | Snapcast control |
+| 8096 | TCP | Inbound | Web interface (via ingress) |
+
+All player communication uses mDNS for discovery and the Sendspin protocol for
+streaming. No additional port configuration is required.
 
 ## Known Limitations
 
-1. **PulseAudio Only**: HAOS uses PulseAudio; direct ALSA access isn't available
-2. **Device Names**: Device names differ from standalone Docker (PA vs ALSA)
+1. **Sendspin only**: This add-on only supports Music Assistant via Sendspin protocol
+2. **PulseAudio on HAOS**: Device names differ from standalone Docker deployments
 3. **Permissions**: Requires `full_access` for proper audio device access
+
+## TODO
+
+- **icon.png and logo.png**: The add-on is currently missing the required 256x256 PNG files for icon.png and logo.png in the multiroom-audio folder. These need to be created or sourced for the add-on to display properly in the Home Assistant add-on store.
 
 ## Support
 

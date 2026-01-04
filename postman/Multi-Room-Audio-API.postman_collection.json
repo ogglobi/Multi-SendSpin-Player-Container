@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "multiroom-audio-api",
 		"name": "Multi-Room Audio Controller API",
-		"description": "API for managing multiple audio players (Squeezelite, Sendspin, Snapcast) in a multi-room setup.\n\n**Setup:**\n1. Set the `baseUrl` variable to your server (e.g., `http://192.168.1.100:8096`)\n2. For HAOS, use the ingress URL or direct IP if port is exposed",
+		"description": "API for managing Sendspin audio players in a multi-room setup.\n\n**Setup:**\n1. Set the `baseUrl` variable to your server (e.g., `http://192.168.1.100:8096`)\n2. For HAOS, use the ingress URL or direct IP if port is exposed\n\n**Technology:**\n- ASP.NET Core 8.0\n- SendSpin.SDK 2.0 for Music Assistant integration\n- PortAudio for audio output",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -13,11 +13,29 @@
 		},
 		{
 			"key": "playerName",
-			"value": "Living Room",
+			"value": "Kitchen",
 			"type": "string"
 		}
 	],
 	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "health"]
+						},
+						"description": "Check if the API is healthy and responding"
+					}
+				}
+			]
+		},
 		{
 			"name": "Players",
 			"item": [
@@ -35,7 +53,7 @@
 					}
 				},
 				{
-					"name": "Create Player - Squeezelite",
+					"name": "Create Player",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -46,132 +64,14 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"name\": \"Living Room\",\n    \"device\": \"hw:1,0\",\n    \"provider\": \"squeezelite\",\n    \"server_ip\": \"192.168.1.100\"\n}"
+							"raw": "{\n    \"name\": \"Kitchen\",\n    \"device\": \"0\",\n    \"volume\": 75,\n    \"delayMs\": 0\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/players",
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "players"]
 						},
-						"description": "Create a new Squeezelite player for Logitech Media Server"
-					}
-				},
-				{
-					"name": "Create Player - Sendspin",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"name\": \"Kitchen\",\n    \"device\": \"default\",\n    \"provider\": \"sendspin\",\n    \"server_url\": \"ws://192.168.1.100:8096\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/players",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players"]
-						},
-						"description": "Create a new Sendspin player for Music Assistant"
-					}
-				},
-				{
-					"name": "Create Player - Snapcast",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"name\": \"Bedroom\",\n    \"device\": \"default\",\n    \"provider\": \"snapcast\",\n    \"server_ip\": \"192.168.1.100\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/players",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players"]
-						},
-						"description": "Create a new Snapcast player for Snapserver"
-					}
-				},
-				{
-					"name": "Update Player",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"name\": \"Living Room Updated\",\n    \"device\": \"hw:1,0\",\n    \"server_ip\": \"192.168.1.100\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}"]
-						},
-						"description": "Update an existing player's configuration"
-					}
-				},
-				{
-					"name": "Delete Player",
-					"request": {
-						"method": "DELETE",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}"]
-						},
-						"description": "Delete a player and stop it if running"
-					}
-				},
-				{
-					"name": "Start Player",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}/start",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}", "start"]
-						},
-						"description": "Start the audio player process"
-					}
-				},
-				{
-					"name": "Stop Player",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}/stop",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}", "stop"]
-						},
-						"description": "Stop the audio player process"
-					}
-				},
-				{
-					"name": "Get Player Status",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}/status",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}", "status"]
-						},
-						"description": "Check if a player is currently running"
+						"description": "Create a new Sendspin player for Music Assistant.\n\nParameters:\n- name: Display name for the player\n- device: PortAudio device index (use /api/devices to list)\n- volume: Initial volume (0-100)\n- delayMs: Audio delay offset in milliseconds"
 					}
 				},
 				{
@@ -188,25 +88,42 @@
 					}
 				},
 				{
-					"name": "Update Player Sync Offset",
+					"name": "Delete Player",
 					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"delay_ms\": -150\n}"
-						},
+						"method": "DELETE",
+						"header": [],
 						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}/offset",
+							"raw": "{{baseUrl}}/api/players/{{playerName}}",
 							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}", "offset"]
+							"path": ["api", "players", "{{playerName}}"]
 						},
-						"description": "Update synchronization offset for a player. Typical values are -200 to 0ms. Requires player restart to apply."
+						"description": "Delete a player and stop it if running"
+					}
+				},
+				{
+					"name": "Stop Player",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/players/{{playerName}}/stop",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "players", "{{playerName}}", "stop"]
+						},
+						"description": "Stop the audio player"
+					}
+				},
+				{
+					"name": "Restart Player",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/players/{{playerName}}/restart",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "players", "{{playerName}}", "restart"]
+						},
+						"description": "Restart the audio player"
 					}
 				}
 			]
@@ -215,22 +132,9 @@
 			"name": "Volume",
 			"item": [
 				{
-					"name": "Get Volume",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/players/{{playerName}}/volume",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "players", "{{playerName}}", "volume"]
-						},
-						"description": "Get the current volume level for a player"
-					}
-				},
-				{
 					"name": "Set Volume",
 					"request": {
-						"method": "POST",
+						"method": "PUT",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -252,10 +156,37 @@
 			]
 		},
 		{
+			"name": "Offset",
+			"item": [
+				{
+					"name": "Set Delay Offset",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"delayMs\": 50\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/players/{{playerName}}/offset",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "players", "{{playerName}}", "offset"]
+						},
+						"description": "Update audio delay offset for multi-room sync.\n\nPositive values delay audio (if room is ahead).\nNegative values advance audio (if room is behind)."
+					}
+				}
+			]
+		},
+		{
 			"name": "Devices",
 			"item": [
 				{
-					"name": "Get Audio Devices (ALSA)",
+					"name": "Get Audio Devices",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -264,69 +195,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "devices"]
 						},
-						"description": "Get ALSA audio devices for Squeezelite and Snapcast players"
-					}
-				},
-				{
-					"name": "Get PortAudio Devices (Sendspin)",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/devices/portaudio",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "devices", "portaudio"]
-						},
-						"description": "Get PortAudio devices for Sendspin players. Use device index when creating Sendspin players."
-					}
-				}
-			]
-		},
-		{
-			"name": "Debug",
-			"item": [
-				{
-					"name": "Debug Audio System",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/debug/audio",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "debug", "audio"]
-						},
-						"description": "Comprehensive debugging information for audio device detection and mixer controls"
-					}
-				}
-			]
-		},
-		{
-			"name": "State",
-			"item": [
-				{
-					"name": "Get State Info",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/state",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "state"]
-						},
-						"description": "Get information about player state persistence"
-					}
-				},
-				{
-					"name": "Save State",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/state/save",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "state", "save"]
-						},
-						"description": "Manually trigger a save of current player running states"
+						"description": "Get available PortAudio audio devices. Use the device index when creating players."
 					}
 				}
 			]
@@ -344,34 +213,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "providers"]
 						},
-						"description": "Get list of available player providers (squeezelite, sendspin, snapcast)"
-					}
-				}
-			]
-		},
-		{
-			"name": "Sound Test",
-			"item": [
-				{
-					"name": "Test Sound on Device",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"device\": \"hw:1,0\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/devices/test",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "devices", "test"]
-						},
-						"description": "Play a test tone on the specified audio device"
+						"description": "Get list of available player providers (Sendspin only in v2.0)"
 					}
 				}
 			]

@@ -1,4 +1,4 @@
-# Contributing to Multi-Room Audio Docker
+# Contributing to Multi-Room Audio Controller
 
 Thank you for your interest in contributing to this project!
 
@@ -8,160 +8,159 @@ Thank you for your interest in contributing to this project!
 2. **Clone your fork**: `git clone https://github.com/yourusername/squeezelite-docker.git`
 3. **Create a feature branch**: `git checkout -b feature/amazing-feature`
 4. **Make your changes** and test thoroughly
-5. **Run linting**: `ruff check . && ruff format .`
-6. **Run tests**: `pytest tests/ -v`
-7. **Commit your changes**: `git commit -m 'Add amazing feature'`
-8. **Push to your branch**: `git push origin feature/amazing-feature`
-9. **Open a Pull Request**
+5. **Build and verify**: `dotnet build src/MultiRoomAudio/MultiRoomAudio.csproj`
+6. **Commit your changes**: `git commit -m 'Add amazing feature'`
+7. **Push to your branch**: `git push origin feature/amazing-feature`
+8. **Open a Pull Request**
 
 ## Development Setup
 
-### Standalone Docker Development
+### Prerequisites
+
+- .NET 8.0 SDK
+- Docker (for testing containerized builds)
+- Linux environment recommended for audio testing (or WSL2 on Windows)
+
+### Local Development
 
 ```bash
-# Start development environment
-./manage.sh dev              # Linux
-.\manage.ps1 dev             # Windows
+# Restore dependencies
+dotnet restore src/MultiRoomAudio/MultiRoomAudio.csproj
 
-# This enables:
-# - Live code reloading
-# - Debug mode
-# - Development logging
+# Build the project
+dotnet build src/MultiRoomAudio/MultiRoomAudio.csproj
+
+# Run locally (audio features require Linux)
+dotnet run --project src/MultiRoomAudio/MultiRoomAudio.csproj
+
+# Access the web interface
+# Open http://localhost:8096
+```
+
+### Docker Development
+
+```bash
+# Build the Docker image
+docker build -f docker/Dockerfile -t multiroom-audio:dev .
+
+# Run with audio devices (Linux only)
+docker run -d --name multiroom-dev \
+  -p 8096:8096 \
+  --device /dev/snd \
+  -v $(pwd)/config:/app/config \
+  multiroom-audio:dev
+
+# View logs
+docker logs -f multiroom-dev
 ```
 
 ### HAOS Add-on Development
 
 ```bash
-# Build the add-on locally (uses community addon base image)
-cd hassio
-docker build \
-  --build-arg BUILD_FROM=ghcr.io/hassio-addons/base-python:18.0.0 \
+# Build the add-on image locally
+docker build -f docker/Dockerfile \
+  --platform linux/amd64 \
   -t multiroom-audio-addon:local .
 
 # Test locally (without full HAOS integration)
-docker run --rm -it -p 8096:8096 -e AUDIO_BACKEND=alsa multiroom-audio-addon:local
+docker run --rm -it -p 8096:8096 multiroom-audio-addon:local
 ```
 
-## Testing
+## Project Structure
 
-### Running Tests
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test file
-pytest tests/test_squeezelite_provider.py -v
-
-# Run with coverage
-pytest tests/ --cov=app --cov-report=html
+```
+squeezelite-docker/
+├── src/
+│   └── MultiRoomAudio/          # Main C# application
+│       ├── Audio/               # PortAudio integration
+│       ├── Controllers/         # REST API endpoints
+│       ├── Models/              # Data models
+│       ├── Services/            # Business logic
+│       ├── Utilities/           # Helpers
+│       ├── wwwroot/             # Static web UI
+│       └── Program.cs           # Entry point
+├── docker/
+│   └── Dockerfile               # Unified Alpine image
+├── multiroom-audio/             # HAOS add-on metadata
+│   ├── config.yaml
+│   ├── CHANGELOG.md
+│   └── DOCS.md
+└── docs/                        # Documentation
 ```
 
-### Manual Testing
+## Coding Guidelines
 
-Before submitting a PR, please test:
+### C#
 
-```bash
-# Test basic functionality
-./manage.sh build && ./manage.sh start
+- **Target Framework**: .NET 8.0
+- **Nullable**: Enabled project-wide (use nullable reference types)
+- **Style**: Follow Microsoft C# coding conventions
+- **Documentation**: XML doc comments for public APIs
 
-# Test no-audio mode
-./manage.sh no-audio
-
-# Test API endpoints
-curl http://localhost:8096/api/players
-curl http://localhost:8096/api/devices
+```csharp
+/// <summary>
+/// Creates and starts a new audio player.
+/// </summary>
+/// <param name="request">Player configuration request.</param>
+/// <param name="ct">Cancellation token.</param>
+/// <returns>The created player response.</returns>
+public async Task<PlayerResponse> CreatePlayerAsync(
+    PlayerCreateRequest request,
+    CancellationToken ct = default)
+{
+    // Implementation
+}
 ```
 
-### Linting
+### JavaScript (Web UI)
 
-This project uses Ruff for linting and formatting:
+- Vanilla JavaScript only - no external frameworks
+- ES6+ features (const/let, arrow functions, template literals)
+- Use `textContent` instead of `innerHTML` for XSS prevention
 
-```bash
-# Check for issues
-ruff check .
+### Docker
 
-# Auto-fix issues
-ruff check --fix .
-
-# Format code
-ruff format .
-```
-
-## Project Architecture
-
-Understanding the architecture helps when contributing:
-
-### Core Components
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Providers | `app/providers/` | Player backend implementations |
-| Managers | `app/managers/` | Business logic (audio, config, process) |
-| Schemas | `app/schemas/` | Pydantic validation models |
-| Environment | `app/environment.py` | Docker/HAOS detection |
-
-### Adding a New Provider
-
-To add support for a new audio player backend:
-
-1. Create `app/providers/newplayer.py` implementing `PlayerProvider`
-2. Register in `app/providers/__init__.py`
-3. Register in `app/app.py` provider registry
-4. Add Pydantic schema in `app/schemas/player_config.py`
-5. Update `app/health_check.py` to check for the binary
-6. Update Dockerfiles to install the binary
-7. Add tests in `tests/test_newplayer_provider.py`
-
-See [ONBOARDING.md](ONBOARDING.md#adding-a-new-provider) for detailed instructions.
+- Use multi-stage builds for smaller images
+- Target Alpine Linux for production
+- Include health checks
 
 ## What We're Looking For
 
 - **Bug fixes** - Help make it more stable
-- **New providers** - Support for additional audio players (Airplay, Spotify Connect, etc.)
-- **New features** - Audio device support, UI improvements
+- **Performance improvements** - Optimize audio handling
+- **UI/UX enhancements** - Better web interface design
 - **Documentation** - Better setup guides, troubleshooting
 - **HAOS improvements** - Better Home Assistant integration
-- **Platform support** - macOS, different Linux distros
-- **Docker improvements** - Better builds, smaller images
-- **UI/UX enhancements** - Better web interface design
-- **Test coverage** - More comprehensive test suite
+- **Platform support** - Testing on different Linux distros
 
-## Coding Guidelines
+## Testing
 
-### Python
-- Follow PEP 8 (enforced by Ruff)
-- Use type hints for function signatures
-- Document complex logic with docstrings
-- Keep functions focused and small
+### Manual Testing Checklist
 
-### JavaScript
-- Use modern ES6+ features
-- No external frameworks (vanilla JS only)
+Before submitting a PR, verify:
 
-### Docker
-- Multi-stage builds when possible
-- Minimize layer count
-- Use specific version tags for base images
+```bash
+# Build succeeds
+dotnet build src/MultiRoomAudio/MultiRoomAudio.csproj
 
-### Documentation
-- Update relevant docs for new features
-- Keep ONBOARDING.md current for new engineers
-- Document provider-specific quirks
+# Application starts
+dotnet run --project src/MultiRoomAudio/MultiRoomAudio.csproj
 
-## Environment Detection
+# API endpoints work
+curl http://localhost:8096/api/players
+curl http://localhost:8096/api/devices
+curl http://localhost:8096/api/health
+```
 
-When adding features that behave differently in Docker vs HAOS:
+### Docker Testing
 
-```python
-from environment import is_hassio, get_audio_backend
+```bash
+# Image builds successfully
+docker build -f docker/Dockerfile -t test .
 
-if is_hassio():
-    # HAOS-specific behavior (PulseAudio)
-    pass
-else:
-    # Standalone Docker behavior (ALSA)
-    pass
+# Container starts and responds
+docker run -d -p 8096:8096 test
+curl http://localhost:8096/api/health
 ```
 
 ## Code of Conduct
@@ -176,7 +175,7 @@ When releasing a new version of the HAOS add-on:
 2. Update `multiroom-audio/CHANGELOG.md` with release notes
 3. Create and push a tag:
    ```bash
-   git tag -a v1.2.7 -m "v1.2.7 - Brief description"
+   git tag -a v2.0.0 -m "v2.0.0 - C# rewrite"
    git push --tags
    ```
 4. CI will automatically:
@@ -184,12 +183,10 @@ When releasing a new version of the HAOS add-on:
    - Update `config.yaml` version after successful build
    - HAOS users see the update only when the image is ready
 
-See [CLAUDE.md](CLAUDE.md#release-process-haos-add-on) for detailed explanation.
-
 ## Questions?
 
 Open an issue for discussion before major changes. We're happy to help guide contributions!
 
 ## AI Disclosure
 
-This project is developed with the assistance of AI coding tools. Contributions from both human and AI-assisted development are welcome, provided they meet quality standards and pass all tests.
+This project is developed with the assistance of AI coding tools. Contributions from both human and AI-assisted development are welcome, provided they meet quality standards.

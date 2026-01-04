@@ -2,6 +2,9 @@
 
 Complete guide for running Multi-Room Audio Controller on Home Assistant OS.
 
+> **Version 2.0**: This guide has been updated for the C# ASP.NET Core 8.0 rewrite.
+> If you are upgrading from v1.x, see the [CHANGELOG](../multiroom-audio/CHANGELOG.md) for migration notes.
+
 ---
 
 ## The Problem
@@ -18,9 +21,10 @@ You run Home Assistant OS and want multi-room audio that:
 Install the Multi-Room Audio Controller as a native HAOS add-on. It:
 
 - Runs alongside your other add-ons
-- Uses Home Assistant's audio system (PulseAudio)
+- Uses Home Assistant's audio system
 - Provides a web interface via HA's ingress system
-- Automatically detects audio devices configured in HA
+- Automatically detects audio devices
+- Creates Sendspin players that appear in Music Assistant
 
 ---
 
@@ -37,7 +41,7 @@ This add-on works differently than the standalone Docker container. Understand t
 | **Network** | Host network (built-in) | Bridge or host mode |
 | **Permissions** | Managed by HA | Manual --device flag |
 
-**Key implication**: Audio device names and configuration differ between environments. Documentation written for Docker may not apply directly to HAOS.
+**Key implication**: Audio device names and configuration differ between environments.
 
 ---
 
@@ -107,11 +111,11 @@ To change:
 
 ### How HAOS Audio Works
 
-Home Assistant OS uses PulseAudio through the `hassio_audio` service. This means:
+Home Assistant OS uses PulseAudio through the `hassio_audio` service. The v2.0 C# rewrite uses PortAudio for audio output, which automatically bridges to PulseAudio via ALSA configuration. This means:
 
 1. Audio devices must be recognized by Home Assistant first
-2. Devices appear as PulseAudio "sinks" (outputs)
-3. Device names are longer than ALSA names (e.g., `alsa_output.usb-Generic_USB_Audio-00.analog-stereo`)
+2. Devices appear as PortAudio outputs (which route through PulseAudio on HAOS)
+3. Device names reflect PortAudio's enumeration format
 
 ### Connecting a USB DAC
 
@@ -125,18 +129,8 @@ Home Assistant OS uses PulseAudio through the `hassio_audio` service. This means
 
 In the add-on web interface:
 1. Click **Add Player**
-2. The **Audio Device** dropdown shows all available PulseAudio sinks
-3. Device names indicate the type:
-   - `alsa_output.usb-...` = USB audio device
-   - `alsa_output.platform-...` = Built-in audio (Pi, etc.)
-
-### Device Name Examples
-
-| Physical Device | PulseAudio Sink Name |
-|-----------------|---------------------|
-| Generic USB DAC | `alsa_output.usb-Generic_USB_Audio-00.analog-stereo` |
-| Raspberry Pi headphone | `alsa_output.platform-bcm2835_audio.analog-stereo` |
-| HDMI audio | `alsa_output.platform-fef00700.hdmi.hdmi-stereo` |
+2. The **Audio Device** dropdown shows all available devices
+3. Device names are provided by PortAudio and typically include the device description
 
 ---
 
@@ -151,20 +145,13 @@ In the add-on web interface:
 | Field | Description | Example |
 |-------|-------------|---------|
 | **Name** | Zone/room name | `Kitchen` |
-| **Player Type** | Backend to use | `sendspin` |
-| **Audio Device** | PulseAudio sink | (select from dropdown) |
-| **Server IP** | For Squeezelite/Snapcast | Leave empty for auto-discovery |
+| **Audio Device** | Select from dropdown | (select your device) |
+| **Server IP** | Optional: Music Assistant IP | Leave empty for auto-discovery |
 
 4. **Click "Create Player"**
-5. **Click "Start"** to begin playback
+5. **Click "Start"** to begin
 
-### Recommended Player Types for HAOS
-
-| Your Setup | Recommended Type |
-|------------|------------------|
-| Music Assistant add-on | **Sendspin** |
-| External LMS server | **Squeezelite** |
-| Snapcast server | **Snapcast** |
+Players automatically appear in Music Assistant within 30-60 seconds.
 
 ---
 
@@ -174,10 +161,9 @@ If you run Music Assistant as an add-on (recommended setup):
 
 ### Automatic Discovery
 
-1. Create a player with type **Sendspin**
-2. Leave Server IP empty
-3. Start the player
-4. Within 30-60 seconds, the player appears in MA
+1. Create a player in this add-on
+2. Start the player
+3. Within 30-60 seconds, the player appears in Music Assistant
 
 ### Verification
 
@@ -206,12 +192,11 @@ If you run Music Assistant as an add-on (recommended setup):
 - Volume changes are immediate
 - Volume is saved and persists across restarts
 
-### Edit Player
+### Delay Offset
 
-1. Click the **Edit** (pencil) icon
-2. Modify settings
-3. Click **Save**
-4. Restart the player for changes to take effect
+- Adjust timing for multi-room synchronization
+- Positive values delay audio (if this room is ahead)
+- Measured in milliseconds
 
 ### Delete Player
 
@@ -251,7 +236,7 @@ If you run Music Assistant as an add-on (recommended setup):
 1. Verify you selected an output device (not input/monitor)
 2. Check physical connections (DAC -> amp -> speakers)
 3. Test the device using HA's audio test feature
-4. Check volume isn't at 0
+4. Check volume is not at 0
 
 ### Player Not Appearing in Music Assistant
 
@@ -261,7 +246,6 @@ If you run Music Assistant as an add-on (recommended setup):
 1. Wait 60 seconds after starting the player
 2. Restart Music Assistant add-on
 3. Check both add-ons are using host network
-4. For Squeezelite: try setting server IP to MA's IP
 
 ### Ingress Page Won't Load
 
@@ -283,33 +267,25 @@ If you run Music Assistant as an add-on (recommended setup):
 2. Click the **Log** tab
 3. Scroll to see recent entries
 
-### Player-Specific Logs
-
-In the web interface, player logs can be viewed by clicking on the player name.
-
 ### SSH Access (Advanced)
 
 ```bash
-# Player configs
-/addon_configs/local_multiroom-audio/players.yaml
+# Player configs (HAOS add-on data directory)
+/data/players.yaml
 
-# Logs
-/addon_configs/local_multiroom-audio/logs/
+# Logs (shared directory)
+/share/multiroom-audio/logs/
 ```
 
 ---
 
 ## Configuration Reference
 
-### Add-on Options (config.yaml)
+### Add-on Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `log_level` | string | `info` | Verbosity: debug, info, warning, error |
-
-### Player Configuration
-
-See Configuration Reference for full details on player settings.
 
 ---
 
@@ -318,27 +294,19 @@ See Configuration Reference for full details on player settings.
 | Port | Protocol | Direction | Purpose |
 |------|----------|-----------|---------|
 | 8096 | TCP | Internal | Web interface (via ingress) |
-| 3483 | TCP/UDP | Outbound | Squeezelite to LMS |
-| 1704 | TCP | Outbound | Snapcast streaming |
-| 1705 | TCP | Outbound | Snapcast control |
 
-All outbound ports are used by players to connect to external servers. The add-on uses host networking, so no port mapping is needed.
+All player communication uses mDNS for discovery and the Sendspin protocol for streaming. The add-on uses host networking, so no port mapping is needed.
 
 ### Important: Port 8096 is Fixed
 
 Unlike standalone Docker deployments, **HAOS add-ons cannot use dynamic port switching**. The ingress system requires a fixed port configured in `config.yaml`.
 
-- Port 8096 is configured as `ingress_port` in the add-on
-- If another service is using port 8096, the add-on will fail to start
-- You'll see an error: "Port 8096 required for HAOS ingress but is in use"
-- Check for port conflicts: `ss -tlnp | grep 8096` via SSH
-
 ---
 
 ## Known Limitations
 
-1. **PulseAudio only**: Direct ALSA access is not available in HAOS
-2. **Device names differ**: Documentation for Docker may show ALSA names (hw:0,0) that don't apply here
+1. **Sendspin only**: Only Music Assistant via Sendspin protocol is supported
+2. **PortAudio via PulseAudio**: Audio routes through PulseAudio on HAOS (handled automatically)
 3. **Full access required**: The add-on needs elevated permissions for audio device access
 4. **USB hot-plug**: Adding USB devices requires add-on restart to detect
 
@@ -366,7 +334,7 @@ Bluetooth audio in HAOS is limited. Check HA's Bluetooth integration first. If y
 
 ## Getting Help
 
-If you're stuck:
+If you are stuck:
 
 1. **Check the logs** - Most issues are explained in the add-on logs
 2. **Search existing issues** - Your problem may already be solved

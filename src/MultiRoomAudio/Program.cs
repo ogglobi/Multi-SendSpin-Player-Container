@@ -1,4 +1,5 @@
 using MultiRoomAudio.Controllers;
+using MultiRoomAudio.Hubs;
 using MultiRoomAudio.Services;
 using MultiRoomAudio.Utilities;
 
@@ -96,7 +97,7 @@ app.UseSwaggerUI(c =>
 app.MapHealthChecks("/healthz");
 
 // Map SignalR hub
-// TODO: app.MapHub<PlayerStatusHub>("/hubs/status");
+app.MapHub<PlayerStatusHub>("/hubs/status");
 
 // Map API endpoints
 app.MapHealthEndpoints();

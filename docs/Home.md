@@ -1,23 +1,24 @@
-# Multi-Room Audio Docker Controller
+# Multi-Room Audio Controller
 
-**One server. Multiple audio outputs. Whole-home audio.**
+**One server. Multiple audio outputs. Whole-home audio with Music Assistant.**
 
 ---
 
 ## What Problem Does This Solve?
 
 You want multi-room audio but:
+
 - **Commercial solutions are expensive** - Sonos, HEOS cost $200-500 per room
 - **You already have speakers, amps, or DACs** sitting unused
-- **You want software integration** - Music Assistant, LMS, or Home Assistant
+- **You use Music Assistant** and want additional audio endpoints
 - **You need flexibility** - Different rooms, different requirements
 
 ## The Solution
 
-Run a single Docker container on your NAS, Raspberry Pi, or any server. Connect USB DACs or use built-in audio outputs. Each becomes an independent audio zone controllable from Music Assistant, Logitech Media Server, or Snapcast.
+Run a single Docker container on your NAS, Raspberry Pi, or Home Assistant server. Connect USB DACs or use built-in audio outputs. Each becomes an independent audio zone controllable from Music Assistant.
 
 ```
-Your Server (NAS, Pi, etc.)
+Your Server (NAS, Pi, HA, etc.)
          |
     [Container]
     /    |    \
@@ -25,6 +26,8 @@ Your Server (NAS, Pi, etc.)
    |     |     |
 Kitchen Bedroom Patio
 ```
+
+Players appear automatically in Music Assistant via the Sendspin protocol.
 
 ---
 
@@ -39,16 +42,6 @@ Kitchen Bedroom Patio
 
 ---
 
-## Supported Backends
-
-| Backend | Best For | Server Required |
-|---------|----------|-----------------|
-| **Sendspin** | Music Assistant users | Music Assistant |
-| **Squeezelite** | LMS users, mixed environments | LMS or Music Assistant |
-| **Snapcast** | Bit-perfect synchronized audio | Snapcast Server |
-
----
-
 ## Quick Start
 
 ### Docker
@@ -58,7 +51,7 @@ docker run -d \
   --name multiroom-audio \
   -p 8096:8096 \
   --device /dev/snd:/dev/snd \
-  chrisuthe/squeezelitemultiroom:latest
+  ghcr.io/chrisuthe/multiroom-audio:latest
 ```
 
 Then open `http://YOUR-SERVER-IP:8096`
@@ -80,12 +73,12 @@ Then open `http://YOUR-SERVER-IP:8096`
 ### Player won't start
 1. Try `null` device first (tests without audio hardware)
 2. Check player logs in web interface
-3. Verify audio server is running
+3. Verify Music Assistant is running
 
 ### Player not appearing in Music Assistant
 1. Wait 30-60 seconds for discovery
 2. Restart Music Assistant
-3. For Squeezelite: set server IP explicitly
+3. Check both containers/add-ons are on the same network
 
 ---
 
@@ -93,4 +86,3 @@ Then open `http://YOUR-SERVER-IP:8096`
 
 - [GitHub Repository](https://github.com/chrisuthe/squeezelite-docker)
 - [Report an Issue](https://github.com/chrisuthe/squeezelite-docker/issues)
-- [Docker Hub](https://hub.docker.com/r/chrisuthe/squeezelitemultiroom)

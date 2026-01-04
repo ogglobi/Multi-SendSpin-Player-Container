@@ -6,42 +6,44 @@ This document provides a detailed walkthrough of the codebase for contributors a
 
 ```
 squeezelite-docker/
-├── app/                          # Main Python application
-│   ├── app.py                    # Application entry point
-│   ├── common.py                 # Shared Flask routes and WebSocket handlers
-│   ├── environment.py            # Environment detection (Docker/HAOS)
-│   ├── env_validation.py         # Startup environment validation
-│   ├── health_check.py           # Container health verification
-│   ├── managers/                 # Business logic layer
-│   │   ├── audio_manager.py      # ALSA device detection, volume control
-│   │   ├── config_manager.py     # YAML configuration persistence
-│   │   └── process_manager.py    # Subprocess lifecycle management
-│   ├── providers/                # Player backend implementations
-│   │   ├── base.py               # Abstract PlayerProvider interface
-│   │   ├── registry.py           # Provider discovery and registration
-│   │   ├── squeezelite.py        # Squeezelite (LMS) provider
-│   │   ├── sendspin.py           # Sendspin (Music Assistant) provider
-│   │   └── snapcast.py           # Snapcast provider
-│   ├── schemas/                  # Configuration validation
-│   │   └── player_config.py      # Pydantic models for player configs
-│   ├── templates/                # Jinja2 HTML templates
-│   │   └── index.html            # Main web UI
-│   ├── static/                   # CSS and JavaScript
-│   │   └── style.css             # Custom styling
-│   └── swagger.yaml              # OpenAPI specification
-├── multiroom-audio/              # Home Assistant OS add-on
-│   ├── config.yaml               # Add-on metadata and options
-│   ├── Dockerfile                # Alpine-based build
-│   ├── run.sh                    # Startup script (bashio)
-│   ├── DOCS.md                   # Add-on documentation
-│   └── translations/             # Internationalization
-├── tests/                        # Test suite
-│   ├── conftest.py               # Pytest fixtures
-│   └── test_*.py                 # Test modules
-├── Dockerfile                    # Production container (Debian)
-├── Dockerfile.slim               # Slim variant (Sendspin only)
-├── docker-compose.yml            # Production compose
-└── docker-compose.no-audio.yml   # Development without audio
+├── src/
+│   └── MultiRoomAudio/               # Main C# application
+│       ├── Audio/                    # Audio output layer
+│       │   ├── BufferedAudioSampleSource.cs
+│       │   ├── PortAudioDeviceEnumerator.cs
+│       │   └── PortAudioPlayer.cs
+│       ├── Controllers/              # REST API endpoints
+│       │   ├── DevicesEndpoint.cs
+│       │   ├── HealthEndpoint.cs
+│       │   ├── PlayersEndpoint.cs
+│       │   └── ProvidersEndpoint.cs
+│       ├── Models/                   # Data models
+│       │   ├── DeviceInfo.cs
+│       │   ├── PlayerConfig.cs
+│       │   └── PlayerStatus.cs
+│       ├── Services/                 # Business logic
+│       │   ├── ConfigurationService.cs
+│       │   ├── EnvironmentService.cs
+│       │   └── PlayerManagerService.cs
+│       ├── Utilities/                # Helper classes
+│       │   ├── AlsaCommandRunner.cs
+│       │   └── ClientIdGenerator.cs
+│       ├── wwwroot/                  # Static web UI
+│       │   ├── index.html
+│       │   ├── style.css
+│       │   └── app.js
+│       ├── Program.cs                # Application entry point
+│       └── MultiRoomAudio.csproj     # Project file
+├── docker/
+│   └── Dockerfile                    # Production container build
+├── multiroom-audio/                  # Home Assistant OS add-on
+│   ├── config.yaml                   # Add-on metadata
+│   ├── CHANGELOG.md                  # Version history
+│   ├── DOCS.md                       # Add-on documentation
+│   └── translations/
+│       └── en.yaml                   # English strings
+├── docs/                             # Documentation
+└── squeezelite-docker.sln            # Visual Studio solution
 ```
 
 ## Core Application Flow
@@ -49,236 +51,362 @@ squeezelite-docker/
 ### Startup Sequence
 
 ```
-1. app.py executes
-   └── Configure logging
-   └── Validate environment variables (env_validation.py)
-   └── Create Flask app (common.create_flask_app)
-   └── Initialize managers:
-       ├── ConfigManager (loads players.yaml)
-       ├── AudioManager (detects devices)
-       └── ProcessManager (ready to manage subprocesses)
-   └── Initialize ProviderRegistry with providers
-   └── Create PlayerManager (orchestrates managers)
-   └── Register routes (common.register_routes)
-   └── Register WebSocket handlers (common.register_websocket_handlers)
-   └── Start status monitor thread
-   └── Run Flask-SocketIO server
+1. Program.cs executes
+   |
+   +-- Configure logging based on LOG_LEVEL
+   |
+   +-- Create WebApplicationBuilder
+   |
+   +-- Register services (DI container):
+   |   +-- EnvironmentService (singleton)
+   |   +-- ConfigurationService (singleton)
+   |   +-- PlayerManagerService (singleton)
+   |
+   +-- Configure middleware:
+   |   +-- Static files (wwwroot)
+   |   +-- Swagger/OpenAPI
+   |   +-- SignalR hub
+   |   +-- CORS
+   |
+   +-- Map endpoints (Controllers)
+   |
+   +-- Start Kestrel server on port 8096
+   |
+   +-- PlayerManagerService loads saved players
+   |
+   +-- AutoStart players begin playback
 ```
 
 ### Request Flow
 
 ```
 HTTP Request
-    │
-    ▼
-Flask Route (common.py)
-    │
-    ▼
-PlayerManager Method
-    │
-    ├──► ConfigManager (read/write players.yaml)
-    ├──► ProviderRegistry (get provider for player type)
-    │         │
-    │         ▼
-    │    Provider (build_command, validate_config, etc.)
-    ├──► ProcessManager (start/stop subprocess)
-    └──► AudioManager (volume control, device detection)
-    │
-    ▼
+    |
+    v
+ASP.NET Core Middleware
+    |
+    v
+Controller Endpoint
+    |
+    +---> PlayerManagerService
+    |         |
+    |         +---> SendSpin.SDK (player instances)
+    |         |
+    |         +---> ConfigurationService (persistence)
+    |         |
+    |         +---> PortAudioPlayer (audio output)
+    |
+    v
 JSON Response
 ```
 
 ## Component Details
 
-### PlayerManager (app/app.py)
+### Program.cs
 
-The central orchestrator that coordinates all managers and providers.
+The application entry point that configures and starts the ASP.NET Core host.
 
-**Key Methods:**
-- `create_player()` - Creates new player with provider-specific validation
-- `start_player()` - Starts player subprocess via ProcessManager
-- `stop_player()` - Stops player subprocess
-- `get_player_volume()` / `set_player_volume()` - Volume control via provider
+**Key responsibilities:**
+- Configure dependency injection
+- Set up middleware pipeline
+- Map API endpoints
+- Configure Kestrel server options
 
-### ConfigManager (app/managers/config_manager.py)
+```csharp
+var builder = WebApplication.CreateBuilder(args);
 
-Handles configuration persistence with Pydantic validation.
+// Register services
+builder.Services.AddSingleton<EnvironmentService>();
+builder.Services.AddSingleton<ConfigurationService>();
+builder.Services.AddSingleton<PlayerManagerService>();
 
-**Key Features:**
-- YAML file persistence (`/app/config/players.yaml`)
-- Validation on load/save via Pydantic schemas
-- Graceful handling of invalid configs (warns but continues)
-
-### AudioManager (app/managers/audio_manager.py)
-
-Manages audio device detection and volume control.
-
-**Key Features:**
-- ALSA device enumeration via `aplay -l`
-- Volume control via `amixer` commands
-- Test tone playback via `speaker-test` or `sounddevice`
-- Fallback devices (null, default, dmix)
-
-### ProcessManager (app/managers/process_manager.py)
-
-Provider-agnostic subprocess lifecycle management.
-
-**Key Features:**
-- Process group management for clean termination
-- Fallback command support
-- Automatic dead process cleanup
-
-### Provider System (app/providers/)
-
-Pluggable backend architecture for different audio players.
-
-**Base Interface (`base.py`):**
-```python
-class PlayerProvider(ABC):
-    provider_type: str      # Unique identifier
-    display_name: str       # Human-readable name
-    binary_name: str        # Executable name
-
-    def build_command(player, log_path) -> list[str]
-    def build_fallback_command(player, log_path) -> list[str] | None
-    def get_volume(player) -> int
-    def set_volume(player, volume) -> tuple[bool, str]
-    def validate_config(config) -> tuple[bool, str]
-    def prepare_config(config) -> dict
+// Configure endpoints, middleware, etc.
+var app = builder.Build();
+app.Run();
 ```
 
-**Implemented Providers:**
+### Controllers
 
-| Provider | Binary | Protocol | Volume Control |
-|----------|--------|----------|----------------|
-| SqueezeliteProvider | squeezelite | SlimProto | ALSA/amixer |
-| SendspinProvider | sendspin | Native MA | ALSA/amixer |
-| SnapcastProvider | snapclient | Snapcast | ALSA/amixer |
+#### PlayersEndpoint.cs
 
-### Schema Validation (app/schemas/player_config.py)
+Main API for player management.
 
-Pydantic models for type-safe configuration validation.
+| Method | Route | Action |
+|--------|-------|--------|
+| GET | `/api/players` | List all players |
+| POST | `/api/players` | Create player |
+| GET | `/api/players/{name}` | Get player details |
+| DELETE | `/api/players/{name}` | Delete player |
+| POST | `/api/players/{name}/stop` | Stop player |
+| POST | `/api/players/{name}/restart` | Restart player |
+| PUT | `/api/players/{name}/volume` | Set volume |
+| PUT | `/api/players/{name}/offset` | Set delay offset |
 
-**Key Schemas:**
-- `BasePlayerConfig` - Common fields (name, device, volume, etc.)
-- `SqueezelitePlayerConfig` - Squeezelite-specific fields (server_ip, mac_address)
-- `SendspinPlayerConfig` - Sendspin-specific fields (server_url, client_id, delay_ms)
+#### DevicesEndpoint.cs
 
-### Environment Detection (app/environment.py)
+Audio device enumeration.
 
-Detects runtime environment and configures appropriate backends.
+| Method | Route | Action |
+|--------|-------|--------|
+| GET | `/api/devices` | List audio devices |
 
-**Detection Logic:**
-```
-if /data/options.json exists OR SUPERVISOR_TOKEN set:
-    → HAOS environment (PulseAudio)
-else:
-    → Standalone Docker (ALSA)
-```
+#### ProvidersEndpoint.cs
 
-## Web Interface
+Provider information (Sendspin only in v2.0).
 
-### Routes (app/common.py)
+| Method | Route | Action |
+|--------|-------|--------|
+| GET | `/api/providers` | List available providers |
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/` | GET | Main web UI |
-| `/api/players` | GET | List all players |
-| `/api/players` | POST | Create player |
-| `/api/players/<name>` | GET/PUT/DELETE | Player CRUD |
-| `/api/players/<name>/start` | POST | Start player |
-| `/api/players/<name>/stop` | POST | Stop player |
-| `/api/players/<name>/volume` | GET/POST | Volume control |
-| `/api/devices` | GET | List ALSA devices |
-| `/api/devices/portaudio` | GET | List PortAudio devices |
-| `/api/providers` | GET | List available providers |
+#### HealthEndpoint.cs
 
-### WebSocket Events
+Container health check.
 
-- `status_update` - Emitted every 2 seconds with player running states
-- `connect` - Sends initial status on client connection
+| Method | Route | Action |
+|--------|-------|--------|
+| GET | `/api/health` | Health status |
 
-## Testing
+### Services
 
-### Test Structure
+#### PlayerManagerService.cs
 
-```
-tests/
-├── conftest.py                   # Fixtures (mock managers, temp files)
-├── test_audio_manager.py         # AudioManager unit tests
-├── test_config_manager.py        # ConfigManager unit tests
-├── test_process_manager.py       # ProcessManager unit tests
-├── test_squeezelite_provider.py  # Squeezelite provider tests
-├── test_sendspin_provider.py     # Sendspin provider tests
-├── test_snapcast_provider.py     # Snapcast provider tests
-├── test_player_config_schema.py  # Pydantic schema tests
-└── test_api_endpoints.py         # Flask route integration tests
+The central orchestrator for player lifecycle.
+
+**Key methods:**
+```csharp
+// Lifecycle
+Task<PlayerStatus> CreatePlayerAsync(PlayerConfig config);
+Task<bool> StartPlayerAsync(string name);
+Task<bool> StopPlayerAsync(string name);
+Task<bool> DeletePlayerAsync(string name);
+
+// Status
+IEnumerable<PlayerStatus> GetAllPlayers();
+PlayerStatus? GetPlayer(string name);
+
+// Control
+Task SetVolumeAsync(string name, int volume);
+Task SetDelayOffsetAsync(string name, int offsetMs);
 ```
 
-### Running Tests
+**Internal state:**
+- Dictionary of active players (name -> SDK player instance)
+- Dictionary of player status (name -> PlayerStatus)
+
+#### ConfigurationService.cs
+
+YAML configuration persistence.
+
+**Key methods:**
+```csharp
+Dictionary<string, PlayerConfig> LoadPlayers();
+void SavePlayers(Dictionary<string, PlayerConfig> players);
+void SavePlayer(PlayerConfig player);
+void DeletePlayer(string name);
+```
+
+**Configuration file:** `players.yaml`
+
+```yaml
+Kitchen:
+  name: Kitchen
+  device: "0"
+  serverIp: ""
+  volume: 75
+  delayOffsetMs: 0
+  autoStart: true
+```
+
+#### EnvironmentService.cs
+
+Runtime environment detection.
+
+**Key properties:**
+```csharp
+bool IsHassio { get; }           // True if running in HAOS
+string ConfigPath { get; }       // /app/config or /data
+string LogPath { get; }          // /app/logs or /share/...
+string AudioBackend { get; }     // alsa or pulse
+```
+
+**Detection logic:**
+- Check for `/data/options.json` file
+- Check for `SUPERVISOR_TOKEN` environment variable
+- Either indicates HAOS mode
+
+### Audio Layer
+
+#### PortAudioPlayer.cs
+
+Implements `IAudioPlayer` interface for SendSpin.SDK.
+
+```csharp
+public class PortAudioPlayer : IAudioPlayer
+{
+    public void Initialize(AudioFormat format);
+    public void Write(ReadOnlySpan<byte> samples);
+    public void SetVolume(float volume);
+    public void Dispose();
+}
+```
+
+**Responsibilities:**
+- Initialize PortAudio output stream for specified device
+- Buffer incoming audio samples
+- Write samples to audio device
+- Handle cleanup on dispose
+
+#### PortAudioDeviceEnumerator.cs
+
+Lists available PortAudio output devices.
+
+```csharp
+public class PortAudioDeviceEnumerator
+{
+    public IEnumerable<DeviceInfo> GetOutputDevices();
+}
+```
+
+#### BufferedAudioSampleSource.cs
+
+Manages audio sample buffering between SDK and PortAudio.
+
+### Models
+
+#### PlayerConfig.cs
+
+Configuration for a player instance.
+
+```csharp
+public class PlayerConfig
+{
+    public string Name { get; set; }
+    public string Device { get; set; }
+    public string? ServerIp { get; set; }
+    public int Volume { get; set; } = 75;
+    public int DelayOffsetMs { get; set; } = 0;
+    public bool AutoStart { get; set; } = false;
+}
+```
+
+#### PlayerStatus.cs
+
+Runtime status of a player.
+
+```csharp
+public class PlayerStatus
+{
+    public string Name { get; set; }
+    public string Device { get; set; }
+    public bool IsRunning { get; set; }
+    public int Volume { get; set; }
+    public int DelayOffsetMs { get; set; }
+    public string? CurrentTrack { get; set; }
+}
+```
+
+#### DeviceInfo.cs
+
+Audio device information.
+
+```csharp
+public class DeviceInfo
+{
+    public int Index { get; set; }
+    public string Name { get; set; }
+    public int MaxOutputChannels { get; set; }
+    public double DefaultSampleRate { get; set; }
+}
+```
+
+### Utilities
+
+#### ClientIdGenerator.cs
+
+Generates deterministic client IDs for Sendspin protocol.
+
+```csharp
+public static class ClientIdGenerator
+{
+    public static string Generate(string playerName)
+    {
+        // MD5 hash of player name
+        // Returns 12-character hex string
+    }
+}
+```
+
+#### AlsaCommandRunner.cs
+
+Executes ALSA amixer commands for volume control.
+
+```csharp
+public class AlsaCommandRunner
+{
+    public Task<int> GetVolumeAsync(string device);
+    public Task SetVolumeAsync(string device, int volume);
+}
+```
+
+### Web Interface
+
+The web UI is built with vanilla JavaScript (no frameworks).
+
+**Files:**
+- `wwwroot/index.html` - Main HTML structure
+- `wwwroot/style.css` - Styling
+- `wwwroot/app.js` - JavaScript logic
+
+**Features:**
+- Player list with status indicators
+- Create player form
+- Volume sliders
+- Start/stop/delete buttons
+- Real-time updates via SignalR
+
+## Development Workflow
+
+### Building
 
 ```bash
-# All tests
-pytest tests/ -v
+# Restore dependencies
+dotnet restore src/MultiRoomAudio/MultiRoomAudio.csproj
 
-# With coverage
-pytest tests/ --cov=app --cov-report=html
+# Build
+dotnet build src/MultiRoomAudio/MultiRoomAudio.csproj
 
-# Single module
-pytest tests/test_squeezelite_provider.py -v
-
-# Pattern matching
-pytest tests/ -k "volume" -v
+# Run locally
+dotnet run --project src/MultiRoomAudio/MultiRoomAudio.csproj
 ```
 
-## Home Assistant Add-on
+### Docker Build
 
-### Add-on Structure (multiroom-audio/)
+```bash
+# Build image
+docker build -f docker/Dockerfile -t multiroom-audio .
 
-The add-on runs the same Python application but with:
-- PulseAudio backend instead of ALSA
-- Config stored in `/data` instead of `/app/config`
-- Ingress-based web access (no direct port exposure)
-
-### Key Differences from Standalone
-
-| Aspect | Standalone Docker | HAOS Add-on |
-|--------|-------------------|-------------|
-| Audio Backend | ALSA | PulseAudio |
-| Config Path | /app/config | /data |
-| Log Path | /app/logs | /data/logs |
-| Base Image | Debian | Alpine |
-| Web Access | Direct port 8096 | HA Ingress |
-
-## Extension Points
-
-### Adding a New Provider
-
-1. Create `app/providers/newplayer.py`:
-```python
-from .base import PlayerProvider, PlayerConfig
-
-class NewPlayerProvider(PlayerProvider):
-    provider_type = "newplayer"
-    display_name = "New Player"
-    binary_name = "newplayer-bin"
-
-    def __init__(self, audio_manager):
-        self.audio_manager = audio_manager
-
-    def build_command(self, player, log_path):
-        return [self.binary_name, "-n", player["name"], "-o", player["device"]]
-    # ... implement other methods
+# Run container
+docker run -d -p 8096:8096 --device /dev/snd multiroom-audio
 ```
 
-2. Register in `app/providers/__init__.py`
-3. Register in `app/app.py` provider registry
-4. Add schema in `app/schemas/player_config.py`
-5. Add tests in `tests/test_newplayer_provider.py`
-6. Update Dockerfiles to install binary
+### Adding a New Feature
 
-### Adding a New API Endpoint
+1. **Models**: Add/modify classes in `Models/`
+2. **Services**: Update business logic in `Services/`
+3. **Controllers**: Add API endpoints in `Controllers/`
+4. **UI**: Update web interface in `wwwroot/`
+5. **Config**: Update YAML schema if needed
 
-1. Add route in `register_routes()` in `app/common.py`
-2. Add OpenAPI spec in `app/swagger.yaml`
-3. Add tests in `tests/test_api_endpoints.py`
+### File Locations Summary
+
+| Component | Location |
+|-----------|----------|
+| Entry point | `src/MultiRoomAudio/Program.cs` |
+| API endpoints | `src/MultiRoomAudio/Controllers/` |
+| Business logic | `src/MultiRoomAudio/Services/` |
+| Audio handling | `src/MultiRoomAudio/Audio/` |
+| Data models | `src/MultiRoomAudio/Models/` |
+| Helpers | `src/MultiRoomAudio/Utilities/` |
+| Web UI | `src/MultiRoomAudio/wwwroot/` |
+| Docker build | `docker/Dockerfile` |
+| HAOS metadata | `multiroom-audio/` |

@@ -49,7 +49,7 @@ function setupSignalR() {
     }
 
     connection = new signalR.HubConnectionBuilder()
-        .withUrl('/hubs/status')
+        .withUrl('./hubs/status')
         .withAutomaticReconnect()
         .build();
 

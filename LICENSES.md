@@ -2,31 +2,7 @@
 
 This project includes the following third-party components:
 
-## Audio Players
-
-### Squeezelite
-
-- **License**: GNU General Public License v3.0 or later (GPL-3.0+)
-- **Copyright**: 2012-2015 Adrian Smith, 2015-2025 Ralph Irving
-- **Source**: https://github.com/ralph-irving/squeezelite
-- **Description**: Lightweight headless Squeezebox emulator for Lyrion Media Server
-
-Squeezelite is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-### Snapcast (snapclient)
-
-- **License**: GNU General Public License v3.0 or later (GPL-3.0+)
-- **Copyright**: 2014-2025 Johannes Pohl
-- **Source**: https://github.com/badaix/snapcast
-- **Description**: Synchronous multiroom audio player
-
-Snapcast is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
+## Audio Protocol
 
 ### Sendspin
 
@@ -41,31 +17,52 @@ a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
 ---
 
-## Python Dependencies
+## .NET Dependencies
 
-See `requirements.txt` for the full list. Key dependencies include:
+See `src/MultiRoomAudio/MultiRoomAudio.csproj` for the full list. Key dependencies include:
 
-| Package | License |
-|---------|---------|
-| Flask | BSD-3-Clause |
-| Flask-SocketIO | MIT |
-| PyYAML | MIT |
-| Pydantic | MIT |
-| sounddevice | MIT |
-| NumPy | BSD-3-Clause |
+| Package | License | Purpose |
+|---------|---------|---------|
+| SendSpin.SDK | Apache-2.0 | Sendspin protocol implementation |
+| PortAudioSharp2 | MIT | Cross-platform audio I/O |
+| YamlDotNet | MIT | YAML configuration parsing |
+| Swashbuckle.AspNetCore | MIT | OpenAPI/Swagger documentation |
+| Microsoft.AspNetCore.SignalR | Apache-2.0 | Real-time WebSocket communication |
+
+---
+
+## Runtime
+
+### .NET 8.0
+
+- **License**: MIT
+- **Source**: https://github.com/dotnet/runtime
+- **Description**: Cross-platform runtime for building applications
+
+---
+
+## Audio Libraries
+
+### PortAudio
+
+- **License**: MIT
+- **Source**: http://www.portaudio.com/
+- **Description**: Cross-platform audio I/O library
+
+PortAudio is licensed under the MIT license, allowing use in both open-source
+and proprietary software.
 
 ---
 
 ## License Compatibility
 
-This Docker image bundles GPL-3.0+ and Apache-2.0 licensed components.
-These licenses are compatible when distributed together. The GPL-3.0+
-components (Squeezelite, Snapcast) retain their copyleft requirements.
+This Docker image bundles Apache-2.0 and MIT licensed components.
+These licenses are fully compatible for distribution.
 
 For source code availability:
-- Squeezelite: https://github.com/ralph-irving/squeezelite
-- Snapcast: https://github.com/badaix/snapcast
 - Sendspin: https://github.com/music-assistant/server
+- PortAudio: http://www.portaudio.com/
+- .NET Runtime: https://github.com/dotnet/runtime
 
 ---
 

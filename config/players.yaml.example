@@ -2,53 +2,51 @@
 # This file shows the structure of a typical players.yaml configuration file
 # The actual file will be generated automatically when you create players through the web interface
 
-# Example configuration with two players:
-
-Living Room:
-  name: Living Room
-  device: hw:1,0  # USB DAC on card 1, device 0
-  server_ip: 192.168.1.100
-  mac_address: aa:bb:cc:dd:ee:01
-  enabled: true
-  volume: 75
+# Example configuration with two Sendspin players:
 
 Kitchen:
   name: Kitchen
-  device: hw:2,0  # USB DAC on card 2, device 0
-  server_ip: ""   # Empty means auto-discovery
-  mac_address: aa:bb:cc:dd:ee:02
-  enabled: true
-  volume: 80
+  clientId: "a1b2c3d4e5f6"    # Auto-generated unique ID
+  deviceId: "0"               # PortAudio device index
+  serverUrl: ""               # Empty for auto-discovery
+  delayMs: 0                  # Audio delay offset in milliseconds
+  logLevel: INFO
+  codec: opus
+  bufferSizeMs: 100
+  volume: 75
+  isMuted: false
 
 Bedroom:
   name: Bedroom
-  device: default  # Use system default audio device
-  server_ip: 192.168.1.100
-  mac_address: aa:bb:cc:dd:ee:03
-  enabled: false   # Player exists but is disabled
-  volume: 60
+  clientId: "f6e5d4c3b2a1"
+  deviceId: "1"
+  serverUrl: ""
+  delayMs: 50                 # Positive delay if this room is ahead
+  logLevel: INFO
+  codec: opus
+  bufferSizeMs: 100
+  volume: 80
+  isMuted: false
 
 # Configuration field explanations:
 #
 # name: Display name for the player (must be unique)
-# device: Audio device identifier (use 'aplay -l' to see available devices)
-#   - hw:X,Y format for specific hardware devices
-#   - 'default' for system default
-#   - 'pulse' for PulseAudio (if available)
-# server_ip: IP address of Music Assistant server (empty for auto-discovery)
-# mac_address: Unique MAC address for the player (auto-generated if not specified)
-# enabled: Whether the player is enabled (true/false)
+# clientId: Unique identifier for Sendspin protocol (auto-generated)
+# deviceId: PortAudio device index (use web UI to see available devices)
+#   - "0", "1", "2" etc. for PortAudio device indices
+#   - "null" for testing without audio hardware
+# serverUrl: Music Assistant server URL (empty for auto-discovery via mDNS)
+# delayMs: Audio delay offset in milliseconds for multi-room sync
+#   - Positive values delay audio (use if this room is ahead)
+#   - Negative values advance audio (use if this room is behind)
+# logLevel: Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+# codec: Audio codec (opus recommended)
+# bufferSizeMs: Audio buffer size in milliseconds
 # volume: Default volume level (0-100)
-
-# Common device examples:
-# hw:0,0 - First audio card, first device (usually built-in)
-# hw:1,0 - Second audio card, first device (often first USB device)
-# hw:2,0 - Third audio card, first device (often second USB device)
-# default - System default audio device
-# dmix - Software mixing device (allows multiple applications)
+# isMuted: Whether the player is muted
 
 # Notes:
-# - Each player needs a unique name and MAC address
-# - USB DACs typically appear as hw:X,0 where X > 0
-# - Use 'docker-compose exec squeezelite-multiroom aplay -l' to see devices from inside the container
-# - The web interface will show available devices automatically
+# - Each player needs a unique name and clientId
+# - Use the web interface at http://localhost:8096 to create players
+# - Device indices are shown in the web interface device dropdown
+# - Players are automatically started on container restart if they were running
