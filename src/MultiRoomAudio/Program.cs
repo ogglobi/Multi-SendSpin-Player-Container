@@ -118,11 +118,12 @@ app.UseCors("AllowAll");
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Enable Swagger
+// Enable Swagger with relative paths for ingress compatibility
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Multi-Room Audio API v2");
+    // Use relative path so it works behind HA ingress proxy
+    c.SwaggerEndpoint("../swagger/v1/swagger.json", "Multi-Room Audio API v2");
     c.RoutePrefix = "docs";
 });
 
