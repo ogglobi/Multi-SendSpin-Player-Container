@@ -21,6 +21,12 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     public AudioFormat Format => _buffer.Format;
 
     /// <summary>
+    /// Gets the underlying timed audio buffer.
+    /// Used by <see cref="ResamplingAudioSampleSource"/> to subscribe to rate changes.
+    /// </summary>
+    public ITimedAudioBuffer Buffer => _buffer;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="BufferedAudioSampleSource"/> class.
     /// </summary>
     /// <param name="buffer">The timed audio buffer to read from.</param>

@@ -19,6 +19,10 @@ public class PortAudioPlayer : IAudioPlayer
     private string? _deviceId;
     private bool _disposed;
 
+    // Pre-allocated buffer to avoid allocations in real-time audio callback
+    private float[]? _callbackBuffer;
+    private int _callbackBufferChannels;
+
     /// <summary>
     /// Static reference counter for PortAudio initialization.
     /// PortAudio.Initialize() must be called before use, and PortAudio.Terminate()
@@ -93,6 +97,11 @@ public class PortAudioPlayer : IAudioPlayer
 
                 _currentFormat = format;
                 OutputLatencyMs = (int)(outputParams.suggestedLatency * 1000);
+
+                // Pre-allocate callback buffer for real-time audio thread
+                // Use a generous size to avoid reallocations (4096 frames is typical max)
+                _callbackBufferChannels = format.Channels;
+                _callbackBuffer = new float[4096 * format.Channels];
 
                 SetState(AudioPlayerState.Stopped);
                 _logger.LogInformation("PortAudio player initialized. Latency: {Latency}ms", OutputLatencyMs);
@@ -235,14 +244,16 @@ public class PortAudioPlayer : IAudioPlayer
     {
         try
         {
+            var channels = _currentFormat?.Channels ?? 2;
+            var samplesNeeded = (int)(frameCount * channels);
+
             if (_sampleSource == null || IsMuted)
             {
                 // Output silence
                 unsafe
                 {
                     var buffer = (float*)output;
-                    var channels = _currentFormat?.Channels ?? 2;
-                    for (int i = 0; i < frameCount * channels; i++)
+                    for (int i = 0; i < samplesNeeded; i++)
                     {
                         buffer[i] = 0f;
                     }
@@ -250,19 +261,27 @@ public class PortAudioPlayer : IAudioPlayer
                 return StreamCallbackResult.Continue;
             }
 
-            // Read samples from source and apply volume
-            var samples = new float[frameCount * (_currentFormat?.Channels ?? 2)];
-            var read = _sampleSource.Read(samples, 0, samples.Length);
+            // Ensure pre-allocated buffer is large enough (grow if needed, but avoid shrinking)
+            if (_callbackBuffer == null || _callbackBuffer.Length < samplesNeeded)
+            {
+                // This should rarely happen - we pre-allocate 4096 frames
+                _callbackBuffer = new float[samplesNeeded * 2];
+            }
 
+            // Read samples from source into pre-allocated buffer
+            var read = _sampleSource.Read(_callbackBuffer, 0, samplesNeeded);
+
+            // Apply volume and copy to output
             unsafe
             {
                 var buffer = (float*)output;
+                var vol = Volume;
                 for (int i = 0; i < read; i++)
                 {
-                    buffer[i] = samples[i] * Volume;
+                    buffer[i] = _callbackBuffer[i] * vol;
                 }
                 // Fill remaining with silence
-                for (int i = read; i < samples.Length; i++)
+                for (int i = read; i < samplesNeeded; i++)
                 {
                     buffer[i] = 0f;
                 }

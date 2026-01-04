@@ -44,6 +44,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private const int AudioBufferCapacityMs = 8000;
 
     /// <summary>
+    /// Target buffer level in milliseconds for faster startup.
+    /// Lower values = faster start but more sensitive to jitter.
+    /// </summary>
+    private const int TargetBufferMs = 250;
+
+    /// <summary>
     /// Timeout for mDNS server discovery.
     /// </summary>
     private static readonly TimeSpan MdnsDiscoveryTimeout = TimeSpan.FromSeconds(5);
@@ -260,14 +266,27 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 request.Device);
 
             // 4. Create audio pipeline with proper factories
+            // Uses resampling source for smooth sync correction (SDK 2.2.0 tiered correction)
             var decoderFactory = new AudioDecoderFactory();
             var pipeline = new AudioPipeline(
                 _loggerFactory.CreateLogger<AudioPipeline>(),
                 decoderFactory,
                 clockSync,
-                bufferFactory: (format, sync) => new TimedAudioBuffer(format, sync, bufferCapacityMs: AudioBufferCapacityMs),
+                bufferFactory: (format, sync) =>
+                {
+                    var buffer = new TimedAudioBuffer(format, sync, bufferCapacityMs: AudioBufferCapacityMs);
+                    buffer.TargetBufferMilliseconds = TargetBufferMs;  // Faster startup (250ms vs default 500ms)
+                    return buffer;
+                },
                 playerFactory: () => player,
-                sourceFactory: (buffer, timeFunc) => new BufferedAudioSampleSource(buffer, timeFunc));
+                sourceFactory: (buffer, timeFunc) =>
+                {
+                    var source = new BufferedAudioSampleSource(buffer, timeFunc);
+                    // Wrap with resampling for smooth playback rate adjustment (±4%)
+                    return new ResamplingAudioSampleSource(source, buffer);
+                },
+                waitForConvergence: true,      // Wait for Kalman filter to converge before playback
+                convergenceTimeoutMs: 5000);   // 5 second timeout for clock sync
 
             // 5. Create WebSocket connection
             var connection = new SendspinConnection(
