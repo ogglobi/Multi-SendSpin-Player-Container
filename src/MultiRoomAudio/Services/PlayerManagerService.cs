@@ -647,8 +647,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 name, error.Message);
             context.ErrorMessage = error.Message;
 
-            // Broadcast status update on error
-            _ = BroadcastStatusAsync();
+            // Auto-stop player on pipeline error to prevent resource waste
+            _logger.LogWarning("Auto-stopping player '{Name}' due to pipeline error", name);
+            _ = StopPlayerInternalAsync(name, "Pipeline error: " + error.Message);
         };
 
         context.Player.ErrorOccurred += (_, error) =>
@@ -657,8 +658,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 name, error.Message);
             context.ErrorMessage = error.Message;
 
-            // Broadcast status update on error
-            _ = BroadcastStatusAsync();
+            // Auto-stop player on audio error (e.g., device unavailable)
+            _logger.LogWarning("Auto-stopping player '{Name}' due to audio error", name);
+            _ = StopPlayerInternalAsync(name, "Audio error: " + error.Message);
         };
     }
 
@@ -704,6 +706,73 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 16 },
             new AudioFormat { Codec = "flac", SampleRate = 48000, Channels = 2 }
         };
+    }
+
+    /// <summary>
+    /// Internal method to stop a player due to an error, preserving it for restart.
+    /// Unlike StopPlayerAsync, this keeps the player in the dictionary so it can be restarted.
+    /// </summary>
+    /// <param name="name">The player name.</param>
+    /// <param name="reason">The reason for stopping (error message).</param>
+    private async Task StopPlayerInternalAsync(string name, string reason)
+    {
+        if (!_players.TryGetValue(name, out var context))
+            return;
+
+        // Prevent re-entrancy if already stopping
+        if (context.State == PlayerState.Error || context.State == PlayerState.Stopped)
+        {
+            _logger.LogDebug("Player '{Name}' already in {State} state, skipping internal stop", name, context.State);
+            return;
+        }
+
+        _logger.LogInformation("Internal stop for player '{Name}': {Reason}", name, reason);
+
+        try
+        {
+            // Update state to error first
+            context.State = PlayerState.Error;
+            context.ErrorMessage = reason;
+
+            // Stop the pipeline gracefully
+            try
+            {
+                await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Timeout stopping pipeline for player '{Name}'", name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error stopping pipeline for player '{Name}'", name);
+            }
+
+            // Disconnect from server gracefully
+            try
+            {
+                await context.Client.DisconnectAsync("Audio error: " + reason).WaitAsync(DisposalTimeout);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Timeout disconnecting player '{Name}'", name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disconnecting player '{Name}'", name);
+            }
+
+            _logger.LogInformation("Player '{Name}' stopped due to error. Use restart to reconnect.", name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error during internal stop of player '{Name}'", name);
+        }
+        finally
+        {
+            // Always broadcast status update
+            _ = BroadcastStatusAsync();
+        }
     }
 
     /// <summary>

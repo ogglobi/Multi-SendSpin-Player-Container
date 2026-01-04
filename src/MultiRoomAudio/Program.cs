@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using MultiRoomAudio.Controllers;
 using MultiRoomAudio.Hubs;
 using MultiRoomAudio.Services;
@@ -51,8 +52,12 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Add SignalR for real-time status updates
-builder.Services.AddSignalR();
+// Add SignalR for real-time status updates with string enum serialization
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
 // Add CORS for web UI and external access
 builder.Services.AddCors(options =>
@@ -67,6 +72,12 @@ builder.Services.AddCors(options =>
 
 // Add health checks
 builder.Services.AddHealthChecks();
+
+// Configure JSON serialization to use string enum values
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 // Core services (singletons for shared state)
 builder.Services.AddSingleton<EnvironmentService>();
