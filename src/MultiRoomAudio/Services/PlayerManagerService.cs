@@ -169,7 +169,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogDebug("Stopping player {PlayerName}...", name);
         }
 
-        var tasks = playerNames.Select(name => StopPlayerAsync(name)).ToArray();
+        // On service shutdown, fully dispose all players
+        var tasks = playerNames.Select(name => RemoveAndDisposePlayerAsync(name)).ToArray();
         await Task.WhenAll(tasks);
 
         _logger.LogInformation("PlayerManagerService stopped, all players disposed");
@@ -430,27 +431,48 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
-    /// Stops and removes a player.
+    /// Stops a player but keeps it in the dictionary for restart.
+    /// The player will show as "Stopped" in the UI.
     /// </summary>
     public async Task<bool> StopPlayerAsync(string name)
     {
-        if (!_players.TryRemove(name, out var context))
+        if (!_players.TryGetValue(name, out var context))
             return false;
+
+        // Already stopped?
+        if (context.State == PlayerState.Stopped)
+        {
+            _logger.LogDebug("Player '{Name}' is already stopped", name);
+            return true;
+        }
 
         _logger.LogInformation("Stopping player '{Name}'", name);
 
         try
         {
             context.Cts.Cancel();
+            context.State = PlayerState.Stopped;
 
-            await context.Client.DisconnectAsync("Player stopped");
-            await context.Pipeline.StopAsync();
-            await context.Client.DisposeAsync();
-            await context.Pipeline.DisposeAsync();
-            await context.Player.DisposeAsync();
-            await context.Connection.DisposeAsync();
+            // Stop pipeline and disconnect, but don't remove from dictionary
+            try
+            {
+                await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Timeout stopping pipeline for player '{Name}'", name);
+            }
 
-            _logger.LogInformation("Player '{Name}' stopped and disposed", name);
+            try
+            {
+                await context.Client.DisconnectAsync("Player stopped").WaitAsync(DisposalTimeout);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Timeout disconnecting player '{Name}'", name);
+            }
+
+            _logger.LogInformation("Player '{Name}' stopped (config preserved)", name);
 
             // Broadcast status update to all clients
             _ = BroadcastStatusAsync();
@@ -460,11 +482,51 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error stopping player '{Name}'", name);
+            context.State = PlayerState.Error;
+            context.ErrorMessage = ex.Message;
+
+            _ = BroadcastStatusAsync();
+
+            return true; // Still consider it stopped
+        }
+    }
+
+    /// <summary>
+    /// Removes a player from the dictionary and disposes all resources.
+    /// </summary>
+    private async Task<bool> RemoveAndDisposePlayerAsync(string name)
+    {
+        if (!_players.TryRemove(name, out var context))
+            return false;
+
+        _logger.LogInformation("Removing and disposing player '{Name}'", name);
+
+        try
+        {
+            context.Cts.Cancel();
+
+            await context.Client.DisconnectAsync("Player removed").WaitAsync(DisposalTimeout);
+            await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
+            await context.Client.DisposeAsync();
+            await context.Pipeline.DisposeAsync();
+            await context.Player.DisposeAsync();
+            await context.Connection.DisposeAsync();
+
+            _logger.LogInformation("Player '{Name}' removed and disposed", name);
+
+            // Broadcast status update to all clients
+            _ = BroadcastStatusAsync();
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error disposing player '{Name}'", name);
 
             // Still broadcast since player was removed from dictionary
             _ = BroadcastStatusAsync();
 
-            return true; // Still consider it stopped
+            return true;
         }
     }
 
@@ -473,7 +535,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     public async Task<bool> DeletePlayerAsync(string name)
     {
-        var stopped = await StopPlayerAsync(name);
+        var removed = await RemoveAndDisposePlayerAsync(name);
 
         // Also remove from configuration
         if (_config.DeletePlayer(name))
@@ -482,11 +544,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogInformation("Deleted player configuration: {Name}", name);
         }
 
-        return stopped;
+        return removed;
     }
 
     /// <summary>
-    /// Restarts a player (stops and recreates with same config).
+    /// Restarts a player (disposes old resources and recreates with same config).
     /// </summary>
     public async Task<PlayerResponse?> RestartPlayerAsync(string name, CancellationToken ct = default)
     {
@@ -495,7 +557,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         var config = context.Config;
 
-        await StopPlayerAsync(name);
+        // Fully remove and dispose old player
+        await RemoveAndDisposePlayerAsync(name);
 
         var request = new PlayerCreateRequest
         {
