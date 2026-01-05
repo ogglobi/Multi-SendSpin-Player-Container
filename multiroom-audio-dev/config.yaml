@@ -1,0 +1,47 @@
+name: Multi-Room Audio (Dev)
+version: dev
+slug: multiroom-audio-dev
+description: >-
+  Development builds - may be unstable. Sendspin-powered multi-room audio
+  controller for testing new features.
+url: https://github.com/chrisuthe/squeezelite-docker
+image: ghcr.io/chrisuthe/multiroom-audio-hassio:dev
+startup: services
+arch:
+  - amd64
+
+# Hardware access
+audio: true
+full_access: true
+host_network: true
+udev: true
+
+# Permissions for audio processing
+privileged:
+  - SYS_NICE
+apparmor: false
+
+# Storage mapping
+map:
+  - config:rw
+  - share:rw
+
+# Web interface via ingress only (no direct port exposure)
+ingress: true
+ingress_port: 8096
+panel_icon: mdi:speaker-multiple
+panel_title: Multi-Room Audio (Dev)
+
+# User-configurable options
+options:
+  log_level: info
+
+schema:
+  log_level: list(debug|info|warning|error)
+
+# Watchdog - auto-restart if health check fails
+watchdog: http://[HOST]:[PORT:8096]/api/health
+
+# Build stage - experimental hides unless enabled in settings
+stage: experimental
+init: false
