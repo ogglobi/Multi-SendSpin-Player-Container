@@ -34,14 +34,3 @@ public static class ProvidersEndpoint
         .WithDescription("Get available audio player providers");
     }
 }
-
-/// <summary>
-/// Information about an audio player provider.
-/// </summary>
-public class ProviderInfo
-{
-    public required string Type { get; set; }
-    public required string DisplayName { get; set; }
-    public bool Available { get; set; }
-    public string? Description { get; set; }
-}

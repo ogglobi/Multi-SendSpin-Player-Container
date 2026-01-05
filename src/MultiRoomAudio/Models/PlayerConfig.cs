@@ -72,11 +72,16 @@ public class PlayerCreateRequest
 /// <summary>
 /// Request to switch audio device.
 /// </summary>
-/// <param name="Device">The device identifier to switch to.</param>
+/// <param name="Device">The device identifier to switch to. If null, the default device will be used.</param>
 public record DeviceSwitchRequest(
-    [property: Required(ErrorMessage = "Device is required.")]
     [property: StringLength(100, ErrorMessage = "Device name cannot exceed 100 characters.")]
-    string Device);
+    string? Device);
+
+/// <summary>
+/// Request to set mute state.
+/// </summary>
+/// <param name="Muted">True to mute the player, false to unmute.</param>
+public record MuteRequest(bool Muted);
 
 /// <summary>
 /// Request to set volume.

@@ -1,5 +1,19 @@
 namespace MultiRoomAudio.Models;
 
+// =============================================================================
+// API Response Models
+// =============================================================================
+// This file contains lightweight API response types used across multiple endpoints.
+// These types are grouped together because:
+// 1. They are all simple record types with minimal logic
+// 2. They serve a common purpose: API serialization
+// 3. Splitting into separate files would create unnecessary file proliferation
+//    for types that are each under 10 lines
+//
+// Device-specific types: AudioDevice, DevicesListResponse
+// Generic response types: ErrorResponse, SuccessResponse, HealthResponse
+// =============================================================================
+
 /// <summary>
 /// Audio device information.
 /// </summary>
@@ -45,14 +59,4 @@ public record HealthResponse(
     string Status,
     DateTime Timestamp,
     string Version
-);
-
-/// <summary>
-/// Player statistics for health check.
-/// </summary>
-public record PlayerStats(
-    int Total,
-    int Running,
-    int Connected,
-    int Failed
 );

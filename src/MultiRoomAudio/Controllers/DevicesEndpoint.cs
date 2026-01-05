@@ -54,35 +54,8 @@ public static class DevicesEndpoint
         .WithName("ListDevices")
         .WithDescription("List all available audio output devices");
 
-        // GET /api/devices/{id} - Get specific device
-        group.MapGet("/{id}", (string id, ILoggerFactory loggerFactory) =>
-        {
-            var logger = loggerFactory.CreateLogger("DevicesEndpoint");
-            logger.LogDebug("API: GET /api/devices/{DeviceId}", id);
-            try
-            {
-                var device = PortAudioDeviceEnumerator.GetDevice(id);
-                if (device == null)
-                {
-                    logger.LogDebug("Device {DeviceId} not found", id);
-                    return Results.NotFound(new ErrorResponse(false, $"Device '{id}' not found"));
-                }
-
-                return Results.Ok(device);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to get device info for {DeviceId}", id);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to get device info");
-            }
-        })
-        .WithName("GetDevice")
-        .WithDescription("Get details of a specific audio device");
-
         // GET /api/devices/default - Get default device
+        // NOTE: This route must be registered BEFORE /{id} to prevent the parameterized route from intercepting it
         group.MapGet("/default", (ILoggerFactory loggerFactory) =>
         {
             var logger = loggerFactory.CreateLogger("DevicesEndpoint");
@@ -111,6 +84,34 @@ public static class DevicesEndpoint
         })
         .WithName("GetDefaultDevice")
         .WithDescription("Get the default audio output device");
+
+        // GET /api/devices/{id} - Get specific device
+        group.MapGet("/{id}", (string id, ILoggerFactory loggerFactory) =>
+        {
+            var logger = loggerFactory.CreateLogger("DevicesEndpoint");
+            logger.LogDebug("API: GET /api/devices/{DeviceId}", id);
+            try
+            {
+                var device = PortAudioDeviceEnumerator.GetDevice(id);
+                if (device == null)
+                {
+                    logger.LogDebug("Device {DeviceId} not found", id);
+                    return Results.NotFound(new ErrorResponse(false, $"Device '{id}' not found"));
+                }
+
+                return Results.Ok(device);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to get device info for {DeviceId}", id);
+                return Results.Problem(
+                    detail: ex.Message,
+                    statusCode: 500,
+                    title: "Failed to get device info");
+            }
+        })
+        .WithName("GetDevice")
+        .WithDescription("Get details of a specific audio device");
 
         // POST /api/devices/refresh - Refresh device list
         group.MapPost("/refresh", (ILoggerFactory loggerFactory) =>

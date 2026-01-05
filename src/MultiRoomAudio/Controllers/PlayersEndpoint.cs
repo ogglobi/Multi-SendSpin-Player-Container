@@ -8,6 +8,20 @@ namespace MultiRoomAudio.Controllers;
 /// </summary>
 public static class PlayersEndpoint
 {
+    #region Helper Methods
+
+    /// <summary>
+    /// Creates a standardized NotFound response for missing players.
+    /// Centralizes error message formatting to avoid duplication.
+    /// </summary>
+    private static IResult PlayerNotFoundResult(string name, ILogger logger, string action)
+    {
+        logger.LogDebug("API: Player {PlayerName} not found for {Action}", name, action);
+        return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
+    }
+
+    #endregion
+
     public static void MapPlayersEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/players")
@@ -31,10 +45,7 @@ public static class PlayersEndpoint
             logger.LogDebug("API: GET /api/players/{PlayerName}", name);
             var player = manager.GetPlayer(name);
             if (player == null)
-            {
-                logger.LogDebug("API: Player {PlayerName} not found", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                return PlayerNotFoundResult(name, logger, "get");
 
             return Results.Ok(player);
         })
@@ -86,10 +97,7 @@ public static class PlayersEndpoint
             logger.LogDebug("API: DELETE /api/players/{PlayerName}", name);
             var deleted = await manager.DeletePlayerAsync(name);
             if (!deleted)
-            {
-                logger.LogDebug("API: Player {PlayerName} not found for deletion", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                return PlayerNotFoundResult(name, logger, "deletion");
 
             logger.LogInformation("API: Player {PlayerName} deleted successfully", name);
             return Results.Ok(new SuccessResponse(true, $"Player '{name}' deleted"));
@@ -106,10 +114,7 @@ public static class PlayersEndpoint
             logger.LogDebug("API: POST /api/players/{PlayerName}/stop", name);
             var stopped = await manager.StopPlayerAsync(name);
             if (!stopped)
-            {
-                logger.LogDebug("API: Player {PlayerName} not found for stop", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                return PlayerNotFoundResult(name, logger, "stop");
 
             logger.LogInformation("API: Player {PlayerName} stopped successfully", name);
             return Results.Ok(new SuccessResponse(true, $"Player '{name}' stopped"));
@@ -129,10 +134,7 @@ public static class PlayersEndpoint
             {
                 var player = await manager.StartPlayerAsync(name, ct);
                 if (player == null)
-                {
-                    logger.LogDebug("API: Player {PlayerName} not found for start", name);
-                    return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-                }
+                    return PlayerNotFoundResult(name, logger, "start");
 
                 logger.LogInformation("API: Player {PlayerName} started successfully", name);
                 return Results.Ok(player);
@@ -161,10 +163,7 @@ public static class PlayersEndpoint
             {
                 var player = await manager.RestartPlayerAsync(name, ct);
                 if (player == null)
-                {
-                    logger.LogDebug("API: Player {PlayerName} not found for restart", name);
-                    return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-                }
+                    return PlayerNotFoundResult(name, logger, "restart");
 
                 logger.LogInformation("API: Player {PlayerName} restarted successfully", name);
                 return Results.Ok(player);
@@ -195,10 +194,7 @@ public static class PlayersEndpoint
             {
                 var success = await manager.SwitchDeviceAsync(name, request.Device, ct);
                 if (!success)
-                {
-                    logger.LogDebug("API: Player {PlayerName} not found for device switch", name);
-                    return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-                }
+                    return PlayerNotFoundResult(name, logger, "device switch");
 
                 logger.LogInformation("API: Player {PlayerName} switched to device {Device}",
                     name, request.Device ?? "(default)");
@@ -234,10 +230,7 @@ public static class PlayersEndpoint
             {
                 var success = await manager.SetVolumeAsync(name, request.Volume, ct);
                 if (!success)
-                {
-                    logger.LogDebug("API: Player {PlayerName} not found for volume change", name);
-                    return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-                }
+                    return PlayerNotFoundResult(name, logger, "volume change");
 
                 return Results.Ok(new SuccessResponse(true, $"Volume set to {request.Volume}"));
             }
@@ -263,10 +256,7 @@ public static class PlayersEndpoint
             logger.LogDebug("API: PUT /api/players/{PlayerName}/mute to {Muted}", name, request.Muted);
             var success = manager.SetMuted(name, request.Muted);
             if (!success)
-            {
-                logger.LogDebug("API: Player {PlayerName} not found for mute change", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                return PlayerNotFoundResult(name, logger, "mute change");
 
             return Results.Ok(new SuccessResponse(true, request.Muted ? "Muted" : "Unmuted"));
         })
@@ -284,10 +274,7 @@ public static class PlayersEndpoint
             logger.LogDebug("API: PUT /api/players/{PlayerName}/offset to {DelayMs}ms", name, request.DelayMs);
             var player = manager.GetPlayer(name);
             if (player == null)
-            {
-                logger.LogDebug("API: Player {PlayerName} not found for offset change", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                return PlayerNotFoundResult(name, logger, "offset change");
 
             // Update config and save
             config.UpdatePlayerField(name, c => c.DelayMs = request.DelayMs);
@@ -304,15 +291,23 @@ public static class PlayersEndpoint
             ILogger<PlayerManagerService> logger) =>
         {
             logger.LogDebug("API: POST /api/players/{PlayerName}/pause", name);
-            var player = manager.GetPlayer(name);
-            if (player == null)
+            try
             {
-                logger.LogDebug("API: Player {PlayerName} not found for pause", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                var player = manager.GetPlayer(name);
+                if (player == null)
+                    return PlayerNotFoundResult(name, logger, "pause");
 
-            manager.PausePlayer(name);
-            return Results.Ok(new SuccessResponse(true, "Playback paused"));
+                manager.PausePlayer(name);
+                return Results.Ok(new SuccessResponse(true, "Playback paused"));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "API: Failed to pause player {PlayerName}", name);
+                return Results.Problem(
+                    detail: ex.Message,
+                    statusCode: 500,
+                    title: "Failed to pause player");
+            }
         })
         .WithName("PausePlayer")
         .WithDescription("Pause player playback");
@@ -324,22 +319,25 @@ public static class PlayersEndpoint
             ILogger<PlayerManagerService> logger) =>
         {
             logger.LogDebug("API: POST /api/players/{PlayerName}/resume", name);
-            var player = manager.GetPlayer(name);
-            if (player == null)
+            try
             {
-                logger.LogDebug("API: Player {PlayerName} not found for resume", name);
-                return Results.NotFound(new ErrorResponse(false, $"Player '{name}' not found"));
-            }
+                var player = manager.GetPlayer(name);
+                if (player == null)
+                    return PlayerNotFoundResult(name, logger, "resume");
 
-            manager.ResumePlayer(name);
-            return Results.Ok(new SuccessResponse(true, "Playback resumed"));
+                manager.ResumePlayer(name);
+                return Results.Ok(new SuccessResponse(true, "Playback resumed"));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "API: Failed to resume player {PlayerName}", name);
+                return Results.Problem(
+                    detail: ex.Message,
+                    statusCode: 500,
+                    title: "Failed to resume player");
+            }
         })
         .WithName("ResumePlayer")
         .WithDescription("Resume player playback");
     }
 }
-
-/// <summary>
-/// Request to set mute state.
-/// </summary>
-public record MuteRequest(bool Muted);
