@@ -5,7 +5,7 @@ description: >-
   Development builds - may be unstable. Sendspin-powered multi-room audio
   controller for testing new features.
 url: https://github.com/chrisuthe/squeezelite-docker
-image: ghcr.io/chrisuthe/multiroom-audio-hassio:dev
+image: ghcr.io/chrisuthe/multiroom-audio-hassio-dev
 startup: services
 arch:
   - amd64
