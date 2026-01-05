@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-42852f4
+## Development Build: sha-6393c45
 
 **Current Dev Build Changes** (recent)
 
+- fix: push dev HASSIO image with SHA tag for HAOS compatibility
+- Filter more ALSA plugin devices
 - Update ALSA for graceful reconnect
 - - Add startup check if on HAOS to make sure pulseaudio is ready - Add reconnection if connection drops to audio provider - Add friendly names where possible to device dropdown
 - use direct ALSA where available, show more devices that are software configured.
@@ -12,7 +14,6 @@
 - Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into dev
 - clean up stable vs dev
 - docs: add 2.0.12 changelog entry for audio quality fixes
-- fix: configure PulseAudio sync options to disable frame drop/insert
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
