@@ -15,6 +15,7 @@ EXPOSE 8096
 # - libasound2: ALSA library
 # - libasound2-plugins: ALSA plugins including PulseAudio bridge
 # - udev: Required for module-udev-detect to enumerate ALSA devices
+# Cache bust: 2026-01-05
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
     alsa-utils \
