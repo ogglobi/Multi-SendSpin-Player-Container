@@ -102,7 +102,13 @@ jobs:
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             VCS_REF=${{ github.sha }}
 
-      # Push to separate HASSIO dev image (HAOS doesn't allow tags in image field)
+      # Get short SHA for dev image tag (must match what's set in config.yaml)
+      - name: Get short SHA
+        if: github.ref == 'refs/heads/dev'
+        id: short_sha
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      # Push to separate HASSIO dev image with SHA tag (HAOS uses version as image tag)
       - name: Push to HASSIO dev image
         if: github.ref == 'refs/heads/dev'
         uses: docker/build-push-action@v6
@@ -111,7 +117,9 @@ jobs:
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.HASSIO_DEV_IMAGE }}:latest
+          tags: |
+            ${{ env.HASSIO_DEV_IMAGE }}:latest
+            ${{ env.HASSIO_DEV_IMAGE }}:sha-${{ steps.short_sha.outputs.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker
           build-args: |
