@@ -42,6 +42,26 @@ public class AlsaPlayer : IAudioPlayer
     /// </summary>
     private const int FramesPerWrite = 1024;
 
+    /// <summary>
+    /// Number of consecutive recovery failures before attempting device reconnection.
+    /// </summary>
+    private const int MaxRecoveryFailures = 5;
+
+    /// <summary>
+    /// Maximum reconnection attempts before giving up.
+    /// </summary>
+    private const int MaxReconnectAttempts = 10;
+
+    /// <summary>
+    /// Base delay between reconnection attempts (exponential backoff).
+    /// </summary>
+    private const int ReconnectBaseDelayMs = 500;
+
+    /// <summary>
+    /// Maximum delay between reconnection attempts.
+    /// </summary>
+    private const int ReconnectMaxDelayMs = 10000;
+
     public AudioPlayerState State { get; private set; } = AudioPlayerState.Uninitialized;
 
     private volatile float _volume = 1.0f;
@@ -359,6 +379,7 @@ public class AlsaPlayer : IAudioPlayer
     private void PlaybackLoop()
     {
         _logger.LogDebug("Playback thread started");
+        int consecutiveFailures = 0;
 
         try
         {
@@ -377,10 +398,23 @@ public class AlsaPlayer : IAudioPlayer
                 var byteBuffer = _byteBuffer;
                 var format = _currentFormat;
 
-                if (source == null || buffer == null || byteBuffer == null ||
-                    format == null || _pcmHandle == IntPtr.Zero)
+                if (source == null || buffer == null || byteBuffer == null || format == null)
                 {
                     Thread.Sleep(10);
+                    continue;
+                }
+
+                // Check if handle is valid, attempt reconnect if needed
+                if (_pcmHandle == IntPtr.Zero)
+                {
+                    _logger.LogWarning("ALSA handle is null - attempting reconnection...");
+                    if (!TryReconnect())
+                    {
+                        _logger.LogError("ALSA reconnection failed - stopping playback");
+                        OnError("ALSA device lost and could not reconnect", null);
+                        break;
+                    }
+                    consecutiveFailures = 0;
                     continue;
                 }
 
@@ -407,6 +441,7 @@ public class AlsaPlayer : IAudioPlayer
                 var frames = samplesRead / format.Channels;
 
                 // Write to ALSA
+                bool writeSuccess = false;
                 unsafe
                 {
                     fixed (byte* ptr = byteBuffer)
@@ -420,9 +455,48 @@ public class AlsaPlayer : IAudioPlayer
                         {
                             // Handle errors
                             var errorCode = (int)written;
-                            HandlePlaybackError(errorCode);
+                            var recovered = HandlePlaybackError(errorCode);
+
+                            if (!recovered)
+                            {
+                                consecutiveFailures++;
+
+                                if (consecutiveFailures >= MaxRecoveryFailures)
+                                {
+                                    _logger.LogWarning(
+                                        "ALSA recovery failed {Count} consecutive times. Attempting device reconnection...",
+                                        consecutiveFailures);
+
+                                    if (!TryReconnect())
+                                    {
+                                        _logger.LogError("ALSA reconnection failed - stopping playback");
+                                        OnError($"ALSA device lost: {AlsaNative.GetErrorMessage(errorCode)}", null);
+                                        break;
+                                    }
+                                    consecutiveFailures = 0;
+                                }
+                                else
+                                {
+                                    Thread.Sleep(10);
+                                }
+                            }
+                            else
+                            {
+                                // Recovery succeeded - reset failure counter
+                                consecutiveFailures = 0;
+                            }
+                        }
+                        else
+                        {
+                            writeSuccess = true;
                         }
                     }
+                }
+
+                // Reset failure counter on successful write
+                if (writeSuccess)
+                {
+                    consecutiveFailures = 0;
                 }
             }
         }
@@ -442,7 +516,8 @@ public class AlsaPlayer : IAudioPlayer
     /// <summary>
     /// Handles ALSA playback errors with recovery attempts.
     /// </summary>
-    private void HandlePlaybackError(int errorCode)
+    /// <returns>True if recovery succeeded, false if reconnection is needed.</returns>
+    private bool HandlePlaybackError(int errorCode)
     {
         // Try to recover from common errors
         if (errorCode == AlsaNative.EPIPE)
@@ -454,7 +529,9 @@ public class AlsaPlayer : IAudioPlayer
             {
                 _logger.LogWarning("Failed to recover from underrun: {Error}",
                     AlsaNative.GetErrorMessage(recoverResult));
+                return false;
             }
+            return true;
         }
         else if (errorCode == AlsaNative.ESTRPIPE)
         {
@@ -476,13 +553,16 @@ public class AlsaPlayer : IAudioPlayer
                 {
                     _logger.LogWarning("Failed to recover from suspend: {Error}",
                         AlsaNative.GetErrorMessage(recoverResult));
+                    return false;
                 }
             }
+            return true;
         }
         else if (errorCode == AlsaNative.EAGAIN)
         {
             // Non-blocking would return this - just wait
             Thread.Sleep(1);
+            return true;
         }
         else
         {
@@ -494,9 +574,132 @@ public class AlsaPlayer : IAudioPlayer
             {
                 _logger.LogError("Failed to recover from error: {Error}",
                     AlsaNative.GetErrorMessage(recoverResult));
-                Thread.Sleep(10);
+                return false;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to reconnect to the ALSA device with exponential backoff.
+    /// Called when the playback loop detects consecutive recovery failures.
+    /// </summary>
+    /// <returns>True if reconnection succeeded, false otherwise.</returns>
+    private bool TryReconnect()
+    {
+        if (_currentFormat == null)
+        {
+            _logger.LogError("Cannot reconnect - no format configured");
+            return false;
+        }
+
+        _logger.LogWarning("ALSA device lost - attempting to reconnect to '{Device}'...", _deviceName);
+
+        // Close the dead handle if it exists
+        lock (_lock)
+        {
+            if (_pcmHandle != IntPtr.Zero)
+            {
+                try
+                {
+                    AlsaNative.Close(_pcmHandle);
+                }
+                catch
+                {
+                    // Ignore errors when closing dead handle
+                }
+                _pcmHandle = IntPtr.Zero;
             }
         }
+
+        for (int attempt = 1; attempt <= MaxReconnectAttempts; attempt++)
+        {
+            // Calculate delay with exponential backoff
+            var delay = Math.Min(ReconnectBaseDelayMs * (1 << (attempt - 1)), ReconnectMaxDelayMs);
+
+            _logger.LogInformation(
+                "ALSA reconnect attempt {Attempt}/{MaxAttempts} in {Delay}ms...",
+                attempt, MaxReconnectAttempts, delay);
+
+            Thread.Sleep(delay);
+
+            // Check if we should stop trying
+            if (!_isPlaying || _disposed)
+            {
+                _logger.LogDebug("Reconnection cancelled - player stopped or disposed");
+                return false;
+            }
+
+            try
+            {
+                // Try to open the device
+                var result = AlsaNative.Open(
+                    out var newHandle,
+                    _deviceName,
+                    AlsaNative.StreamType.Playback,
+                    0);
+
+                if (result < 0)
+                {
+                    _logger.LogWarning(
+                        "ALSA reconnect attempt {Attempt} failed to open device: {Error}",
+                        attempt, AlsaNative.GetErrorMessage(result));
+                    continue;
+                }
+
+                // Configure PCM parameters
+                result = AlsaNative.SetParams(
+                    newHandle,
+                    AlsaNative.Format.FLOAT_LE,
+                    AlsaNative.Access.RwInterleaved,
+                    (uint)_currentFormat.Channels,
+                    (uint)_currentFormat.SampleRate,
+                    1,
+                    TargetLatencyUs);
+
+                if (result < 0)
+                {
+                    _logger.LogWarning(
+                        "ALSA reconnect attempt {Attempt} failed to set params: {Error}",
+                        attempt, AlsaNative.GetErrorMessage(result));
+                    AlsaNative.Close(newHandle);
+                    continue;
+                }
+
+                // Prepare the device
+                result = AlsaNative.Prepare(newHandle);
+                if (result < 0)
+                {
+                    _logger.LogWarning(
+                        "ALSA reconnect attempt {Attempt} failed to prepare: {Error}",
+                        attempt, AlsaNative.GetErrorMessage(result));
+                    AlsaNative.Close(newHandle);
+                    continue;
+                }
+
+                // Success!
+                lock (_lock)
+                {
+                    _pcmHandle = newHandle;
+                }
+
+                _logger.LogInformation(
+                    "ALSA reconnected successfully on attempt {Attempt}",
+                    attempt);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "ALSA reconnect attempt {Attempt} threw exception",
+                    attempt);
+            }
+        }
+
+        _logger.LogError(
+            "ALSA reconnection failed after {MaxAttempts} attempts",
+            MaxReconnectAttempts);
+        return false;
     }
 
     private void SetState(AudioPlayerState newState)
