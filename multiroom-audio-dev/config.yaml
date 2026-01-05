@@ -15,6 +15,9 @@ audio: true
 full_access: true
 host_network: true
 udev: true
+# TODO: Remove if full_access: true is sufficient for audio access
+devices:
+  - "/dev/snd:/dev/snd"
 
 # Permissions for audio processing
 privileged:
