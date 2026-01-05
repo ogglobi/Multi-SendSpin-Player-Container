@@ -24,8 +24,10 @@ fi
 echo "Standalone Docker mode - starting embedded PulseAudio"
 
 # Disable D-Bus integration entirely - we don't have D-Bus in the container
-export DBUS_SESSION_BUS_ADDRESS=/dev/null
+export DBUS_SESSION_BUS_ADDRESS=disabled
 export PULSE_SYSTEM=1
+# Tell PulseAudio clients where to connect (bypass D-Bus server lookup)
+export PULSE_SERVER=unix:/run/pulse/native
 
 # Ensure runtime directory exists and clean up stale files
 mkdir -p /run/pulse
