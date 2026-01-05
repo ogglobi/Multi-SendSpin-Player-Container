@@ -1,11 +1,11 @@
 # Multi-Room Audio Controller
 
 <!-- VERSION_INFO_START -->
-## 🚧 Development Build: sha-83439b5
+## 🚧 Development Build: sha-cd4d5c6
 
 **Current Dev Build Changes** (recent)
 
-- fix: enable timer-based PulseAudio scheduling (tsched=1)
+- fix: never bypass resampler to prevent pops on rate transitions
 
 > ⚠️ This is a development build. For stable releases, use the `latest` tag.
 <!-- VERSION_INFO_END -->
