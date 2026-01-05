@@ -12,6 +12,32 @@ echo "========================================="
 # HAOS provides PulseAudio via the audio: true config option
 if [ -f "/data/options.json" ] || [ -n "$SUPERVISOR_TOKEN" ]; then
     echo "Detected HAOS add-on mode - using system PulseAudio"
+
+    # Wait for PulseAudio to be available (similar to VLC add-on's pulse-monitor)
+    # The supervisor provides PulseAudio but it may not be ready immediately
+    echo "Waiting for PulseAudio to become available..."
+    MAX_WAIT=60
+    WAIT_COUNT=0
+    while ! pactl info >/dev/null 2>&1; do
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+        if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
+            echo "WARNING: PulseAudio not available after ${MAX_WAIT}s - starting anyway"
+            echo "Audio devices may not be available. Check HAOS audio configuration."
+            break
+        fi
+        if [ $((WAIT_COUNT % 5)) -eq 0 ]; then
+            echo "Still waiting for PulseAudio... (${WAIT_COUNT}s)"
+        fi
+        sleep 1
+    done
+
+    if pactl info >/dev/null 2>&1; then
+        echo "PulseAudio is ready!"
+        # Show available sinks for diagnostics
+        echo "Available PulseAudio sinks:"
+        pactl list sinks short 2>/dev/null || echo "  (none detected)"
+    fi
+
     exec ./MultiRoomAudio "$@"
 fi
 

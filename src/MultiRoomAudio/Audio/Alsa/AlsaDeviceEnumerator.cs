@@ -22,12 +22,11 @@ public static partial class AlsaDeviceEnumerator
         "iec958"  // S/PDIF generic device (usually not what users want)
     };
 
-    // Patterns for device name prefixes to filter
+    // Patterns for device name prefixes to filter (minimal - show most devices)
     private static readonly string[] IgnorePrefixes =
     {
         "dmix:",     // Direct mix devices (lower level than what we want)
-        "dsnoop:",   // Capture sharing
-        "surround",  // Surround configs (prefer explicit zone devices)
+        "dsnoop:",   // Capture sharing (input, not output)
     };
 
     /// <summary>
@@ -191,8 +190,8 @@ public static partial class AlsaDeviceEnumerator
                 continue;
             }
 
-            // Build display name from first description line or device ID
-            var name = description.Count > 0 ? description[0] : id;
+            // Build a nice display name
+            var name = BuildDisplayName(id, description);
 
             // Try to detect sample rate from description (hw devices often mention it)
             var sampleRate = DetectSampleRate(description) ?? 48000;
@@ -215,6 +214,142 @@ public static partial class AlsaDeviceEnumerator
                 IsDefault: isDefault
             );
         }
+    }
+
+    /// <summary>
+    /// Builds a user-friendly display name for a device.
+    /// Includes output type labels so users know where audio will come out.
+    /// </summary>
+    private static string BuildDisplayName(string deviceId, List<string> description)
+    {
+        // Get the base description (from aplay or generated)
+        var baseDesc = GetBaseDescription(deviceId, description);
+
+        // Add output type prefix for clarity
+        var outputType = GetOutputTypeLabel(deviceId);
+        if (!string.IsNullOrEmpty(outputType))
+        {
+            return $"{outputType}: {baseDesc}";
+        }
+
+        return baseDesc;
+    }
+
+    /// <summary>
+    /// Gets a human-readable label for the output type based on device prefix.
+    /// </summary>
+    private static string? GetOutputTypeLabel(string deviceId)
+    {
+        // Hardware devices
+        if (deviceId.StartsWith("hw:", StringComparison.OrdinalIgnoreCase))
+            return "Direct Hardware";
+        if (deviceId.StartsWith("plughw:", StringComparison.OrdinalIgnoreCase))
+            return "Hardware";
+
+        // Speaker configurations
+        if (deviceId.StartsWith("front:", StringComparison.OrdinalIgnoreCase))
+            return "Front Speakers";
+        if (deviceId.StartsWith("rear:", StringComparison.OrdinalIgnoreCase))
+            return "Rear Speakers";
+        if (deviceId.StartsWith("center_lfe:", StringComparison.OrdinalIgnoreCase))
+            return "Center/Subwoofer";
+        if (deviceId.StartsWith("side:", StringComparison.OrdinalIgnoreCase))
+            return "Side Speakers";
+
+        // Surround configurations
+        if (deviceId.StartsWith("surround71:", StringComparison.OrdinalIgnoreCase))
+            return "7.1 Surround";
+        if (deviceId.StartsWith("surround51:", StringComparison.OrdinalIgnoreCase))
+            return "5.1 Surround";
+        if (deviceId.StartsWith("surround50:", StringComparison.OrdinalIgnoreCase))
+            return "5.0 Surround";
+        if (deviceId.StartsWith("surround40:", StringComparison.OrdinalIgnoreCase))
+            return "Quad Surround";
+        if (deviceId.StartsWith("surround21:", StringComparison.OrdinalIgnoreCase))
+            return "2.1 Stereo";
+
+        // Digital outputs
+        if (deviceId.StartsWith("hdmi:", StringComparison.OrdinalIgnoreCase))
+            return "HDMI";
+        if (deviceId.StartsWith("iec958:", StringComparison.OrdinalIgnoreCase))
+            return "S/PDIF Digital";
+
+        // System defaults
+        if (deviceId.StartsWith("sysdefault:", StringComparison.OrdinalIgnoreCase))
+            return "System Default";
+        if (deviceId.StartsWith("default:", StringComparison.OrdinalIgnoreCase))
+            return "Default";
+
+        // Custom/zone devices get no prefix (they're already descriptive)
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the base description for a device from aplay output or generates one.
+    /// </summary>
+    private static string GetBaseDescription(string deviceId, List<string> description)
+    {
+        // If we have a description from aplay, use it
+        if (description.Count > 0 && !string.IsNullOrWhiteSpace(description[0]))
+        {
+            return description[0];
+        }
+
+        // No description - generate a nice name from the device ID
+
+        // Handle CARD=Name,DEV=N format (strip the prefix first)
+        var cardNameMatch = CardNameInIdRegex().Match(deviceId);
+        if (cardNameMatch.Success)
+        {
+            var cardName = cardNameMatch.Groups[1].Value;
+            var devNum = cardNameMatch.Groups[2].Success ? cardNameMatch.Groups[2].Value : "0";
+            return $"{cardName} (Device {devNum})";
+        }
+
+        // Handle numeric card format like hw:0,1 or plughw:2,0
+        var hwMatch = HwDeviceRegex().Match(deviceId);
+        if (hwMatch.Success)
+        {
+            var cardNum = hwMatch.Groups[1].Value;
+            var devNum = hwMatch.Groups[2].Success ? hwMatch.Groups[2].Value : "0";
+            return $"Card {cardNum}, Device {devNum}";
+        }
+
+        // Handle zone names - make them prettier
+        // "zone1" -> "Zone 1", "zone_kitchen" -> "Zone Kitchen"
+        var zoneMatch = ZoneNameRegex().Match(deviceId);
+        if (zoneMatch.Success)
+        {
+            var zoneName = zoneMatch.Groups[1].Value;
+            if (int.TryParse(zoneName, out var zoneNum))
+            {
+                return $"Zone {zoneNum}";
+            }
+            return $"Zone {CapitalizeWords(zoneName.Replace('_', ' '))}";
+        }
+
+        // For other custom devices, try to make the name nicer
+        var prettyName = deviceId.Replace('_', ' ').Replace('-', ' ');
+        return CapitalizeWords(prettyName);
+    }
+
+    /// <summary>
+    /// Capitalizes the first letter of each word.
+    /// </summary>
+    private static string CapitalizeWords(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < words.Length; i++)
+        {
+            if (words[i].Length > 0)
+            {
+                words[i] = char.ToUpper(words[i][0]) + words[i][1..].ToLower();
+            }
+        }
+        return string.Join(" ", words);
     }
 
     /// <summary>
@@ -330,4 +465,16 @@ public static partial class AlsaDeviceEnumerator
 
     [GeneratedRegex(@"(\d+)\s*ch", RegexOptions.IgnoreCase)]
     private static partial Regex ChannelRegex();
+
+    // Pattern for hw:CARD=Name,DEV=N format
+    [GeneratedRegex(@"^(?:hw|plughw):CARD=([^,]+)(?:,DEV=(\d+))?", RegexOptions.IgnoreCase)]
+    private static partial Regex CardNameInIdRegex();
+
+    // Pattern for hw:N,M or plughw:N,M format
+    [GeneratedRegex(@"^(?:hw|plughw):(\d+)(?:,(\d+))?$", RegexOptions.IgnoreCase)]
+    private static partial Regex HwDeviceRegex();
+
+    // Pattern for zone names like "zone1", "zone_kitchen", "zone-living"
+    [GeneratedRegex(@"^zone[_\-]?(.+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex ZoneNameRegex();
 }

@@ -207,41 +207,96 @@ public static partial class PulseAudioDeviceEnumerator
         );
     }
 
+    /// <summary>
+    /// Maximum retries for pactl commands when PulseAudio is temporarily unavailable.
+    /// </summary>
+    private const int MaxPactlRetries = 3;
+
+    /// <summary>
+    /// Delay between pactl retry attempts in milliseconds.
+    /// </summary>
+    private const int PactlRetryDelayMs = 500;
+
     private static string? RunPactl(string arguments)
     {
-        try
+        Exception? lastException = null;
+        string? lastError = null;
+
+        for (int attempt = 1; attempt <= MaxPactlRetries; attempt++)
         {
-            var psi = new ProcessStartInfo
+            try
             {
-                FileName = "pactl",
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "pactl",
+                    Arguments = arguments,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
-            using var process = Process.Start(psi);
-            if (process == null)
-                return null;
+                using var process = Process.Start(psi);
+                if (process == null)
+                {
+                    lastError = "Failed to start pactl process";
+                    continue;
+                }
 
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit(5000);
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit(5000);
 
-            if (process.ExitCode != 0)
-            {
-                _logger?.LogWarning("pactl {Args} failed: {Error}", arguments, error.Trim());
-                return null;
+                if (process.ExitCode != 0)
+                {
+                    lastError = error.Trim();
+
+                    // Check if this is a connection error that might be transient
+                    if (error.Contains("Connection refused") ||
+                        error.Contains("Connection failure") ||
+                        error.Contains("No PulseAudio daemon running"))
+                    {
+                        if (attempt < MaxPactlRetries)
+                        {
+                            _logger?.LogDebug(
+                                "pactl {Args} failed (attempt {Attempt}/{Max}): {Error}. Retrying...",
+                                arguments, attempt, MaxPactlRetries, lastError);
+                            Thread.Sleep(PactlRetryDelayMs);
+                            continue;
+                        }
+                    }
+
+                    _logger?.LogWarning("pactl {Args} failed: {Error}", arguments, lastError);
+                    return null;
+                }
+
+                // Success - return output
+                return output;
             }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                if (attempt < MaxPactlRetries)
+                {
+                    _logger?.LogDebug(ex,
+                        "pactl {Args} threw exception (attempt {Attempt}/{Max}). Retrying...",
+                        arguments, attempt, MaxPactlRetries);
+                    Thread.Sleep(PactlRetryDelayMs);
+                }
+            }
+        }
 
-            return output;
-        }
-        catch (Exception ex)
+        // All retries exhausted
+        if (lastException != null)
         {
-            _logger?.LogError(ex, "Failed to run pactl {Args}", arguments);
-            return null;
+            _logger?.LogError(lastException, "Failed to run pactl {Args} after {Attempts} attempts", arguments, MaxPactlRetries);
         }
+        else if (lastError != null)
+        {
+            _logger?.LogWarning("pactl {Args} failed after {Attempts} attempts: {Error}", arguments, MaxPactlRetries, lastError);
+        }
+
+        return null;
     }
 
     // Regex patterns for parsing pactl output

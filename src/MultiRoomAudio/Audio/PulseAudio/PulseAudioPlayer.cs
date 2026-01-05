@@ -43,6 +43,26 @@ public class PulseAudioPlayer : IAudioPlayer
     /// </summary>
     private const int FramesPerWrite = 1024;
 
+    /// <summary>
+    /// Number of consecutive write failures before attempting reconnection.
+    /// </summary>
+    private const int MaxConsecutiveFailures = 5;
+
+    /// <summary>
+    /// Maximum reconnection attempts before giving up.
+    /// </summary>
+    private const int MaxReconnectAttempts = 10;
+
+    /// <summary>
+    /// Base delay between reconnection attempts (exponential backoff).
+    /// </summary>
+    private const int ReconnectBaseDelayMs = 500;
+
+    /// <summary>
+    /// Maximum delay between reconnection attempts.
+    /// </summary>
+    private const int ReconnectMaxDelayMs = 10000;
+
     public AudioPlayerState State { get; private set; } = AudioPlayerState.Uninitialized;
 
     private volatile float _volume = 1.0f;
@@ -372,6 +392,7 @@ public class PulseAudioPlayer : IAudioPlayer
     private void PlaybackLoop()
     {
         _logger.LogDebug("Playback thread started");
+        int consecutiveFailures = 0;
 
         try
         {
@@ -390,10 +411,24 @@ public class PulseAudioPlayer : IAudioPlayer
                 var buffer = _sampleBuffer;
                 var byteBuffer = _byteBuffer;
 
-                if (source == null || buffer == null || byteBuffer == null || _paHandle == IntPtr.Zero)
+                if (source == null || buffer == null || byteBuffer == null)
                 {
                     // No source or not initialized - output silence
                     Thread.Sleep(10);
+                    continue;
+                }
+
+                // Check if handle is valid, attempt reconnect if needed
+                if (_paHandle == IntPtr.Zero)
+                {
+                    _logger.LogWarning("PulseAudio handle is null - attempting reconnection...");
+                    if (!TryReconnect())
+                    {
+                        _logger.LogError("PulseAudio reconnection failed - stopping playback");
+                        OnError("PulseAudio connection lost and could not reconnect", null);
+                        break;
+                    }
+                    consecutiveFailures = 0;
                     continue;
                 }
 
@@ -418,6 +453,7 @@ public class PulseAudioPlayer : IAudioPlayer
                 Buffer.BlockCopy(buffer, 0, byteBuffer, 0, samplesRead * sizeof(float));
 
                 // Write to PulseAudio
+                bool writeSuccess = false;
                 unsafe
                 {
                     fixed (byte* ptr = byteBuffer)
@@ -431,12 +467,41 @@ public class PulseAudioPlayer : IAudioPlayer
                         if (result < 0)
                         {
                             var errorMsg = GetErrorMessage(error);
-                            _logger.LogError("PulseAudio write error: {Error}", errorMsg);
+                            consecutiveFailures++;
 
-                            // Don't spam errors - brief pause before retry
-                            Thread.Sleep(10);
+                            if (consecutiveFailures >= MaxConsecutiveFailures)
+                            {
+                                _logger.LogWarning(
+                                    "PulseAudio write failed {Count} consecutive times: {Error}. Attempting reconnection...",
+                                    consecutiveFailures, errorMsg);
+
+                                if (!TryReconnect())
+                                {
+                                    _logger.LogError("PulseAudio reconnection failed - stopping playback");
+                                    OnError($"PulseAudio connection lost: {errorMsg}", null);
+                                    break;
+                                }
+                                consecutiveFailures = 0;
+                            }
+                            else
+                            {
+                                _logger.LogDebug(
+                                    "PulseAudio write error ({Count}/{Max}): {Error}",
+                                    consecutiveFailures, MaxConsecutiveFailures, errorMsg);
+                                Thread.Sleep(10);
+                            }
+                        }
+                        else
+                        {
+                            writeSuccess = true;
                         }
                     }
+                }
+
+                // Reset failure counter on successful write
+                if (writeSuccess)
+                {
+                    consecutiveFailures = 0;
                 }
             }
         }
@@ -451,6 +516,119 @@ public class PulseAudioPlayer : IAudioPlayer
         }
 
         _logger.LogDebug("Playback thread exited");
+    }
+
+    /// <summary>
+    /// Attempts to reconnect to PulseAudio with exponential backoff.
+    /// Called when the playback loop detects consecutive write failures.
+    /// </summary>
+    /// <returns>True if reconnection succeeded, false otherwise.</returns>
+    private bool TryReconnect()
+    {
+        if (_currentFormat == null)
+        {
+            _logger.LogError("Cannot reconnect - no format configured");
+            return false;
+        }
+
+        _logger.LogWarning("PulseAudio connection lost - attempting to reconnect...");
+
+        // Close the dead handle if it exists
+        lock (_lock)
+        {
+            if (_paHandle != IntPtr.Zero)
+            {
+                try
+                {
+                    SimpleFree(_paHandle);
+                }
+                catch
+                {
+                    // Ignore errors when freeing dead handle
+                }
+                _paHandle = IntPtr.Zero;
+            }
+        }
+
+        for (int attempt = 1; attempt <= MaxReconnectAttempts; attempt++)
+        {
+            // Calculate delay with exponential backoff
+            var delay = Math.Min(ReconnectBaseDelayMs * (1 << (attempt - 1)), ReconnectMaxDelayMs);
+
+            _logger.LogInformation(
+                "PulseAudio reconnect attempt {Attempt}/{MaxAttempts} in {Delay}ms...",
+                attempt, MaxReconnectAttempts, delay);
+
+            Thread.Sleep(delay);
+
+            // Check if we should stop trying
+            if (!_isPlaying || _disposed)
+            {
+                _logger.LogDebug("Reconnection cancelled - player stopped or disposed");
+                return false;
+            }
+
+            try
+            {
+                // Create new connection
+                var sampleSpec = new SampleSpec
+                {
+                    Format = SampleFormat.FLOAT32LE,
+                    Rate = (uint)_currentFormat.SampleRate,
+                    Channels = (byte)_currentFormat.Channels
+                };
+
+                var targetLatencyBytes = BytesForMs(ref sampleSpec, BufferMs);
+                var bufferAttr = new BufferAttr
+                {
+                    MaxLength = uint.MaxValue,
+                    TLength = targetLatencyBytes,
+                    PreBuf = targetLatencyBytes / 2,
+                    MinReq = uint.MaxValue,
+                    FragSize = uint.MaxValue
+                };
+
+                var newHandle = SimpleNewWithAttr(
+                    server: null,
+                    name: "MultiRoomAudio",
+                    dir: StreamDirection.Playback,
+                    dev: _sinkName,
+                    streamName: "Sendspin Audio",
+                    ss: ref sampleSpec,
+                    map: IntPtr.Zero,
+                    attr: ref bufferAttr,
+                    error: out var error);
+
+                if (newHandle != IntPtr.Zero)
+                {
+                    lock (_lock)
+                    {
+                        _paHandle = newHandle;
+                    }
+
+                    _logger.LogInformation(
+                        "PulseAudio reconnected successfully on attempt {Attempt}",
+                        attempt);
+                    return true;
+                }
+
+                var errorMsg = GetErrorMessage(error);
+                _logger.LogWarning(
+                    "PulseAudio reconnect attempt {Attempt} failed: {Error}",
+                    attempt, errorMsg);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "PulseAudio reconnect attempt {Attempt} threw exception",
+                    attempt);
+            }
+        }
+
+        _logger.LogError(
+            "PulseAudio reconnection failed after {MaxAttempts} attempts",
+            MaxReconnectAttempts);
+        return false;
     }
 
     private void SetState(AudioPlayerState newState)
