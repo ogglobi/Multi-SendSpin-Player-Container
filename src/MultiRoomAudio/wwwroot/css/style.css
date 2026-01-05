@@ -54,6 +54,15 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
+/* Fix dropdown menu appearing behind adjacent cards */
+.player-card:has(.dropdown-menu.show) {
+    z-index: 100;
+}
+
+.player-card .dropdown-menu {
+    z-index: 1050;
+}
+
 .player-card.loading {
     opacity: 0.6;
     pointer-events: none;
