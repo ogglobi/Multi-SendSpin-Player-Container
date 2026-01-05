@@ -1,5 +1,5 @@
 name: Multi-Room Audio Controller
-version: "sha-c748add"
+version: "2.0.12"
 slug: multiroom-audio
 description: >-
   Sendspin-powered multi-room audio controller. Stream audio from Music
@@ -16,6 +16,9 @@ audio: true
 full_access: true
 host_network: true
 udev: true
+# TODO: Remove if full_access: true is sufficient for audio access
+devices:
+  - "/dev/snd:/dev/snd"
 
 # Permissions for audio processing
 privileged:

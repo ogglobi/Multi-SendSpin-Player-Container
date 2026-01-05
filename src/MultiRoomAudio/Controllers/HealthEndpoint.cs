@@ -1,4 +1,4 @@
-using MultiRoomAudio.Audio;
+using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Services;
 
@@ -31,7 +31,7 @@ public static class HealthEndpoint
             try
             {
                 // Check if we can enumerate devices
-                var devices = PortAudioDeviceEnumerator.GetOutputDevices().ToList();
+                var devices = PulseAudioDeviceEnumerator.GetOutputDevices().ToList();
                 var players = manager.GetAllPlayers();
 
                 return Results.Ok(new
@@ -40,7 +40,7 @@ public static class HealthEndpoint
                     timestamp = DateTime.UtcNow,
                     checks = new
                     {
-                        portaudio = devices.Count > 0 ? "ok" : "no_devices",
+                        pulseaudio = devices.Count > 0 ? "ok" : "no_devices",
                         deviceCount = devices.Count,
                         playerCount = players.Count
                     }
@@ -80,7 +80,7 @@ public static class HealthEndpoint
         {
             try
             {
-                var devices = PortAudioDeviceEnumerator.GetOutputDevices().ToList();
+                var devices = PulseAudioDeviceEnumerator.GetOutputDevices().ToList();
                 var players = manager.GetAllPlayers();
 
                 return Results.Ok(new

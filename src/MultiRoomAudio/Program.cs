@@ -86,12 +86,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 // Core services (singletons for shared state)
 builder.Services.AddSingleton<EnvironmentService>();
 builder.Services.AddSingleton<ConfigurationService>();
-builder.Services.AddSingleton(sp =>
-{
-    var env = sp.GetRequiredService<EnvironmentService>();
-    var logger = sp.GetRequiredService<ILogger<AlsaCommandRunner>>();
-    return new AlsaCommandRunner(logger, env.UsePulseAudio);
-});
+builder.Services.AddSingleton<VolumeCommandRunner>();
 
 // Add PlayerManagerService as singleton and hosted service
 builder.Services.AddSingleton<PlayerManagerService>();

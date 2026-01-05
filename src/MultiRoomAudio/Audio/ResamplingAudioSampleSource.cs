@@ -13,8 +13,13 @@ namespace MultiRoomAudio.Audio;
 /// used by the SDK's tiered sync correction. This avoids audible clicks that occur with
 /// discrete sample dropping/insertion.
 ///
+/// IMPORTANT: We intentionally do NOT bypass resampling even at rate 1.0.
+/// Bypassing causes audible pops when transitioning in/out of resampling mode
+/// because the resampler has internal interpolation state that gets disrupted.
+/// At rate 1.0, the resampler acts as a passthrough but maintains continuous state.
+///
 /// Rate interpretation:
-/// - 1.0 = normal playback (bypass resampling)
+/// - 1.0 = normal playback (passthrough via resampler to maintain state)
 /// - >1.0 = speed up (we're behind, consume more source samples)
 /// - &lt;1.0 = slow down (we're ahead, consume fewer source samples)
 /// </remarks>
@@ -26,7 +31,6 @@ public sealed class ResamplingAudioSampleSource : IAudioSampleSource, IDisposabl
 
     // Playback rate (1.0 = normal, clamped to 0.96-1.04)
     private double _playbackRate = 1.0;
-    private double _lastRate = 1.0; // Track previous rate for transition detection
     private const double MinRate = 0.96;
     private const double MaxRate = 1.04;
 
@@ -89,7 +93,6 @@ public sealed class ResamplingAudioSampleSource : IAudioSampleSource, IDisposabl
 
     private void OnTargetPlaybackRateChanged(double newRate)
     {
-        var oldRate = _playbackRate;
         PlaybackRate = newRate;
         _rateChangeCount++;
 
@@ -99,27 +102,14 @@ public sealed class ResamplingAudioSampleSource : IAudioSampleSource, IDisposabl
         // Log significant rate changes or periodic summary
         var rateDelta = Math.Abs(newRate - _lastLoggedRate);
         var isSignificantChange = rateDelta > 0.001; // >0.1% change
-        var wasInBypass = Math.Abs(_lastLoggedRate - 1.0) < 0.0001;
-        var isInBypass = Math.Abs(newRate - 1.0) < 0.0001;
-        var modeChanged = wasInBypass != isInBypass;
 
-        if (_logger != null && (modeChanged || isSignificantChange || timeSinceLastLog.TotalSeconds >= 5))
+        if (_logger != null && (isSignificantChange || timeSinceLastLog.TotalSeconds >= 5))
         {
-            var mode = isInBypass ? "BYPASS" : (newRate > 1.0 ? "SPEEDUP" : "SLOWDOWN");
             var ratePercent = (newRate - 1.0) * 100;
 
-            if (modeChanged)
-            {
-                _logger.LogInformation(
-                    "Resampler mode: {Mode} (rate={Rate:F4}, {Percent:+0.00;-0.00}%, changes={Count})",
-                    mode, newRate, ratePercent, _rateChangeCount);
-            }
-            else
-            {
-                _logger.LogDebug(
-                    "Resampler: {Mode} rate={Rate:F4} ({Percent:+0.00;-0.00}%), changes={Count}",
-                    mode, newRate, ratePercent, _rateChangeCount);
-            }
+            _logger.LogDebug(
+                "Resampler: rate={Rate:F4} ({Percent:+0.00;-0.00}%), changes={Count}",
+                newRate, ratePercent, _rateChangeCount);
 
             _lastRateLogTime = now;
             _lastLoggedRate = newRate;
@@ -129,26 +119,8 @@ public sealed class ResamplingAudioSampleSource : IAudioSampleSource, IDisposabl
     /// <inheritdoc/>
     public int Read(float[] buffer, int offset, int count)
     {
-        var currentRate = _playbackRate;
-        var wasInBypass = Math.Abs(_lastRate - 1.0) < 0.0001;
-        var isInBypass = Math.Abs(currentRate - 1.0) < 0.0001;
-
-        // Detect transition from bypass to resampling - reset fractional position
-        // to avoid discontinuities from stale interpolation state
-        if (wasInBypass && !isInBypass)
-        {
-            _fractionalPosition = 0;
-        }
-
-        _lastRate = currentRate;
-
-        // Fast path: if rate is essentially 1.0, pass through directly
-        if (isInBypass)
-        {
-            return _source.Read(buffer, offset, count);
-        }
-
-        // Resampling path
+        // Always use resampling path - even at rate 1.0 to maintain continuous
+        // interpolation state and prevent audible pops when rate changes
         return ReadWithResampling(buffer, offset, count);
     }
 

@@ -53,20 +53,12 @@ public class EnvironmentService
             _haosOptions = null;
             _configPath = Environment.GetEnvironmentVariable("CONFIG_PATH") ?? "/app/config";
             _logPath = Environment.GetEnvironmentVariable("LOG_PATH") ?? "/app/logs";
-            _audioBackend = Environment.GetEnvironmentVariable("AUDIO_BACKEND")?.ToLower() ?? "alsa";
+            _audioBackend = "pulse"; // Always use PulseAudio
 
             _logger.LogDebug("CONFIG_PATH env: {ConfigPathEnv}",
                 Environment.GetEnvironmentVariable("CONFIG_PATH") ?? "(not set, using default)");
             _logger.LogDebug("LOG_PATH env: {LogPathEnv}",
                 Environment.GetEnvironmentVariable("LOG_PATH") ?? "(not set, using default)");
-        }
-
-        // Allow explicit override via environment variable
-        var backendOverride = Environment.GetEnvironmentVariable("AUDIO_BACKEND");
-        if (!string.IsNullOrEmpty(backendOverride))
-        {
-            _audioBackend = backendOverride.ToLower();
-            _logger.LogDebug("Audio backend overridden via AUDIO_BACKEND env: {Backend}", _audioBackend);
         }
     }
 
@@ -127,9 +119,9 @@ public class EnvironmentService
     }
 
     /// <summary>
-    /// Get the volume control method appropriate for this environment.
+    /// Get the volume control method (always pactl for PulseAudio).
     /// </summary>
-    public string VolumeControlMethod => _isHaos ? "pactl" : "amixer";
+    public string VolumeControlMethod => "pactl";
 
     /// <summary>
     /// Ensure required directories exist.

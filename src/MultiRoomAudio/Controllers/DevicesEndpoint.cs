@@ -1,4 +1,4 @@
-using MultiRoomAudio.Audio;
+using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Models;
 
 namespace MultiRoomAudio.Controllers;
@@ -21,7 +21,7 @@ public static class DevicesEndpoint
             logger.LogDebug("API: GET /api/devices - Enumerating audio devices");
             try
             {
-                var devices = PortAudioDeviceEnumerator.GetOutputDevices().ToList();
+                var devices = PulseAudioDeviceEnumerator.GetOutputDevices().ToList();
                 logger.LogInformation("Audio device enumeration found {DeviceCount} output devices", devices.Count);
 
                 if (devices.Count == 0)
@@ -44,7 +44,7 @@ public static class DevicesEndpoint
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to enumerate audio devices. PortAudio may not be initialized");
+                logger.LogError(ex, "Failed to enumerate audio devices. PulseAudio may not be available");
                 return Results.Problem(
                     detail: ex.Message,
                     statusCode: 500,
@@ -62,7 +62,7 @@ public static class DevicesEndpoint
             logger.LogDebug("API: GET /api/devices/default");
             try
             {
-                var device = PortAudioDeviceEnumerator.GetDefaultDevice();
+                var device = PulseAudioDeviceEnumerator.GetDefaultDevice();
                 if (device == null)
                 {
                     logger.LogWarning("No default audio output device found");
@@ -92,7 +92,7 @@ public static class DevicesEndpoint
             logger.LogDebug("API: GET /api/devices/{DeviceId}", id);
             try
             {
-                var device = PortAudioDeviceEnumerator.GetDevice(id);
+                var device = PulseAudioDeviceEnumerator.GetDevice(id);
                 if (device == null)
                 {
                     logger.LogDebug("Device {DeviceId} not found", id);
@@ -121,8 +121,8 @@ public static class DevicesEndpoint
             try
             {
                 logger.LogInformation("Refreshing audio device list...");
-                PortAudioDeviceEnumerator.RefreshDevices();
-                var devices = PortAudioDeviceEnumerator.GetOutputDevices().ToList();
+                PulseAudioDeviceEnumerator.RefreshDevices();
+                var devices = PulseAudioDeviceEnumerator.GetOutputDevices().ToList();
 
                 logger.LogInformation("Audio device refresh complete. Found {DeviceCount} devices", devices.Count);
 

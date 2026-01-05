@@ -4,21 +4,26 @@
 # Build arguments for multi-arch support
 ARG TARGETARCH
 
-# Base: Debian-slim for glibc compatibility with PortAudioSharp2 native bindings
-# Alpine (musl libc) causes SIGSEGV crashes with PortAudio native libraries
+# Base: Debian-slim for glibc compatibility
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim AS base
 WORKDIR /app
 EXPOSE 8096
 
-# Audio dependencies for PortAudioSharp2 native bindings
+# Audio dependencies:
+# - pulseaudio: Full daemon for standalone Docker mode
+# - alsa-utils: ALSA tools for device detection and /proc/asound/cards
+# - libasound2: ALSA library
+# - libasound2-plugins: ALSA plugins including PulseAudio bridge
+# Note: udev removed - doesn't work in containers, we enumerate /proc/asound/cards directly
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    pulseaudio \
     alsa-utils \
     libasound2 \
     libasound2-plugins \
-    pulseaudio-utils \
-    libportaudio2 \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && usermod -a -G audio pulse 2>/dev/null || true \
+    && usermod -a -G audio root 2>/dev/null || true
 
 # Build stage - using Debian SDK for consistent glibc builds
 FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
@@ -47,20 +52,27 @@ FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
+# Copy entrypoint script and PulseAudio config
+COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/pulse-system.pa /etc/pulse/system.pa
+COPY docker/pulse-daemon.conf /etc/pulse/daemon.conf
+RUN chmod +x /entrypoint.sh
+
 # Create directories for both deployment modes
 # /app/config, /app/logs - Docker mode
 # /data, /share - HAOS mode
-RUN mkdir -p /app/config /app/logs /data /share
+# /run/pulse - PulseAudio runtime directory
+RUN mkdir -p /app/config /app/logs /data /share /run/pulse && \
+    chmod 755 /run/pulse
 
-# ALSA→PulseAudio bridge (auto-routes ALSA to PulseAudio when available)
-# This allows the same binary to work with both ALSA (Docker) and PulseAudio (HAOS)
-RUN echo 'pcm.!default { type pulse fallback "sysdefault" }' > /etc/asound.conf && \
-    echo 'ctl.!default { type pulse fallback "sysdefault" }' >> /etc/asound.conf
+# Disable D-Bus for PulseAudio (not available in container)
+ENV DBUS_SESSION_BUS_ADDRESS=disabled
+ENV PULSE_SYSTEM=1
+ENV PULSE_SERVER=unix:/run/pulse/native
 
 # Health check - verifies the API is responding
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8096/api/health || exit 1
 
-# Single binary handles both HAOS and Docker modes
-# Environment detection happens at runtime in C#
-ENTRYPOINT ["./MultiRoomAudio"]
+# Entrypoint handles PulseAudio startup for Docker mode
+ENTRYPOINT ["/entrypoint.sh"]
