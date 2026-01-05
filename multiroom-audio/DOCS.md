@@ -1,12 +1,13 @@
 # Multi-Room Audio Controller
 
 <!-- VERSION_INFO_START -->
-## 📦 Latest Release: 2.0.11
+## 🚧 Development Build: sha-570a492
 
-**Volume Stability & SDK 3.0.1**
-- Fixed volume change crash from Music Assistant
-- Fixed volume reset to 100% on playback start
-- SDK 3.0.1 with hysteresis fix for sync correction
+**Current Dev Build Changes** (recent)
+
+- feat: auto-update DOCS.md with release/dev version info
+
+> ⚠️ This is a development build. For stable releases, use the `latest` tag.
 <!-- VERSION_INFO_END -->
 
 ---
