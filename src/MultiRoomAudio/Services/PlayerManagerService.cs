@@ -75,6 +75,49 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     #endregion
 
+    #region Helper Methods
+
+    /// <summary>
+    /// Determines if a player is in an active state where it can receive commands.
+    /// Active states include Starting, Connecting, Connected, Playing, and Buffering.
+    /// </summary>
+    /// <param name="state">The player state to check.</param>
+    /// <returns>True if the player is in an active state.</returns>
+    private static bool IsPlayerInActiveState(PlayerState state)
+    {
+        return state == PlayerState.Starting ||
+               state == PlayerState.Connecting ||
+               state == PlayerState.Connected ||
+               state == PlayerState.Playing ||
+               state == PlayerState.Buffering;
+    }
+
+    /// <summary>
+    /// Disposes all resources for a player context in the correct order.
+    /// Used by RemoveAndDisposePlayerAsync, Dispose, and DisposeAsync.
+    /// </summary>
+    private static async Task DisposePlayerContextAsync(PlayerContext context)
+    {
+        await context.Client.DisposeAsync();
+        await context.Pipeline.DisposeAsync();
+        await context.Player.DisposeAsync();
+        await context.Connection.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Converts volume percentage (0-100) to normalized audio level (0.0-1.0)
+    /// using squared scaling for perceived loudness (volume 50 sounds half as loud).
+    /// </summary>
+    /// <param name="volumePercent">Volume as integer percentage (0-100).</param>
+    /// <returns>Normalized volume for audio player (0.0-1.0, squared).</returns>
+    private static float NormalizeVolume(int volumePercent)
+    {
+        var normalized = Math.Clamp(volumePercent, 0, 100) / 100f;
+        return normalized * normalized;
+    }
+
+    #endregion
+
     /// <summary>
     /// Internal context holding all objects for a player instance.
     /// </summary>
@@ -331,8 +374,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _players[request.Name] = context;
 
             // 11. Apply initial volume (software volume scaling)
-            var normalizedVolume = request.Volume / 100f;
-            player.Volume = normalizedVolume * normalizedVolume;
+            player.Volume = NormalizeVolume(request.Volume);
 
             // 13. Persist configuration if requested
             if (request.Persist)
@@ -437,13 +479,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // 1. Update local config (always)
         context.Config.Volume = volume;
 
-        // 2. Apply software volume to audio player (0-100 -> 0.0-1.0)
-        // Using squared scaling for perceived loudness (volume 50 sounds half as loud)
-        var normalizedVolume = volume / 100f;
-        context.Player.Volume = normalizedVolume * normalizedVolume;
+        // 2. Apply software volume to audio player
+        context.Player.Volume = NormalizeVolume(volume);
 
-        // 3. Notify server of volume change (only if connected)
-        if (context.State == PlayerState.Connected || context.State == PlayerState.Playing || context.State == PlayerState.Buffering)
+        // 3. Notify server of volume change (only if in an active state)
+        if (IsPlayerInActiveState(context.State))
         {
             try
             {
@@ -458,19 +498,18 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         // 4. Optionally set hardware/OS volume via ALSA/PulseAudio
         // Only if we have a specific device (not default)
+        // Fire-and-forget with error handling via ContinueWith
         if (!string.IsNullOrEmpty(context.Config.DeviceId))
         {
-            _ = Task.Run(async () =>
-            {
-                try
+            _ = _alsaRunner.SetVolumeAsync(context.Config.DeviceId, volume, ct)
+                .ContinueWith(t =>
                 {
-                    await _alsaRunner.SetVolumeAsync(context.Config.DeviceId, volume, ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Hardware volume control not available for '{Name}'", name);
-                }
-            }, ct);
+                    if (t.IsFaulted && t.Exception != null)
+                    {
+                        _logger.LogDebug(t.Exception.InnerException ?? t.Exception,
+                            "Hardware volume control not available for '{Name}'", name);
+                    }
+                }, TaskScheduler.Default);
         }
 
         // 5. Broadcast status update to all clients
@@ -591,10 +630,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
             await context.Client.DisconnectAsync("Player removed").WaitAsync(DisposalTimeout);
             await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
-            await context.Client.DisposeAsync();
-            await context.Pipeline.DisposeAsync();
-            await context.Player.DisposeAsync();
-            await context.Connection.DisposeAsync();
+            await DisposePlayerContextAsync(context);
 
             _logger.LogInformation("Player '{Name}' removed and disposed", name);
 
@@ -835,14 +871,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
                 context.Config.Volume = serverVolume;
 
-                // Only apply software volume if player is in a valid state
-                if (context.State == PlayerState.Connected || context.State == PlayerState.Playing || context.State == PlayerState.Buffering)
+                // Only apply software volume if player is in an active state
+                if (IsPlayerInActiveState(context.State))
                 {
                     try
                     {
-                        // Apply software volume (squared for perceived loudness)
-                        var normalizedVolume = serverVolume / 100f;
-                        context.Player.Volume = normalizedVolume * normalizedVolume;
+                        context.Player.Volume = NormalizeVolume(serverVolume);
                     }
                     catch (Exception ex)
                     {
@@ -983,11 +1017,19 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
     }
 
+    /// <summary>
+    /// Synchronously disposes of all managed resources.
+    /// WARNING: This method blocks until all resources are disposed or timeout occurs.
+    /// Prefer using DisposeAsync when possible to avoid potential deadlocks.
+    /// </summary>
     public void Dispose()
     {
-        if (_disposed)
-            return;
-        _disposed = true;
+        lock (_players)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+        }
 
         foreach (var context in _players.Values)
         {
@@ -995,13 +1037,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             try
             {
                 // Use Task.Run to avoid sync context deadlocks when calling async dispose methods
-                Task.Run(async () =>
-                {
-                    await context.Client.DisposeAsync();
-                    await context.Pipeline.DisposeAsync();
-                    await context.Player.DisposeAsync();
-                    await context.Connection.DisposeAsync();
-                }).Wait(DisposalTimeout);
+                // Note: .Wait() is used here because Dispose() must be synchronous per IDisposable contract
+                Task.Run(() => DisposePlayerContextAsync(context)).Wait(DisposalTimeout);
             }
             catch (Exception ex)
             {
@@ -1022,19 +1059,19 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-        _disposed = true;
+        lock (_players)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+        }
 
         foreach (var context in _players.Values)
         {
             context.Cts.Cancel();
             try
             {
-                await context.Client.DisposeAsync();
-                await context.Pipeline.DisposeAsync();
-                await context.Player.DisposeAsync();
-                await context.Connection.DisposeAsync();
+                await DisposePlayerContextAsync(context);
             }
             catch (Exception ex)
             {

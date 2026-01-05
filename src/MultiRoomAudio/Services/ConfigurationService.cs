@@ -87,6 +87,15 @@ public class ConfigurationService
             try
             {
                 var yaml = File.ReadAllText(_configPath);
+
+                // Handle empty or whitespace-only YAML files
+                if (string.IsNullOrWhiteSpace(yaml))
+                {
+                    _logger.LogInformation("Config file {ConfigPath} is empty, starting fresh", _configPath);
+                    _players = new Dictionary<string, PlayerConfiguration>();
+                    return;
+                }
+
                 var raw = _deserializer.Deserialize<Dictionary<string, PlayerConfiguration>>(yaml);
                 _players = raw ?? new Dictionary<string, PlayerConfiguration>();
 

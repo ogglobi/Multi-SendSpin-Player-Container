@@ -6,6 +6,11 @@ namespace MultiRoomAudio.Services;
 /// Detects runtime environment (HAOS vs standalone Docker) and provides
 /// appropriate paths and configuration for each deployment mode.
 /// </summary>
+/// <remarks>
+/// This class is designed for Linux containers (Docker/HAOS). Some paths used for
+/// detection and configuration (e.g., /proc, /data, /share) are Linux-specific and
+/// will not exist on Windows or macOS development machines.
+/// </remarks>
 public class EnvironmentService
 {
     private readonly ILogger<EnvironmentService> _logger;
@@ -112,8 +117,11 @@ public class EnvironmentService
         {
             return element.Deserialize<T>();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex,
+                "Failed to deserialize HAOS option '{Key}' as type {Type}, returning default value",
+                key, typeof(T).Name);
             return defaultValue;
         }
     }
