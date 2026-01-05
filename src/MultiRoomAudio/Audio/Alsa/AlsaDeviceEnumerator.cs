@@ -12,21 +12,37 @@ public static partial class AlsaDeviceEnumerator
 {
     private static ILogger? _logger;
 
-    // System devices to filter out (not useful for playback)
+    // System/plugin devices to filter out (not actual audio outputs)
     private static readonly HashSet<string> SystemDevices = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Meta devices
         "null",
         "default",
         "pulse",
         "sysdefault",
-        "iec958"  // S/PDIF generic device (usually not what users want)
+        "iec958",     // S/PDIF generic device
+
+        // Rate converter plugins (not real outputs)
+        "lavrate",    // Libav/FFmpeg rate converter
+        "samplerate", // Samplerate library converter
+        "speexrate",  // Speex resampler
+
+        // Audio servers/systems (not direct outputs)
+        "jack",       // JACK Audio Connection Kit
+        "oss",        // Open Sound System (legacy)
+
+        // DSP/processing plugins (not real outputs)
+        "speex",      // Speex DSP plugin
+        "upmix",      // Channel upmix plugin
+        "vdownmix",   // Channel downmix plugin
     };
 
-    // Patterns for device name prefixes to filter (minimal - show most devices)
+    // Patterns for device name prefixes to filter
     private static readonly string[] IgnorePrefixes =
     {
-        "dmix:",     // Direct mix devices (lower level than what we want)
-        "dsnoop:",   // Capture sharing (input, not output)
+        "dmix:",       // Direct mix devices (lower level)
+        "dsnoop:",     // Capture sharing (input, not output)
+        "usbstream:",  // USB streaming (not useful for playback)
     };
 
     /// <summary>
