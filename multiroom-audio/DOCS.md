@@ -1,5 +1,16 @@
 # Multi-Room Audio Controller
 
+<!-- VERSION_INFO_START -->
+## 📦 Latest Release: 2.0.11
+
+**Volume Stability & SDK 3.0.1**
+- Fixed volume change crash from Music Assistant
+- Fixed volume reset to 100% on playback start
+- SDK 3.0.1 with hysteresis fix for sync correction
+<!-- VERSION_INFO_END -->
+
+---
+
 Manage Sendspin audio players for Music Assistant. Create whole-home audio with
 USB DACs connected to your Home Assistant server.
 

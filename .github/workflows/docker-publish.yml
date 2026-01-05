@@ -143,11 +143,51 @@ jobs:
           echo "Updated config.yaml to version sha-${SHORT_SHA}"
           cat multiroom-audio/config.yaml | head -5
 
+      - name: Update DOCS.md with dev changes
+        shell: bash
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+
+          # Get the last release tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          # Get commit messages since last tag (or last 10 if no tag)
+          if [ -n "$LAST_TAG" ]; then
+            COMMITS=$(git log --oneline ${LAST_TAG}..HEAD --pretty=format:"- %s" | grep -v "\[skip ci\]" | head -20)
+            SINCE_TEXT="since $LAST_TAG"
+          else
+            COMMITS=$(git log --oneline -10 --pretty=format:"- %s" | grep -v "\[skip ci\]")
+            SINCE_TEXT="(recent)"
+          fi
+
+          # Create the dev version info block using heredoc
+          cat > /tmp/dev_info.txt << DEVEOF
+          ## 🚧 Development Build: sha-${SHORT_SHA}
+
+          **Current Dev Build Changes** ${SINCE_TEXT}
+
+          ${COMMITS}
+
+          > ⚠️ This is a development build. For stable releases, use the \`latest\` tag.
+          DEVEOF
+
+          # Remove leading spaces from heredoc
+          sed -i 's/^          //' /tmp/dev_info.txt
+
+          # Replace the VERSION_INFO section in DOCS.md using sed
+          # First, extract everything before and after the markers
+          head -n $(grep -n "VERSION_INFO_START" multiroom-audio/DOCS.md | cut -d: -f1) multiroom-audio/DOCS.md > /tmp/docs_new.md
+          cat /tmp/dev_info.txt >> /tmp/docs_new.md
+          tail -n +$(grep -n "VERSION_INFO_END" multiroom-audio/DOCS.md | cut -d: -f1) multiroom-audio/DOCS.md >> /tmp/docs_new.md
+          mv /tmp/docs_new.md multiroom-audio/DOCS.md
+
+          echo "Updated DOCS.md with dev changes"
+
       - name: Commit and push version update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add multiroom-audio/config.yaml
+          git add multiroom-audio/config.yaml multiroom-audio/DOCS.md
           if git diff --staged --quiet; then
             echo "No version change needed"
           else
@@ -187,11 +227,44 @@ jobs:
           echo "Updated config.yaml to version ${{ steps.version.outputs.version }}"
           cat multiroom-audio/config.yaml | head -5
 
+      - name: Update DOCS.md with release info
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Extract release notes from CHANGELOG.md for this version
+          # Get the section between this version header and the next version header (or ---)
+          RELEASE_NOTES=$(awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[|^---/{if(flag) exit} flag" multiroom-audio/CHANGELOG.md | head -20)
+
+          # Get the release title (line after version header in CHANGELOG)
+          RELEASE_TITLE=$(grep -A1 "^## \[${VERSION}\]" multiroom-audio/CHANGELOG.md | tail -1 | sed 's/^### //' || echo "")
+
+          # Create the release version info block
+          cat > /tmp/release_info.txt << RELEOF
+          ## 📦 Latest Release: ${VERSION}
+
+          ${RELEASE_TITLE}
+          ${RELEASE_NOTES}
+
+          [View full changelog](https://github.com/chrisuthe/Multi-SendSpin-Player-Container/blob/main/multiroom-audio/CHANGELOG.md)
+          RELEOF
+
+          # Remove leading spaces from heredoc
+          sed -i 's/^          //' /tmp/release_info.txt
+
+          # Replace the VERSION_INFO section in DOCS.md
+          head -n $(grep -n "VERSION_INFO_START" multiroom-audio/DOCS.md | cut -d: -f1) multiroom-audio/DOCS.md > /tmp/docs_new.md
+          cat /tmp/release_info.txt >> /tmp/docs_new.md
+          tail -n +$(grep -n "VERSION_INFO_END" multiroom-audio/DOCS.md | cut -d: -f1) multiroom-audio/DOCS.md >> /tmp/docs_new.md
+          mv /tmp/docs_new.md multiroom-audio/DOCS.md
+
+          echo "Updated DOCS.md with release info for ${VERSION}"
+
       - name: Commit and push version update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add multiroom-audio/config.yaml
+          git add multiroom-audio/config.yaml multiroom-audio/DOCS.md
           # Only commit if there are changes
           if git diff --staged --quiet; then
             echo "No version change needed"
