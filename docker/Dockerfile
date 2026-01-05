@@ -52,6 +52,7 @@ COPY --from=build /app/publish .
 # Copy entrypoint script and PulseAudio config
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY docker/pulse-system.pa /etc/pulse/system.pa
+COPY docker/pulse-daemon.conf /etc/pulse/daemon.conf
 RUN chmod +x /entrypoint.sh
 
 # Create directories for both deployment modes

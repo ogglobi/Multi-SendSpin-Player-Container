@@ -4,9 +4,19 @@
 # Load essential protocol modules
 load-module module-native-protocol-unix auth-anonymous=1
 
-# Device detection and management
-# module-udev-detect auto-discovers ALSA sound cards
-load-module module-udev-detect
+# Device detection - use ALSA detect instead of udev (no dbus required)
+load-module module-alsa-card-restore
+.ifexists module-alsa-sink.so
+# Fallback: manually load ALSA sinks if auto-detection fails
+.endif
+
+# Try udev detection (will work if udev is available, gracefully fail if not)
+.ifexists module-udev-detect.so
+load-module module-udev-detect ignore_dbus=1
+.else
+# Fallback to HAL-less ALSA detection
+load-module module-detect
+.endif
 
 # Automatically restore stream volumes
 load-module module-stream-restore
@@ -18,25 +28,10 @@ load-module module-device-restore
 load-module module-default-device-restore
 
 # Automatically move streams when sinks/sources change
-load-module module-rescue-streams
-
-# Automatically load/unload sinks when devices appear/disappear
 load-module module-switch-on-connect
 
 # Always keep a sink around, even if it's a null sink
 load-module module-always-sink
 
-# Provide a simple CLI interface
-load-module module-cli-protocol-unix
-
 # Position event sounds between streams
 load-module module-position-event-sounds
-
-# Set default sample spec - 48kHz stereo, good for music
-set-default-sample-rate 48000
-set-default-sample-channels 2
-
-# Set default fragment settings for reasonable latency
-# These can be tuned based on buffer underrun issues
-default-fragments = 4
-default-fragment-size-msec = 25
