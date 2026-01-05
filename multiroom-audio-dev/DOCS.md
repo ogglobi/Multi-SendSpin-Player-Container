@@ -1,9 +1,17 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build
+## Development Build: sha-54863a9
 
-This is a development version. Version info will be updated automatically by CI.
+**Current Dev Build Changes** (recent)
+
+- fix dev vs stable builds
+- Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into dev
+- clean up stable vs dev
+- docs: add 2.0.12 changelog entry for audio quality fixes
+- fix: configure PulseAudio sync options to disable frame drop/insert
+- fix: never bypass resampler to prevent pops on rate transitions
+- fix: enable timer-based PulseAudio scheduling (tsched=1)
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
