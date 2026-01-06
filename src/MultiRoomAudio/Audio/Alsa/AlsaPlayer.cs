@@ -31,9 +31,9 @@ public class AlsaPlayer : IAudioPlayer
 
     // Output format configuration
     private AudioOutputFormat? _outputFormat;
-    private AlsaNative.Format _alsaFormat = AlsaNative.Format.FLOAT_LE;
+    private AlsaNative.Format _alsaFormat = AlsaNative.Format.S32_LE;  // S32_LE is more universally supported than FLOAT_LE
     private int _bytesPerSample = 4;
-    private bool _needsBitDepthConversion;
+    private bool _needsBitDepthConversion = true;  // Default to conversion since we use S32_LE
 
     // Pre-allocated buffers for the playback thread
     private float[]? _sampleBuffer;
@@ -113,14 +113,18 @@ public class AlsaPlayer : IAudioPlayer
         _outputFormat = outputFormat;
 
         // Determine ALSA format based on requested bit depth
+        // Note: We use S32_LE (signed 32-bit integer) rather than FLOAT_LE because:
+        // - S32_LE is more universally supported (HDMI, most DACs)
+        // - FLOAT_LE is not supported by HDMI audio outputs
+        // - The BitDepthConverter handles float->S32 conversion with full precision
         if (outputFormat != null)
         {
             (_alsaFormat, _bytesPerSample, _needsBitDepthConversion) = outputFormat.BitDepth switch
             {
                 16 => (AlsaNative.Format.S16_LE, 2, true),
                 24 => (AlsaNative.Format.S24_LE, 4, true),  // 24-bit in 4-byte container
-                32 => (AlsaNative.Format.FLOAT_LE, 4, false),
-                _ => (AlsaNative.Format.FLOAT_LE, 4, false)
+                32 => (AlsaNative.Format.S32_LE, 4, true),  // 32-bit signed integer (more compatible than float)
+                _ => (AlsaNative.Format.S32_LE, 4, true)
             };
         }
     }
@@ -132,10 +136,36 @@ public class AlsaPlayer : IAudioPlayer
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
     {
+        // If we're currently playing, stop first to clean up the playback thread.
+        // This handles the case where the SDK calls InitializeAsync without calling Stop()
+        // first (e.g., when switching tracks).
+        if (_isPlaying)
+        {
+            _logger.LogDebug("Stopping active playback before re-initialization");
+            Stop();
+        }
+
         lock (_lock)
         {
             try
             {
+                // Close any existing handle first (handles track switching where SDK reuses the player).
+                // Stop() above doesn't close the handle - only Drop() is called to abort pending writes.
+                // We must close it here to avoid "Device or resource busy" errors.
+                if (_pcmHandle != IntPtr.Zero)
+                {
+                    _logger.LogDebug("Closing existing ALSA handle before re-initialization");
+                    try
+                    {
+                        AlsaNative.Close(_pcmHandle);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error closing previous ALSA handle");
+                    }
+                    _pcmHandle = IntPtr.Zero;
+                }
+
                 // Determine actual sample rate to use (output format overrides incoming)
                 var actualSampleRate = _outputFormat?.SampleRate ?? format.SampleRate;
 

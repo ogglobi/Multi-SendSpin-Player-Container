@@ -130,10 +130,36 @@ public class PulseAudioPlayer : IAudioPlayer
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
     {
+        // If we're currently playing, stop first to clean up the playback thread.
+        // This handles the case where the SDK calls InitializeAsync without calling Stop()
+        // first (e.g., when switching tracks).
+        if (_isPlaying)
+        {
+            _logger.LogDebug("Stopping active playback before re-initialization");
+            Stop();
+        }
+
         lock (_lock)
         {
             try
             {
+                // Free any existing handle first (handles track switching where SDK reuses the player).
+                // Stop() above doesn't free the handle - only Flush() is called.
+                // We must free it here to avoid resource leaks.
+                if (_paHandle != IntPtr.Zero)
+                {
+                    _logger.LogDebug("Freeing existing PulseAudio handle before re-initialization");
+                    try
+                    {
+                        SimpleFree(_paHandle);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error freeing previous PulseAudio handle");
+                    }
+                    _paHandle = IntPtr.Zero;
+                }
+
                 // Determine actual sample rate to use (output format overrides incoming)
                 var actualSampleRate = _outputFormat?.SampleRate ?? format.SampleRate;
 
