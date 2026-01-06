@@ -39,6 +39,7 @@ This project enables you to run a single centralized server (like a NAS, Raspber
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?style=for-the-badge&logo=dotnet)
 ![Sendspin](https://img.shields.io/badge/Sendspin-Native%20Support-purple?style=for-the-badge)
 
+
 ## Key Features
 
 - **Sendspin Protocol**: Native Music Assistant integration via SendSpin.SDK
@@ -48,11 +49,11 @@ This project enables you to run a single centralized server (like a NAS, Raspber
 - **Auto-Discovery**: Players automatically appear in Music Assistant
 - **Persistent Config**: Survives container restarts and updates
 - **Multi-Architecture**: Runs on AMD64 and ARM64 (Raspberry Pi)
+- **REST API**: Full programmatic control with Swagger documentation
+- **Health Monitoring**: Built-in container health checks at `/api/health`
+- **Logging**: Comprehensive logging for troubleshooting
+- **Home Assistant**: Native add-on for HAOS
 
-### Web Interface
-- Modern, responsive design that works on all devices
-- Live status indicators and controls
-- Built-in audio device detection and selection
 
 ### Audio Support
 - **USB DACs**: Automatic detection via PortAudio
@@ -60,11 +61,9 @@ This project enables you to run a single centralized server (like a NAS, Raspber
 - **HDMI Audio**: Multi-channel HDMI audio output support
 - **Virtual Devices**: Null devices for testing, software defined ALSA devices
 
-### Enterprise-Ready Features
-- **REST API**: Full programmatic control with Swagger documentation
-- **Health Monitoring**: Built-in container health checks at `/api/health`
-- **Logging**: Comprehensive logging for troubleshooting
-- **Home Assistant**: Native add-on for HAOS
+<img width="895" height="616" alt="Screenshot of Multi-Room Audio interface showing a title bar at the top with buttons to view API docs and add a Player in the header and an area of multiple "Cards" containing a configured player each below detailing the name, connection status, output, volume and clock sync status." src="https://github.com/user-attachments/assets/2d679878-83d6-488f-87a0-c9d97d4badfe" />
+
+
 
 ## Docker Hub Images
 
