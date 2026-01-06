@@ -339,5 +339,44 @@ public static class PlayersEndpoint
         })
         .WithName("ResumePlayer")
         .WithDescription("Resume player playback");
+
+        // PUT /api/players/{name}/rename - Rename a player
+        group.MapPut("/{name}/rename", (
+            string name,
+            RenameRequest request,
+            PlayerManagerService manager,
+            ILogger<PlayerManagerService> logger) =>
+        {
+            logger.LogDebug("API: PUT /api/players/{PlayerName}/rename to {NewName}", name, request.NewName);
+            try
+            {
+                var success = manager.RenamePlayer(name, request.NewName);
+                if (!success)
+                    return PlayerNotFoundResult(name, logger, "rename");
+
+                logger.LogInformation("API: Player {PlayerName} renamed to {NewName}", name, request.NewName);
+                return Results.Ok(new SuccessResponse(true, $"Player renamed to '{request.NewName}'"));
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
+            {
+                logger.LogWarning("API: Player rename conflict - {Message}", ex.Message);
+                return Results.Conflict(new ErrorResponse(false, ex.Message));
+            }
+            catch (ArgumentException ex)
+            {
+                logger.LogWarning("API: Player rename bad request - {Message}", ex.Message);
+                return Results.BadRequest(new ErrorResponse(false, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "API: Failed to rename player {PlayerName}", name);
+                return Results.Problem(
+                    detail: ex.Message,
+                    statusCode: 500,
+                    title: "Failed to rename player");
+            }
+        })
+        .WithName("RenamePlayer")
+        .WithDescription("Rename a player to a new name");
     }
 }

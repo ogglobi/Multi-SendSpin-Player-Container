@@ -106,6 +106,7 @@ services:
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
+      # - /etc/asound.conf:/etc/asound.conf:ro  # Optional: custom ALSA config
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8096/api/health"]
       interval: 30s
@@ -173,6 +174,25 @@ volumes:
 devices:
   - /dev/snd:/dev/snd    # All audio devices (Linux)
 ```
+
+### Custom ALSA Configuration
+
+If you have custom ALSA configurations (virtual devices, software mixing, multi-channel routing, etc.), mount your `asound.conf` file to make those devices available inside the container:
+
+```yaml
+volumes:
+  - ./config:/app/config
+  - ./logs:/app/logs
+  - /etc/asound.conf:/etc/asound.conf:ro   # Custom ALSA config
+```
+
+This is useful for:
+- **Software mixing** (dmix) - Share audio devices between applications
+- **Virtual devices** - Custom device aliases and routing
+- **Multi-channel audio** - Configure surround sound or multi-output setups
+- **Hardware-specific settings** - Device-specific sample rates, formats, or buffer sizes
+
+Your custom ALSA devices will appear in the device list after the container restarts.
 
 ## REST API
 

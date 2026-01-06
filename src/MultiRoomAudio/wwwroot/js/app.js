@@ -56,7 +56,11 @@ function setupSignalR() {
     connection.on('PlayerStatusUpdate', (data) => {
         console.log('Status update:', data);
         if (data.players) {
-            players = data.players;
+            // Convert array to object keyed by name (same as refreshStatus)
+            players = {};
+            (data.players || []).forEach(p => {
+                players[p.name] = p;
+            });
             renderPlayers();
         }
     });
@@ -235,6 +239,41 @@ async function restartPlayer(name) {
     }
 }
 
+async function renamePlayer(name) {
+    const newName = prompt(`Enter a new name for "${name}":`, name);
+
+    // User cancelled or entered empty name
+    if (newName === null || newName.trim() === '') {
+        return;
+    }
+
+    const trimmedName = newName.trim();
+
+    // No change
+    if (trimmedName === name) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`./api/players/${encodeURIComponent(name)}/rename`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newName: trimmedName })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to rename player');
+        }
+
+        await refreshStatus();
+        showAlert(`Player renamed to "${trimmedName}"`, 'success');
+    } catch (error) {
+        console.error('Error renaming player:', error);
+        showAlert(error.message, 'danger');
+    }
+}
+
 async function setVolume(name, volume) {
     try {
         const response = await fetch(`./api/players/${encodeURIComponent(name)}/volume`, {
@@ -401,6 +440,7 @@ function renderPlayers() {
                                     <ul class="dropdown-menu">
                                         <li><a class="dropdown-item" href="#" onclick="restartPlayer('${escapeHtml(name)}'); return false;"><i class="fas fa-sync me-2"></i>Restart</a></li>
                                         <li><a class="dropdown-item" href="#" onclick="stopPlayer('${escapeHtml(name)}'); return false;"><i class="fas fa-stop me-2"></i>Stop</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="renamePlayer('${escapeHtml(name)}'); return false;"><i class="fas fa-edit me-2"></i>Rename</a></li>
                                         <li><hr class="dropdown-divider"></li>
                                         <li><a class="dropdown-item text-danger" href="#" onclick="deletePlayer('${escapeHtml(name)}'); return false;"><i class="fas fa-trash me-2"></i>Delete</a></li>
                                     </ul>

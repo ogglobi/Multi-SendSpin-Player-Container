@@ -70,6 +70,13 @@ Then open `http://YOUR-SERVER-IP:8096`
 - **Docker**: Add `--device /dev/snd:/dev/snd`
 - **HAOS**: Restart add-on after connecting USB devices
 
+### Custom ALSA devices not showing
+If you have custom devices in `/etc/asound.conf` (dmix, virtual devices, etc.), mount the config file:
+```yaml
+volumes:
+  - /etc/asound.conf:/etc/asound.conf:ro
+```
+
 ### Player won't start
 1. Try `null` device first (tests without audio hardware)
 2. Check player logs in web interface

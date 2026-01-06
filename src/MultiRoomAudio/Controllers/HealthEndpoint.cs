@@ -119,9 +119,17 @@ public static class HealthEndpoint
 
     private static string GetVersion()
     {
+        // First check environment variable set by Docker build args
+        var envVersion = Environment.GetEnvironmentVariable("APP_VERSION");
+        if (!string.IsNullOrEmpty(envVersion) && envVersion != "dev")
+        {
+            return envVersion;
+        }
+
+        // Fall back to assembly version
         var assembly = typeof(HealthEndpoint).Assembly;
         var version = assembly.GetName().Version;
-        return version?.ToString(3) ?? "1.0.0";
+        return version?.ToString(3) ?? "dev";
     }
 
     private static string GetUptime()

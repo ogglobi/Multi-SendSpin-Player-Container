@@ -88,6 +88,29 @@ You should see the Multi-Room Audio Controller dashboard.
 - Create more players for each room
 - Check Troubleshooting if something is not working
 
+### Advanced: Custom ALSA Configuration
+
+If you have a custom `/etc/asound.conf` on your host (for virtual devices, dmix, multi-channel routing, etc.), mount it into the container:
+
+```bash
+docker run -d \
+  --name multiroom-audio \
+  -p 8096:8096 \
+  --device /dev/snd:/dev/snd \
+  -v /etc/asound.conf:/etc/asound.conf:ro \
+  ghcr.io/chrisuthe/multiroom-audio:latest
+```
+
+Or in Docker Compose:
+
+```yaml
+volumes:
+  - ./config:/app/config
+  - /etc/asound.conf:/etc/asound.conf:ro
+```
+
+After restarting the container, your custom ALSA devices will appear in the device selection dropdown.
+
 ---
 
 ## Quick Start (HAOS)

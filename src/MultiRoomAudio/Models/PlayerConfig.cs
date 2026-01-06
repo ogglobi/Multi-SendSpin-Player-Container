@@ -100,6 +100,16 @@ public record OffsetRequest(
     int DelayMs);
 
 /// <summary>
+/// Request to rename a player.
+/// </summary>
+/// <param name="NewName">The new name for the player.</param>
+public record RenameRequest(
+    [property: Required(ErrorMessage = "New player name is required.")]
+    [property: StringLength(100, MinimumLength = 1, ErrorMessage = "Player name must be between 1 and 100 characters.")]
+    [property: RegularExpression(@"^[a-zA-Z0-9\s\-_]+$", ErrorMessage = "Player name can only contain alphanumeric characters, spaces, hyphens, and underscores.")]
+    string NewName);
+
+/// <summary>
 /// Player configuration stored in memory.
 /// </summary>
 public class PlayerConfig

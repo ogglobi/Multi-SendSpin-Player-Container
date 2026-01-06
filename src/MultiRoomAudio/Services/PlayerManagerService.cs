@@ -747,6 +747,67 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
+    /// Renames a player to a new name.
+    /// Updates both the runtime state and persisted configuration.
+    /// </summary>
+    /// <param name="currentName">The current name of the player.</param>
+    /// <param name="newName">The new name for the player.</param>
+    /// <returns>True if the rename was successful, false if the player was not found.</returns>
+    public bool RenamePlayer(string currentName, string newName)
+    {
+        // Validate new name
+        if (!ValidatePlayerName(newName, out var nameError))
+        {
+            throw new ArgumentException(nameError, nameof(newName));
+        }
+
+        // Check if new name already exists (and it's not the same player)
+        if (currentName != newName && _players.ContainsKey(newName))
+        {
+            throw new InvalidOperationException($"A player named '{newName}' already exists");
+        }
+
+        // Get the player context
+        if (!_players.TryGetValue(currentName, out var context))
+        {
+            return false;
+        }
+
+        _logger.LogInformation("Renaming player '{OldName}' to '{NewName}'", currentName, newName);
+
+        // If same name, nothing to do
+        if (currentName == newName)
+        {
+            return true;
+        }
+
+        // Update the in-memory player dictionary
+        if (!_players.TryRemove(currentName, out _))
+        {
+            return false;
+        }
+
+        // Update the config name
+        context.Config.Name = newName;
+
+        // Add with new name
+        _players[newName] = context;
+
+        // Update persisted configuration
+        if (_config.RenamePlayer(currentName, newName))
+        {
+            _config.Save();
+            _logger.LogDebug("Persisted rename for player '{OldName}' -> '{NewName}'", currentName, newName);
+        }
+
+        // Broadcast status update
+        _ = BroadcastStatusAsync();
+
+        _logger.LogInformation("Player renamed from '{OldName}' to '{NewName}'", currentName, newName);
+        return true;
+    }
+
+    /// <summary>
     /// Wrapper method for ConnectPlayerAsync that ensures all exceptions are caught and logged.
     /// This prevents fire-and-forget tasks from losing exceptions.
     /// </summary>
