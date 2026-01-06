@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-ba8fdac
+## Development Build: sha-3a11d79
 
 **Current Dev Build Changes** (recent)
 
+- include note about custom ALSA configs have health and status return proper version
 - Fix whitespace for linter
 - fix the fix though for HAOS
 - fix pulseAudio on HAOS
@@ -14,7 +15,6 @@
 - Filter more ALSA plugin devices
 - Update ALSA for graceful reconnect
 - - Add startup check if on HAOS to make sure pulseaudio is ready - Add reconnection if connection drops to audio provider - Add friendly names where possible to device dropdown
-- use direct ALSA where available, show more devices that are software configured.
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
