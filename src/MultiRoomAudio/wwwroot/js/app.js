@@ -12,6 +12,14 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Format sample rate for display (e.g., 48000 -> "48kHz", 192000 -> "192kHz")
+function formatSampleRate(rate) {
+    if (rate >= 1000) {
+        return (rate / 1000) + 'kHz';
+    }
+    return rate + 'Hz';
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
     // Load initial data
@@ -367,6 +375,28 @@ async function showPlayerStats(name) {
                     ${player.connectedAt ? `<tr><td><strong>Connected</strong></td><td>${new Date(player.connectedAt).toLocaleString()}</td></tr>` : ''}
                     ${player.errorMessage ? `<tr><td><strong>Error</strong></td><td class="text-danger">${escapeHtml(player.errorMessage)}</td></tr>` : ''}
                 </table>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <h6 class="text-muted text-uppercase small">Output Format</h6>
+                ${player.outputFormat ? `
+                <table class="table table-sm">
+                    <tr><td><strong>Sample Rate</strong></td><td>${formatSampleRate(player.outputFormat.sampleRate)}</td></tr>
+                    <tr><td><strong>Bit Depth</strong></td><td>${player.outputFormat.bitDepth}-bit</td></tr>
+                    <tr><td><strong>Channels</strong></td><td>${player.outputFormat.channels}ch (${player.outputFormat.channels === 2 ? 'Stereo' : player.outputFormat.channels === 1 ? 'Mono' : 'Multi-channel'})</td></tr>
+                </table>
+                ` : '<p class="text-muted small">Using default format</p>'}
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted text-uppercase small">Device Capabilities</h6>
+                ${player.deviceCapabilities ? `
+                <table class="table table-sm">
+                    <tr><td><strong>Sample Rates</strong></td><td>${player.deviceCapabilities.supportedSampleRates.map(r => formatSampleRate(r)).join(', ')}</td></tr>
+                    <tr><td><strong>Bit Depths</strong></td><td>${player.deviceCapabilities.supportedBitDepths.map(b => b + '-bit').join(', ')}</td></tr>
+                    <tr><td><strong>Max Channels</strong></td><td>${player.deviceCapabilities.maxChannels}</td></tr>
+                </table>
+                ` : '<p class="text-muted small">Capability probing not available</p>'}
             </div>
         </div>
         <h6 class="text-muted text-uppercase small mt-3">Delay Offset</h6>

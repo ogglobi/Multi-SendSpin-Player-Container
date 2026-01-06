@@ -34,7 +34,8 @@ public record PlayerResponse(
     string? ErrorMessage,
     bool IsClockSynced,
     PlayerMetrics? Metrics,
-    AudioOutputFormat? OutputFormat = null
+    AudioOutputFormat? OutputFormat = null,
+    DeviceCapabilities? DeviceCapabilities = null
 );
 
 /// <summary>

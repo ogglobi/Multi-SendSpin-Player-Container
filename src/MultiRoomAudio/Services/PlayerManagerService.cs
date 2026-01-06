@@ -213,7 +213,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         ClientCapabilities Capabilities,
         PlayerConfig Config,
         DateTime CreatedAt,
-        CancellationTokenSource Cts
+        CancellationTokenSource Cts,
+        DeviceCapabilities? DeviceCapabilities = null
     )
     {
         public PlayerState State { get; set; } = PlayerState.Created;
@@ -377,6 +378,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         try
         {
+            // Probe device capabilities (used for format selection and reporting)
+            var deviceCapabilities = _backendFactory.GetDeviceCapabilities(request.Device);
+
             // Resolve output format: request > saved config > auto-detect > defaults
             AudioOutputFormat? outputFormat = null;
             if (request.OutputSampleRate.HasValue || request.OutputBitDepth.HasValue)
@@ -389,26 +393,22 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 _logger.LogInformation("Using requested output format: {SampleRate}Hz/{BitDepth}-bit",
                     outputFormat.SampleRate, outputFormat.BitDepth);
             }
+            else if (deviceCapabilities != null)
+            {
+                // Auto-detect from device capabilities
+                outputFormat = new AudioOutputFormat(
+                    SampleRate: deviceCapabilities.PreferredSampleRate,
+                    BitDepth: deviceCapabilities.PreferredBitDepth,
+                    Channels: 2);
+                _logger.LogInformation("Auto-detected output format: {SampleRate}Hz/{BitDepth}-bit (device supports: rates={Rates}, depths={Depths})",
+                    outputFormat.SampleRate, outputFormat.BitDepth,
+                    string.Join(",", deviceCapabilities.SupportedSampleRates),
+                    string.Join(",", deviceCapabilities.SupportedBitDepths));
+            }
             else
             {
-                // Try to auto-detect from device capabilities
-                var capabilities = _backendFactory.GetDeviceCapabilities(request.Device);
-                if (capabilities != null)
-                {
-                    outputFormat = new AudioOutputFormat(
-                        SampleRate: capabilities.PreferredSampleRate,
-                        BitDepth: capabilities.PreferredBitDepth,
-                        Channels: 2);
-                    _logger.LogInformation("Auto-detected output format: {SampleRate}Hz/{BitDepth}-bit (device supports: rates={Rates}, depths={Depths})",
-                        outputFormat.SampleRate, outputFormat.BitDepth,
-                        string.Join(",", capabilities.SupportedSampleRates),
-                        string.Join(",", capabilities.SupportedBitDepths));
-                }
-                else
-                {
-                    // Fallback to default (48kHz/32-bit float)
-                    _logger.LogDebug("No device capabilities available, using default output format");
-                }
+                // Fallback to default (48kHz/32-bit)
+                _logger.LogDebug("No device capabilities available, using default output format");
             }
 
             // 1. Create capabilities with player role
@@ -503,7 +503,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             var cts = new CancellationTokenSource();
             var context = new PlayerContext(
                 client, connection, pipeline, player, clockSync, clientCapabilities, config,
-                DateTime.UtcNow, cts)
+                DateTime.UtcNow, cts, deviceCapabilities)
             {
                 State = PlayerState.Created
             };
@@ -1126,7 +1126,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 Underruns: bufferStats.UnderrunCount,
                 Overruns: bufferStats.OverrunCount
             ) : null,
-            OutputFormat: context.Config.OutputFormat
+            OutputFormat: context.Config.OutputFormat,
+            DeviceCapabilities: context.DeviceCapabilities
         );
     }
 
