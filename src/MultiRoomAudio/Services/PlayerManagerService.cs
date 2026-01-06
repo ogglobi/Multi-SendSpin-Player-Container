@@ -459,6 +459,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     {
         var players = _players
             .Select(kvp => CreateResponse(kvp.Key, kvp.Value))
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         return new PlayersListResponse(players, players.Count);
