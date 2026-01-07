@@ -81,6 +81,13 @@ public class PlayerCreateRequest
     /// </summary>
     [Range(16, 32, ErrorMessage = "OutputBitDepth must be 16, 24, or 32.")]
     public int? OutputBitDepth { get; set; }
+
+    /// <summary>
+    /// When true, output sample rate matches input sample rate (typically 48kHz).
+    /// This eliminates sample rate conversion, leaving only sync adjustment.
+    /// Useful for testing or when upsampling is not desired.
+    /// </summary>
+    public bool NativeRate { get; set; }
 }
 
 /// <summary>
@@ -141,4 +148,5 @@ public class PlayerConfig
     public int? OutputSampleRate { get; set; }
     public int? OutputBitDepth { get; set; }
     public AudioOutputFormat? OutputFormat { get; set; }
+    public bool NativeRate { get; set; }
 }

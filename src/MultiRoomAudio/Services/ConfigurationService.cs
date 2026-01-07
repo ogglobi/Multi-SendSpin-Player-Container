@@ -24,6 +24,12 @@ public class PlayerConfiguration
     public int? OutputSampleRate { get; set; }
     public int? OutputBitDepth { get; set; }
 
+    /// <summary>
+    /// When true, output sample rate matches input sample rate (typically 48kHz).
+    /// This eliminates sample rate conversion, leaving only sync adjustment.
+    /// </summary>
+    public bool NativeRate { get; set; }
+
     // Additional provider-specific settings
     public Dictionary<string, object>? Extra { get; set; }
 }

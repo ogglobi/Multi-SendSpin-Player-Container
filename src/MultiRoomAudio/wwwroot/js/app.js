@@ -150,6 +150,7 @@ async function addPlayer() {
     const device = document.getElementById('audioDevice').value;
     const serverUrl = document.getElementById('serverUrl').value.trim();
     const volume = parseInt(document.getElementById('initialVolume').value);
+    const nativeRate = document.getElementById('nativeRate').checked;
 
     if (!name) {
         showAlert('Please enter a player name', 'warning');
@@ -165,6 +166,7 @@ async function addPlayer() {
                 device: device || null,
                 serverUrl: serverUrl || null,
                 volume,
+                nativeRate,
                 persist: true
             })
         });
