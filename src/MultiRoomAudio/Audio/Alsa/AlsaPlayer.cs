@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MultiRoomAudio.Models;
 using Sendspin.SDK.Audio;
 using Sendspin.SDK.Models;
@@ -69,22 +70,14 @@ public class AlsaPlayer : IAudioPlayer
     /// </summary>
     private const int ReconnectMaxDelayMs = 10000;
 
-    /// <summary>
-    /// Additional latency from ALSA startup buffering.
-    /// ALSA auto-starts playback after the buffer is partially filled (typically 75%).
-    /// This represents the time from when we start writing until ALSA actually outputs audio.
-    /// Combined with the output buffer latency, this gives total effective latency.
-    /// </summary>
-    /// <remarks>
-    /// Observed sync error of ~200ms with buffer latency of ~50ms suggests ~150ms startup fill time.
-    /// This matches ALSA needing 3-4 periods written before auto-start triggers.
-    /// </remarks>
-    private const int StartupFillLatencyMs = 150;
-
     public AudioPlayerState State { get; private set; } = AudioPlayerState.Uninitialized;
 
     private volatile float _volume = 1.0f;
     private volatile bool _isMuted;
+
+    // Calibration: buffer latency from ALSA config, startup latency from measurement
+    private int _bufferLatencyMs;
+    private int _measuredStartupLatencyMs;
 
     public float Volume
     {
@@ -98,7 +91,21 @@ public class AlsaPlayer : IAudioPlayer
         set => _isMuted = value;
     }
 
-    public int OutputLatencyMs { get; private set; }
+    /// <summary>
+    /// Total output latency including buffer latency and measured startup fill time.
+    /// This is the time from when audio is written until it's heard from the speaker.
+    /// </summary>
+    public int OutputLatencyMs => _bufferLatencyMs + _measuredStartupLatencyMs;
+
+    /// <summary>
+    /// Buffer latency only (from ALSA configuration).
+    /// </summary>
+    public int BufferLatencyMs => _bufferLatencyMs;
+
+    /// <summary>
+    /// Measured startup latency (time to fill buffer until RUNNING state).
+    /// </summary>
+    public int StartupLatencyMs => _measuredStartupLatencyMs;
 
     public event EventHandler<AudioPlayerState>? StateChanged;
     public event EventHandler<AudioPlayerError>? ErrorOccurred;
@@ -224,39 +231,38 @@ public class AlsaPlayer : IAudioPlayer
                 // Query actual buffer size - ALSA may allocate larger buffers than requested
                 // (especially for USB devices, virtual devices, or devices behind dmix/PulseAudio)
                 var getResult = AlsaNative.GetParams(_pcmHandle, out var actualBufferSize, out var actualPeriodSize);
-                int bufferLatencyMs;
                 if (getResult >= 0 && actualBufferSize > 0)
                 {
-                    bufferLatencyMs = AlsaNative.CalculateLatencyMs(actualBufferSize, (uint)actualSampleRate);
+                    _bufferLatencyMs = AlsaNative.CalculateLatencyMs(actualBufferSize, (uint)actualSampleRate);
                     _logger.LogInformation(
                         "ALSA actual buffer: {BufferFrames} frames ({LatencyMs}ms), period: {PeriodFrames} frames",
-                        actualBufferSize, bufferLatencyMs, actualPeriodSize);
+                        actualBufferSize, _bufferLatencyMs, actualPeriodSize);
                 }
                 else
                 {
                     // Fallback to target if query fails
-                    bufferLatencyMs = (int)(TargetLatencyUs / 1000);
+                    _bufferLatencyMs = (int)(TargetLatencyUs / 1000);
                     _logger.LogWarning(
                         "Could not query ALSA buffer size: {Error}. Using target latency {TargetMs}ms",
-                        AlsaNative.GetErrorMessage(getResult), bufferLatencyMs);
+                        AlsaNative.GetErrorMessage(getResult), _bufferLatencyMs);
                 }
-
-                // Total latency includes buffer latency + startup fill time
-                // ALSA auto-starts after buffer is partially filled, adding ~150ms before audio output begins
-                OutputLatencyMs = bufferLatencyMs + StartupFillLatencyMs;
-                _logger.LogInformation(
-                    "ALSA total latency: {TotalMs}ms (buffer={BufferMs}ms + startup={StartupMs}ms)",
-                    OutputLatencyMs, bufferLatencyMs, StartupFillLatencyMs);
 
                 // Pre-allocate buffers
                 var samplesPerWrite = FramesPerWrite * format.Channels;
                 _sampleBuffer = new float[samplesPerWrite];
                 _byteBuffer = new byte[samplesPerWrite * _bytesPerSample];
 
+                // Calibrate startup latency by measuring time to fill buffer until RUNNING state
+                _measuredStartupLatencyMs = CalibrateStartupLatency(format.Channels);
+
+                _logger.LogInformation(
+                    "ALSA calibration complete: startup={StartupMs}ms, buffer={BufferMs}ms, total={TotalMs}ms",
+                    _measuredStartupLatencyMs, _bufferLatencyMs, OutputLatencyMs);
+
                 SetState(AudioPlayerState.Stopped);
 
                 _logger.LogInformation(
-                    "ALSA player initialized. Device: {Device}, Format: {Format}, Rate: {Rate}Hz, Reported Latency: {Latency}ms",
+                    "ALSA player initialized. Device: {Device}, Format: {Format}, Rate: {Rate}Hz, Total Latency: {Latency}ms",
                     _deviceName, AlsaNative.GetFormatName(_alsaFormat), actualSampleRate, OutputLatencyMs);
             }
             catch (Exception ex)
@@ -808,11 +814,10 @@ public class AlsaPlayer : IAudioPlayer
                 var getResult = AlsaNative.GetParams(newHandle, out var actualBufferSize, out var actualPeriodSize);
                 if (getResult >= 0 && actualBufferSize > 0)
                 {
-                    var bufferLatencyMs = AlsaNative.CalculateLatencyMs(actualBufferSize, (uint)actualSampleRate);
-                    OutputLatencyMs = bufferLatencyMs + StartupFillLatencyMs;
+                    _bufferLatencyMs = AlsaNative.CalculateLatencyMs(actualBufferSize, (uint)actualSampleRate);
                     _logger.LogDebug(
-                        "ALSA reconnect buffer: {BufferFrames} frames, total latency: {TotalMs}ms (buffer={BufferMs}ms + startup={StartupMs}ms)",
-                        actualBufferSize, OutputLatencyMs, bufferLatencyMs, StartupFillLatencyMs);
+                        "ALSA reconnect buffer: {BufferFrames} frames ({LatencyMs}ms)",
+                        actualBufferSize, _bufferLatencyMs);
                 }
 
                 // Success!
@@ -821,8 +826,17 @@ public class AlsaPlayer : IAudioPlayer
                     _pcmHandle = newHandle;
                 }
 
+                // Re-calibrate startup latency for reconnected device
+                if (_currentFormat != null)
+                {
+                    _measuredStartupLatencyMs = CalibrateStartupLatency(_currentFormat.Channels);
+                    _logger.LogInformation(
+                        "ALSA reconnect calibration: startup={StartupMs}ms, buffer={BufferMs}ms, total={TotalMs}ms",
+                        _measuredStartupLatencyMs, _bufferLatencyMs, OutputLatencyMs);
+                }
+
                 _logger.LogInformation(
-                    "ALSA reconnected successfully on attempt {Attempt}, latency: {Latency}ms",
+                    "ALSA reconnected successfully on attempt {Attempt}, total latency: {Latency}ms",
                     attempt, OutputLatencyMs);
                 return true;
             }
@@ -854,6 +868,88 @@ public class AlsaPlayer : IAudioPlayer
     private void OnError(string message, Exception? ex = null)
     {
         ErrorOccurred?.Invoke(this, new AudioPlayerError(message, ex));
+    }
+
+    /// <summary>
+    /// Calibrates the startup latency by measuring time to reach RUNNING state.
+    /// This is called once during InitializeAsync to measure the actual time
+    /// ALSA takes to fill its buffer before audio starts playing.
+    /// </summary>
+    /// <param name="channels">Number of audio channels.</param>
+    /// <returns>Measured startup latency in milliseconds.</returns>
+    private int CalibrateStartupLatency(int channels)
+    {
+        const int CalibrationTimeoutMs = 2000;
+        const int FallbackEstimateMs = 150;
+
+        try
+        {
+            // Prepare device for calibration
+            var prepResult = AlsaNative.Prepare(_pcmHandle);
+            if (prepResult < 0)
+            {
+                _logger.LogWarning(
+                    "Calibration: Failed to prepare device: {Error}. Using estimate.",
+                    AlsaNative.GetErrorMessage(prepResult));
+                return FallbackEstimateMs;
+            }
+
+            // Create silence buffer
+            var silenceBuffer = new byte[FramesPerWrite * channels * _bytesPerSample];
+            var stopwatch = Stopwatch.StartNew();
+
+            // Write silence until ALSA reaches RUNNING state
+            while (AlsaNative.GetState(_pcmHandle) != AlsaNative.State.Running)
+            {
+                unsafe
+                {
+                    fixed (byte* ptr = silenceBuffer)
+                    {
+                        var written = AlsaNative.WriteInterleaved(
+                            _pcmHandle,
+                            (IntPtr)ptr,
+                            (nuint)FramesPerWrite);
+
+                        if (written < 0)
+                        {
+                            _logger.LogWarning(
+                                "Calibration: Write error: {Error}. Using estimate.",
+                                AlsaNative.GetErrorMessage((int)written));
+                            AlsaNative.Drop(_pcmHandle);
+                            return FallbackEstimateMs;
+                        }
+                    }
+                }
+
+                // Timeout protection
+                if (stopwatch.ElapsedMilliseconds > CalibrationTimeoutMs)
+                {
+                    _logger.LogWarning(
+                        "Calibration timeout after {Elapsed}ms - using estimate",
+                        stopwatch.ElapsedMilliseconds);
+                    AlsaNative.Drop(_pcmHandle);
+                    return FallbackEstimateMs;
+                }
+            }
+
+            stopwatch.Stop();
+            var startupLatencyMs = (int)stopwatch.ElapsedMilliseconds;
+
+            // Reset device for actual playback
+            AlsaNative.Drop(_pcmHandle);
+
+            _logger.LogDebug(
+                "Calibration measured startup latency: {StartupMs}ms",
+                startupLatencyMs);
+
+            return startupLatencyMs;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Calibration failed with exception. Using estimate.");
+            try { AlsaNative.Drop(_pcmHandle); } catch { }
+            return FallbackEstimateMs;
+        }
     }
 
     public ValueTask DisposeAsync()
