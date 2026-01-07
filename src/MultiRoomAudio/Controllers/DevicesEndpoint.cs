@@ -5,7 +5,7 @@ namespace MultiRoomAudio.Controllers;
 
 /// <summary>
 /// REST API endpoints for audio device enumeration.
-/// Uses the appropriate backend (ALSA for Docker, PulseAudio for HAOS).
+/// Uses PulseAudio backend for device discovery and playback.
 /// </summary>
 public static class DevicesEndpoint
 {

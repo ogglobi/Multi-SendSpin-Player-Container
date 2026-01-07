@@ -542,8 +542,6 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             player.Volume = NormalizeVolume(request.Volume);
 
             // 12. Apply delay offset from user configuration
-            // Note: ALSA startup latency (~150ms) is now included in AlsaPlayer.OutputLatencyMs
-            // so the SDK's sync calculation accounts for it automatically
             clockSync.StaticDelayMs = request.DelayMs;
             if (request.DelayMs != 0)
             {
@@ -674,7 +672,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
-        // 4. Optionally set hardware/OS volume via backend (ALSA amixer or PulseAudio pactl)
+        // 4. Optionally set hardware/OS volume via PulseAudio pactl
         // Only if we have a specific device (not default)
         // Fire-and-forget with error handling via ContinueWith
         if (!string.IsNullOrEmpty(context.Config.DeviceId))
@@ -725,7 +723,6 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         delayMs = Math.Clamp(delayMs, -5000, 5000);
 
         // Apply to the clock synchronizer
-        // Note: ALSA startup latency is included in AlsaPlayer.OutputLatencyMs
         context.ClockSync.StaticDelayMs = delayMs;
         context.Config.DelayMs = delayMs;
 

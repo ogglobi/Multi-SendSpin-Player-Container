@@ -4,13 +4,13 @@ using Sendspin.SDK.Audio;
 namespace MultiRoomAudio.Audio;
 
 /// <summary>
-/// Common interface for audio backends (ALSA, PulseAudio).
+/// Common interface for audio backends.
 /// Each backend provides device enumeration, player creation, and volume control.
 /// </summary>
 public interface IBackend
 {
     /// <summary>
-    /// Backend name identifier (e.g., "alsa", "pulse").
+    /// Backend name identifier (e.g., "pulse").
     /// </summary>
     string Name { get; }
 

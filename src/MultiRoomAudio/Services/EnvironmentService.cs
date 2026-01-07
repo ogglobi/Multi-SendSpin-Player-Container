@@ -17,7 +17,6 @@ public class EnvironmentService
     private readonly bool _isHaos;
     private readonly string _configPath;
     private readonly string _logPath;
-    private readonly string _audioBackend;
     private readonly Dictionary<string, JsonElement>? _haosOptions;
 
     public const string EnvStandalone = "standalone";
@@ -39,7 +38,6 @@ public class EnvironmentService
             _haosOptions = LoadHaosOptions();
             _configPath = "/data";
             _logPath = "/share/multiroom-audio/logs";
-            _audioBackend = "pulse";
 
             if (_haosOptions != null)
             {
@@ -53,7 +51,6 @@ public class EnvironmentService
             _haosOptions = null;
             _configPath = Environment.GetEnvironmentVariable("CONFIG_PATH") ?? "/app/config";
             _logPath = Environment.GetEnvironmentVariable("LOG_PATH") ?? "/app/logs";
-            _audioBackend = "alsa"; // Use ALSA for Docker mode (supports software-defined devices)
 
             _logger.LogDebug("CONFIG_PATH env: {ConfigPathEnv}",
                 Environment.GetEnvironmentVariable("CONFIG_PATH") ?? "(not set, using default)");
@@ -88,20 +85,9 @@ public class EnvironmentService
     public string LogPath => _logPath;
 
     /// <summary>
-    /// Audio backend (pulse or alsa).
+    /// Audio backend (always "pulse" - PulseAudio).
     /// </summary>
-    public string AudioBackend => _audioBackend;
-
-    /// <summary>
-    /// Whether PulseAudio is the active backend.
-    /// </summary>
-    public bool UsePulseAudio => _audioBackend == "pulse";
-
-    /// <summary>
-    /// Whether ALSA is the active backend (Docker standalone mode).
-    /// ALSA supports software-defined devices from asound.conf.
-    /// </summary>
-    public bool UseAlsaBackend => _audioBackend == "alsa";
+    public string AudioBackend => "pulse";
 
     /// <summary>
     /// Get HAOS option value by key.
@@ -125,9 +111,9 @@ public class EnvironmentService
     }
 
     /// <summary>
-    /// Get the volume control method based on backend.
+    /// Get the volume control method (always "pactl" for PulseAudio).
     /// </summary>
-    public string VolumeControlMethod => _audioBackend == "alsa" ? "amixer" : "pactl";
+    public string VolumeControlMethod => "pactl";
 
     /// <summary>
     /// Ensure required directories exist.

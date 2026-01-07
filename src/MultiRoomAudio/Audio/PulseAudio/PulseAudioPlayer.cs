@@ -10,8 +10,7 @@ namespace MultiRoomAudio.Audio.PulseAudio;
 /// Designed for both HAOS and Docker environments where PulseAudio is available.
 /// </summary>
 /// <remarks>
-/// This player uses PulseAudio's simple synchronous API which avoids the
-/// ALSA bridge layer that causes underruns in HAOS. Audio data is written
+/// This player uses PulseAudio's simple synchronous API. Audio data is written
 /// directly to the PulseAudio server on a dedicated thread.
 /// </remarks>
 public class PulseAudioPlayer : IAudioPlayer
