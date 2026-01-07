@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-0a79f62
+## Development Build: sha-08fd44b
 
 **Current Dev Build Changes** (recent)
 
+- add alsa calibration
 - test another theroy
 - test theory on clock timing
 - Testing Theory on Sync Error
@@ -14,7 +15,6 @@
 - Add Stats for Nerds feature to CHANGELOG
 - Update documentation for unified resampler and Stats for Nerds
 - Add Stats for Nerds real-time diagnostics panel
-- Update SendSpin.SDK to version 3.3.1
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
