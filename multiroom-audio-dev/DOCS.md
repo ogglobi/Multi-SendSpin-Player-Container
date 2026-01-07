@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-1bb80af
+## Development Build: sha-1c05cdf
 
 **Current Dev Build Changes** (recent)
 
+- Load ALSA sinks at higher sample rates when supported
 - Use module-alsa-sink for direct PCM device access
 - Add debug output and /proc/asound mount instructions
 - Fix ALSA device detection in Docker standalone mode
@@ -14,7 +15,6 @@
 - add ALSA calibration passing to the SDK, updated to 3.5.0 and removed deadband entry/exit.
 - Fix Native Rate Option
 - add alsa calibration
-- test another theroy
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
