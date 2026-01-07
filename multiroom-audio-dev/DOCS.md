@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-24613ce
+## Development Build: sha-40e0fcf
 
 **Current Dev Build Changes** (recent)
 
+- Add Stats for Nerds feature to CHANGELOG
 - Update documentation for unified resampler and Stats for Nerds
 - Add Stats for Nerds real-time diagnostics panel
 - Update SendSpin.SDK to version 3.3.1
@@ -14,7 +15,6 @@
 - Fix 32-bit output
 - Initial draft of High Bitrate Support
 - Sort Cards alphabetically on server side, assume finer grain sorting on client side later.
-- fix rename
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
