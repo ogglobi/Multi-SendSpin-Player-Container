@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-e6c545c
+## Development Build: sha-1bb80af
 
 **Current Dev Build Changes** (recent)
 
+- Use module-alsa-sink for direct PCM device access
 - Add debug output and /proc/asound mount instructions
 - Fix ALSA device detection in Docker standalone mode
 - Fix Docker standalone mode to use PulseAudio
@@ -14,7 +15,6 @@
 - Fix Native Rate Option
 - add alsa calibration
 - test another theroy
-- test theory on clock timing
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
