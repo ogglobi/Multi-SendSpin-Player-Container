@@ -186,19 +186,24 @@ if [ -f /proc/asound/cards ]; then
         fi
     done
 elif [ -d /dev/snd ]; then
-    # Fallback: detect cards from /dev/snd/controlC* devices
-    echo "  /proc/asound/cards not found, detecting from /dev/snd/"
-    for ctrl in /dev/snd/controlC*; do
-        if [ -e "$ctrl" ]; then
-            # Extract card number from controlC0 -> 0
-            card_num=$(echo "$ctrl" | sed 's/.*controlC//')
-            echo "  Found ALSA card $card_num (from $ctrl)"
+    # Fallback: detect playback devices from /dev/snd/pcmC*D*p (p = playback)
+    echo "  /proc/asound/cards not found, detecting PCM playback devices..."
+    for pcm in /dev/snd/pcmC*D*p; do
+        if [ -e "$pcm" ]; then
+            # Extract card and device from pcmC0D3p -> 0,3
+            pcm_name=$(basename "$pcm")
+            card_num=$(echo "$pcm_name" | sed 's/pcmC\([0-9]*\)D.*/\1/')
+            dev_num=$(echo "$pcm_name" | sed 's/pcmC[0-9]*D\([0-9]*\)p/\1/')
 
-            if pactl load-module module-alsa-card device=hw:$card_num tsched=0 2>/dev/null; then
-                echo "    -> Loaded into PulseAudio"
+            echo "  Found PCM playback: hw:$card_num,$dev_num ($pcm_name)"
+
+            # Use module-alsa-sink for direct device access (doesn't need /proc/asound)
+            sink_name="alsa_output_hw_${card_num}_${dev_num}"
+            if pactl load-module module-alsa-sink device=hw:$card_num,$dev_num sink_name="$sink_name" tsched=0 2>&1; then
+                echo "    -> Loaded as $sink_name"
                 CARDS_LOADED=$((CARDS_LOADED + 1))
             else
-                echo "    -> Failed to load"
+                echo "    -> Failed to load (device may be in use or unsupported)"
             fi
         fi
     done
