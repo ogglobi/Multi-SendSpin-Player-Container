@@ -3,7 +3,7 @@ set -e
 
 # Multi-Room Audio Container Entrypoint
 # - HAOS mode: Uses system PulseAudio (provided by supervisor)
-# - Docker standalone: Uses direct ALSA (supports asound.conf zones)
+# - Docker standalone: Starts local PulseAudio daemon
 
 echo "========================================="
 echo "Multi-Room Audio Controller Starting"
@@ -102,34 +102,65 @@ if [ -f "/data/options.json" ] || [ -n "$SUPERVISOR_TOKEN" ]; then
     exec ./MultiRoomAudio "$@"
 fi
 
-# Standalone Docker mode - use direct ALSA (no PulseAudio needed)
-# This supports custom zones defined in /etc/asound.conf
-echo "Standalone Docker mode - using direct ALSA backend"
+# Standalone Docker mode - start local PulseAudio daemon
+echo "Standalone Docker mode - starting local PulseAudio daemon"
 echo ""
 
-# List available ALSA devices for diagnostics
-echo "ALSA hardware devices (aplay -l):"
-if command -v aplay >/dev/null 2>&1; then
-    aplay -l 2>/dev/null || echo "  (none found - check /dev/snd mount)"
-else
-    echo "  (aplay not available)"
-fi
-echo ""
+# Ensure runtime directory exists with correct permissions
+mkdir -p /run/pulse
+chmod 755 /run/pulse
 
-# Show all devices including software-defined zones (aplay -L)
-echo "All ALSA devices including software zones (aplay -L):"
-aplay -L 2>/dev/null | head -50 || echo "  (none)"
-echo ""
+# Start PulseAudio in system mode (daemon)
+# Using --disallow-exit to prevent auto-shutdown, --exit-idle-time=-1 to never exit
+echo "Starting PulseAudio daemon..."
+pulseaudio --system --disallow-exit --exit-idle-time=-1 --daemonize=yes \
+    --log-target=stderr --log-level=notice 2>&1 || {
+    echo "ERROR: Failed to start PulseAudio daemon"
+    echo "Trying with verbose logging..."
+    pulseaudio --system --disallow-exit --exit-idle-time=-1 --daemonize=no \
+        --log-target=stderr --log-level=debug &
+    sleep 2
+}
 
-# Check for custom asound.conf
-if [ -f /etc/asound.conf ]; then
-    echo "Custom /etc/asound.conf detected - software zones will be available"
-    echo ""
-fi
+# Set PULSE_SERVER for the application
+export PULSE_SERVER="unix:/run/pulse/native"
+
+# Wait for PulseAudio to be ready
+echo "Waiting for PulseAudio to become available..."
+MAX_WAIT=30
+WAIT_COUNT=0
+
+while ! pactl info >/dev/null 2>&1; do
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
+        echo ""
+        echo "ERROR: PulseAudio not responding after ${MAX_WAIT}s"
+        echo "Diagnostics:"
+        echo "  PULSE_SERVER=$PULSE_SERVER"
+        echo "  Socket exists: $([ -S /run/pulse/native ] && echo yes || echo no)"
+        ls -la /run/pulse/ 2>/dev/null || echo "  /run/pulse directory empty"
+        echo ""
+        echo "Check that /dev/snd is mounted and accessible"
+        exit 1
+    fi
+    if [ $((WAIT_COUNT % 5)) -eq 0 ]; then
+        echo "Waiting for PulseAudio... (${WAIT_COUNT}s)"
+    fi
+    sleep 1
+done
+
+echo "PulseAudio is ready!"
+echo ""
+echo "PulseAudio server info:"
+pactl info 2>/dev/null | grep -E "^(Server|Default Sink|Default Source)" || true
+echo ""
+echo "Available PulseAudio sinks:"
+pactl list sinks short 2>/dev/null || echo "  (none detected)"
+echo ""
 
 echo "========================================="
 echo "Starting Multi-Room Audio application"
 echo "========================================="
 
-# Run the application directly - it will use ALSA backend
+# Run the application - it will use PulseAudio backend
 exec ./MultiRoomAudio "$@"
