@@ -26,10 +26,14 @@ public static class BitDepthConverter
         {
             var sample = input[i];
 
-            // Apply TPDF dithering before quantization
+            // Apply TPDF (Triangular Probability Density Function) dithering before quantization.
+            // Sum of two independent uniform distributions creates a triangular distribution,
+            // which provides optimal noise shaping for audio quantization.
             if (applyDither)
             {
-                var dither = ((float)DitherRandom.NextDouble() - 0.5f) * 2f * ditherScale;
+                var r1 = (float)DitherRandom.NextDouble() - 0.5f;
+                var r2 = (float)DitherRandom.NextDouble() - 0.5f;
+                var dither = (r1 + r2) * ditherScale;
                 sample += dither;
             }
 
