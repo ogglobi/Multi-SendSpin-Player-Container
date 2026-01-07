@@ -151,6 +151,35 @@ done
 
 echo "PulseAudio is ready!"
 echo ""
+
+# In Docker, udev doesn't work so module-udev-detect won't find devices.
+# Manually detect ALSA cards and load them into PulseAudio.
+echo "Detecting ALSA audio devices..."
+if [ -f /proc/asound/cards ]; then
+    # Parse card numbers from /proc/asound/cards
+    # Format: " 0 [USB            ]: USB-Audio - USB Audio Device"
+    # Only lines starting with a number are card entries
+    grep -E '^ *[0-9]+' /proc/asound/cards | while read -r line; do
+        # First field is the card number
+        card_num=$(echo "$line" | awk '{print $1}')
+        # Extract description after "]: "
+        card_name=$(echo "$line" | sed 's/.*\]: //')
+
+        echo "  Found ALSA card $card_num: $card_name"
+
+        # Load the card into PulseAudio
+        # tsched=0 for better compatibility with USB devices
+        if pactl load-module module-alsa-card device=hw:$card_num tsched=0 2>/dev/null; then
+            echo "    -> Loaded into PulseAudio"
+        else
+            echo "    -> Failed to load (may not support playback)"
+        fi
+    done
+else
+    echo "  /proc/asound/cards not found - check /dev/snd mount"
+fi
+echo ""
+
 echo "PulseAudio server info:"
 pactl info 2>/dev/null | grep -E "^(Server|Default Sink|Default Source)" || true
 echo ""
