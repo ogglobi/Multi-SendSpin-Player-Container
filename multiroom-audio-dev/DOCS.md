@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-40e0fcf
+## Development Build: sha-0956d39
 
 **Current Dev Build Changes** (recent)
 
+- Fix ALSA latency detection and delay offset functionality
 - Add Stats for Nerds feature to CHANGELOG
 - Update documentation for unified resampler and Stats for Nerds
 - Add Stats for Nerds real-time diagnostics panel
@@ -14,7 +15,6 @@
 - Show device capabilities and what is being used
 - Fix 32-bit output
 - Initial draft of High Bitrate Support
-- Sort Cards alphabetically on server side, assume finer grain sorting on client side later.
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
