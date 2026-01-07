@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Clear console for a fresh start in container logs (Dockge, Portainer, etc.)
+printf '\033c'
+
 # Multi-Room Audio Container Entrypoint
 # - HAOS mode: Uses system PulseAudio (provided by supervisor)
 # - Docker standalone: Starts local PulseAudio daemon
