@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-720a756
+## Development Build: sha-4f22589
 
 **Current Dev Build Changes** (recent)
 
+- Add capability to use legacy timing to do A/B Testing
 - Attempt to diagnose timing issues by adding native rate option
 - Fix ALSA latency detection and delay offset functionality
 - Add Stats for Nerds feature to CHANGELOG
@@ -14,7 +15,6 @@
 - Add unified polyphase resampler for high-quality sample rate conversion
 - Fix TPDF dithering to use triangular probability distribution
 - Show device capabilities and what is being used
-- Fix 32-bit output
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
