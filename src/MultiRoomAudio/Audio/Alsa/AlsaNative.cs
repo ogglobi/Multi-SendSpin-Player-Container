@@ -189,6 +189,44 @@ internal static class AlsaNative
     [DllImport(LibAsound, EntryPoint = "snd_pcm_wait")]
     public static extern int Wait(IntPtr pcm, int timeout);
 
+    /// <summary>
+    /// Get the current buffer and period size after configuration.
+    /// This returns the ACTUAL sizes allocated, which may differ from requested.
+    /// Useful for determining true output latency.
+    /// </summary>
+    /// <param name="pcm">PCM handle.</param>
+    /// <param name="bufferSize">Output: buffer size in frames.</param>
+    /// <param name="periodSize">Output: period size in frames.</param>
+    /// <returns>0 on success, negative error code on failure.</returns>
+    [DllImport(LibAsound, EntryPoint = "snd_pcm_get_params")]
+    public static extern int GetParams(IntPtr pcm, out nuint bufferSize, out nuint periodSize);
+
+    /// <summary>
+    /// Get the delay (latency) in frames.
+    /// This is the number of frames between the application and the sound card.
+    /// </summary>
+    /// <param name="pcm">PCM handle.</param>
+    /// <param name="delay">Output: delay in frames (can be negative during xrun).</param>
+    /// <returns>0 on success, negative error code on failure.</returns>
+    [DllImport(LibAsound, EntryPoint = "snd_pcm_delay")]
+    public static extern int GetDelay(IntPtr pcm, out nint delay);
+
+    #endregion
+
+    #region Latency Calculation
+
+    /// <summary>
+    /// Calculate latency in milliseconds from buffer size and sample rate.
+    /// </summary>
+    /// <param name="bufferFrames">Buffer size in frames.</param>
+    /// <param name="sampleRate">Sample rate in Hz.</param>
+    /// <returns>Latency in milliseconds.</returns>
+    public static int CalculateLatencyMs(nuint bufferFrames, uint sampleRate)
+    {
+        if (sampleRate == 0) return 0;
+        return (int)((bufferFrames * 1000) / sampleRate);
+    }
+
     #endregion
 
     #region Error Handling

@@ -329,6 +329,13 @@ async function setDelay(name, delayMs) {
         if (players[name]) {
             players[name].delayMs = delayMs;
         }
+
+        // Show "Saved" indicator briefly
+        const indicator = document.getElementById('delaySavedIndicator');
+        if (indicator) {
+            indicator.style.opacity = '1';
+            setTimeout(() => { indicator.style.opacity = '0'; }, 1500);
+        }
     } catch (error) {
         console.error('Error setting delay:', error);
         showAlert(error.message, 'danger');
@@ -415,6 +422,7 @@ async function showPlayerStats(name) {
                 <i class="fas fa-plus"></i>
             </button>
             <small class="text-muted ms-2">Range: -5000 to +5000ms</small>
+            <span id="delaySavedIndicator" class="text-success ms-2 small" style="opacity: 0; transition: opacity 0.3s;"><i class="fas fa-check"></i> Saved</span>
         </div>
         ${player.metrics ? `
         <h6 class="text-muted text-uppercase small mt-3">Metrics</h6>

@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.0.14] - ALSA Latency Detection & Delay Offset
+
+### Fixed
+- **ALSA sync offset on USB/virtual devices**: Fixed constant sync error (~200ms) on devices where ALSA allocates larger buffers than requested
+  - Now queries actual buffer size via `snd_pcm_get_params` instead of using hardcoded 50ms target
+  - USB audio devices, dmix, and PulseAudio-bridged devices now report accurate latency
+  - Eliminates runaway buffer growth caused by sync correction responding to phantom offset
+- **Delay offset not applied**: Fixed player delay offset setting not being applied to the SDK
+  - Now properly sets `ClockSync.StaticDelayMs` for immediate effect
+  - Delay is applied at player creation and persisted across restarts
+  - Allows fine-tuning synchronization between players (±5000ms range)
+
+### Technical
+- Added `AlsaNative.GetParams()` and `AlsaNative.GetDelay()` P/Invoke bindings
+- Added `AlsaNative.CalculateLatencyMs()` helper for buffer-to-latency conversion
+- Both initial connection and reconnection now query actual ALSA buffer parameters
+- Added `PlayerManagerService.SetDelayOffset()` method for runtime delay adjustment
+
+---
+
 ## [2.0.13] - Unified Polyphase Resampler & Stats for Nerds
 
 ### Fixed

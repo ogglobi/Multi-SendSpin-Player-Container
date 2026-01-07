@@ -180,6 +180,22 @@ Handles the final audio output:
 | Volume Control | Software gain applied before output |
 | Buffering | Ring buffer to handle timing variations |
 | Backend Selection | ALSA for Docker, PulseAudio for HAOS |
+| Latency Detection | Queries actual buffer size for accurate sync |
+
+#### Latency Detection
+
+Accurate output latency reporting is critical for multi-room synchronization. The SDK uses the reported latency to determine when samples will actually reach the speaker.
+
+**ALSA Backend:**
+- Queries actual buffer size via `snd_pcm_get_params()` after configuration
+- ALSA may allocate larger buffers than requested for USB devices, dmix, or virtual devices
+- Reports actual latency instead of target latency for accurate sync
+
+**PulseAudio Backend:**
+- Queries latency via `pa_simple_get_latency()`
+- Includes server-side buffering in the calculation
+
+If the reported latency is wrong, sync correction will chase a phantom offset, causing the buffer to grow indefinitely.
 
 ---
 
@@ -238,6 +254,22 @@ var outputFormat = new AudioOutputFormat
 1. Verify `isClockSynced: true` in player status
 2. Check logs for `Resampler: rate=` messages
 3. Ensure network latency is stable
+
+### Constant Sync Error (~200ms) with Growing Buffer
+
+**Symptom:** Stats for Nerds shows:
+- Constant sync error (e.g., -199ms or +250ms)
+- Buffer growing well beyond target (e.g., 4000ms vs 250ms target)
+- Playback rate stuck at minimum or maximum (0.96x or 1.04x)
+
+**Cause:** Output latency mismatch - the actual device latency differs from reported latency
+
+**Solution:**
+- **Version 2.0.14+**: ALSA now queries actual buffer size automatically
+- **Older versions**: Check logs for `ALSA actual buffer: X frames (Yms)` to see true latency
+- For virtual devices or complex audio routing, the actual buffer may be 100-300ms instead of the target 50ms
+
+**Diagnostic:** Open Stats for Nerds and check "Output Latency" in Clock Sync section. If this is significantly lower than expected for your device, the sync correction will be chasing a phantom offset.
 
 ---
 

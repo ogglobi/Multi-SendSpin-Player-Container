@@ -209,8 +209,24 @@ public class AlsaPlayer : IAudioPlayer
 
                 _currentFormat = format;
 
-                // Calculate latency from target
-                OutputLatencyMs = (int)(TargetLatencyUs / 1000);
+                // Query actual buffer size - ALSA may allocate larger buffers than requested
+                // (especially for USB devices, virtual devices, or devices behind dmix/PulseAudio)
+                var getResult = AlsaNative.GetParams(_pcmHandle, out var actualBufferSize, out var actualPeriodSize);
+                if (getResult >= 0 && actualBufferSize > 0)
+                {
+                    OutputLatencyMs = AlsaNative.CalculateLatencyMs(actualBufferSize, (uint)actualSampleRate);
+                    _logger.LogInformation(
+                        "ALSA actual buffer: {BufferFrames} frames ({LatencyMs}ms), period: {PeriodFrames} frames",
+                        actualBufferSize, OutputLatencyMs, actualPeriodSize);
+                }
+                else
+                {
+                    // Fallback to target if query fails
+                    OutputLatencyMs = (int)(TargetLatencyUs / 1000);
+                    _logger.LogWarning(
+                        "Could not query ALSA buffer size: {Error}. Using target latency {TargetMs}ms",
+                        AlsaNative.GetErrorMessage(getResult), OutputLatencyMs);
+                }
 
                 // Pre-allocate buffers
                 var samplesPerWrite = FramesPerWrite * format.Channels;
@@ -220,7 +236,7 @@ public class AlsaPlayer : IAudioPlayer
                 SetState(AudioPlayerState.Stopped);
 
                 _logger.LogInformation(
-                    "ALSA player initialized. Device: {Device}, Format: {Format}, Rate: {Rate}Hz, Latency: {Latency}ms",
+                    "ALSA player initialized. Device: {Device}, Format: {Format}, Rate: {Rate}Hz, Reported Latency: {Latency}ms",
                     _deviceName, AlsaNative.GetFormatName(_alsaFormat), actualSampleRate, OutputLatencyMs);
             }
             catch (Exception ex)
@@ -768,6 +784,16 @@ public class AlsaPlayer : IAudioPlayer
                     continue;
                 }
 
+                // Query actual buffer latency after reconnection
+                var getResult = AlsaNative.GetParams(newHandle, out var actualBufferSize, out var actualPeriodSize);
+                if (getResult >= 0 && actualBufferSize > 0)
+                {
+                    OutputLatencyMs = AlsaNative.CalculateLatencyMs(actualBufferSize, (uint)actualSampleRate);
+                    _logger.LogDebug(
+                        "ALSA reconnect buffer: {BufferFrames} frames ({LatencyMs}ms)",
+                        actualBufferSize, OutputLatencyMs);
+                }
+
                 // Success!
                 lock (_lock)
                 {
@@ -775,8 +801,8 @@ public class AlsaPlayer : IAudioPlayer
                 }
 
                 _logger.LogInformation(
-                    "ALSA reconnected successfully on attempt {Attempt}",
-                    attempt);
+                    "ALSA reconnected successfully on attempt {Attempt}, latency: {Latency}ms",
+                    attempt, OutputLatencyMs);
                 return true;
             }
             catch (Exception ex)

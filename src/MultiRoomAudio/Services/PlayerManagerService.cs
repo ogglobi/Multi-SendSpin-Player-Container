@@ -507,6 +507,14 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // 11. Apply initial volume (software volume scaling)
             player.Volume = NormalizeVolume(request.Volume);
 
+            // 12. Apply initial delay offset if specified
+            if (request.DelayMs != 0)
+            {
+                clockSync.StaticDelayMs = request.DelayMs;
+                _logger.LogDebug("Applied initial delay offset of {DelayMs}ms for '{Name}'",
+                    request.DelayMs, request.Name);
+            }
+
             // 13. Persist configuration if requested
             if (request.Persist)
             {
@@ -661,6 +669,33 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return false;
 
         context.Pipeline.SetMuted(muted);
+        return true;
+    }
+
+    /// <summary>
+    /// Sets the delay offset for a player.
+    /// This adjusts the playback timing to synchronize with other players.
+    /// Positive values delay playback (play later), negative values advance it (play earlier).
+    /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="delayMs">Delay offset in milliseconds (-5000 to 5000).</param>
+    /// <returns>True if successful, false if player not found.</returns>
+    public bool SetDelayOffset(string name, int delayMs)
+    {
+        if (!_players.TryGetValue(name, out var context))
+            return false;
+
+        // Clamp to valid range
+        delayMs = Math.Clamp(delayMs, -5000, 5000);
+
+        // Apply to the clock synchronizer - this affects when samples are scheduled to play
+        context.ClockSync.StaticDelayMs = delayMs;
+
+        // Update the stored config
+        context.Config.DelayMs = delayMs;
+
+        _logger.LogInformation("Set delay offset for '{Name}' to {DelayMs}ms", name, delayMs);
+
         return true;
     }
 

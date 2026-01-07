@@ -285,11 +285,12 @@ public static class PlayersEndpoint
             ILogger<PlayerManagerService> logger) =>
         {
             logger.LogDebug("API: PUT /api/players/{PlayerName}/offset to {DelayMs}ms", name, request.DelayMs);
-            var player = manager.GetPlayer(name);
-            if (player == null)
+
+            // Apply to running player (affects clock sync timing immediately)
+            if (!manager.SetDelayOffset(name, request.DelayMs))
                 return PlayerNotFoundResult(name, logger, "offset change");
 
-            // Update config and save
+            // Also persist to config so it survives restarts
             config.UpdatePlayerField(name, c => c.DelayMs = request.DelayMs);
 
             return Results.Ok(new SuccessResponse(true, $"Offset set to {request.DelayMs}ms"));
