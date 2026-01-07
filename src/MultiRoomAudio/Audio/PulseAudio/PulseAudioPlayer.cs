@@ -32,21 +32,25 @@ public class PulseAudioPlayer : IAudioPlayer
     private float[]? _sampleBuffer;
     private byte[]? _byteBuffer;
 
+    // Latency measurement state
+    private int _writeCount;
+    private bool _latencyMeasured;
+
     /// <summary>
     /// Buffer size in milliseconds. Larger values increase latency but reduce underruns.
     /// </summary>
     private const int BufferMs = 50;
 
     /// <summary>
-    /// Additional latency estimate for ALSA sink buffer and USB device pipeline.
-    /// This accounts for latency beyond PulseAudio's buffer that pa_simple_get_latency doesn't report.
-    /// </summary>
-    private const int AdditionalPipelineLatencyMs = 20;
-
-    /// <summary>
     /// Frames per write operation. At 48kHz, 1024 frames = ~21ms of audio.
     /// </summary>
     private const int FramesPerWrite = 1024;
+
+    /// <summary>
+    /// Number of write operations before measuring stable latency.
+    /// This ensures the buffer has filled before we measure.
+    /// </summary>
+    private const int LatencyMeasurementDelayWrites = 10;
 
     /// <summary>
     /// Number of consecutive write failures before attempting reconnection.
@@ -184,32 +188,11 @@ public class PulseAudioPlayer : IAudioPlayer
 
                 _currentFormat = format;
 
-                // Get actual latency from PulseAudio
-                // Note: pa_simple_get_latency only returns buffer latency, not the full pipeline
-                // We add AdditionalPipelineLatencyMs to account for ALSA sink buffer and USB device latency
-                var latencyUs = SimpleGetLatency(_paHandle, out var latencyError);
-                if (latencyError != 0)
-                {
-                    _logger.LogWarning(
-                        "Could not query PulseAudio latency: {Error}. Using fallback {BufferMs}ms + {Additional}ms",
-                        GetErrorMessage(latencyError), BufferMs, AdditionalPipelineLatencyMs);
-                    OutputLatencyMs = BufferMs + AdditionalPipelineLatencyMs;
-                }
-                else
-                {
-                    var paLatencyMs = (int)(latencyUs / 1000);
-                    if (paLatencyMs <= 0)
-                    {
-                        _logger.LogDebug(
-                            "PulseAudio reported invalid latency {Latency}μs. Using fallback {BufferMs}ms + {Additional}ms",
-                            latencyUs, BufferMs, AdditionalPipelineLatencyMs);
-                        OutputLatencyMs = BufferMs + AdditionalPipelineLatencyMs;
-                    }
-                    else
-                    {
-                        OutputLatencyMs = paLatencyMs + AdditionalPipelineLatencyMs;
-                    }
-                }
+                // Set initial latency estimate based on buffer size.
+                // The real latency will be measured during playback after the buffer fills.
+                OutputLatencyMs = BufferMs;
+                _writeCount = 0;
+                _latencyMeasured = false;
 
                 // Pre-allocate buffers (float32 = 4 bytes per sample)
                 var samplesPerWrite = FramesPerWrite * format.Channels;
@@ -554,6 +537,12 @@ public class PulseAudioPlayer : IAudioPlayer
                 if (writeSuccess)
                 {
                     consecutiveFailures = 0;
+
+                    // Measure stable latency after buffer has filled
+                    if (!_latencyMeasured && ++_writeCount >= LatencyMeasurementDelayWrites)
+                    {
+                        MeasureStableLatency(handle);
+                    }
                 }
             }
         }
@@ -568,6 +557,40 @@ public class PulseAudioPlayer : IAudioPlayer
         }
 
         _logger.LogDebug("Playback thread exited");
+    }
+
+    /// <summary>
+    /// Measures the stable output latency after the buffer has filled.
+    /// This gives us the real end-to-end latency including ALSA/USB device buffers.
+    /// </summary>
+    private void MeasureStableLatency(IntPtr handle)
+    {
+        _latencyMeasured = true;
+
+        var latencyUs = SimpleGetLatency(handle, out var error);
+        if (error != 0)
+        {
+            _logger.LogDebug(
+                "Could not measure stable latency: {Error}. Keeping initial estimate {Latency}ms",
+                GetErrorMessage(error), OutputLatencyMs);
+            return;
+        }
+
+        var measuredMs = (int)(latencyUs / 1000);
+        if (measuredMs <= 0)
+        {
+            _logger.LogDebug(
+                "PulseAudio reported invalid stable latency {Latency}μs. Keeping initial estimate {Initial}ms",
+                latencyUs, OutputLatencyMs);
+            return;
+        }
+
+        var previousMs = OutputLatencyMs;
+        OutputLatencyMs = measuredMs;
+
+        _logger.LogInformation(
+            "Measured stable output latency: {Measured}ms (was {Previous}ms)",
+            measuredMs, previousMs);
     }
 
     /// <summary>
