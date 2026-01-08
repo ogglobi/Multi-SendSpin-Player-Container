@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-b4fc51c
+## Development Build: sha-7d23ad2
 
 **Current Dev Build Changes** (recent)
 
+- don't crap the bed when cards fail to load
 - Add additional device level logging
 - add linear interpolation and dynamic correction rate with some tracking
 - swap from read to readraw
@@ -14,7 +15,6 @@
 - fix _disposed handling and checkbox rendering
 - Update to Bootstrap latest, use their dark mode
 - Additional logging enhancements and sink creation improvements
-- pulseplayer updates and stats for nerds fix
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
