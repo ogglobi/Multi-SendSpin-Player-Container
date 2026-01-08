@@ -70,15 +70,15 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Standard startup grace period
         StartupGracePeriodMicroseconds = 500_000,
 
-        // Increase scheduled start grace window from 10ms to 1 second
-        // This allows playback to start even if the server schedules audio
-        // slightly in the future to account for network/buffer latency.
-        // Without this, the chicken-and-egg problem occurs:
-        // - ReadRaw waits for scheduled start time
-        // - Buffer fills up (no samples consumed)
-        // - Overruns drop early segments with "past" timestamps
-        // - Only "future" segments remain, timeUntilStart > 10ms forever
-        ScheduledStartGraceWindowMicroseconds = 1_000_000,  // 1 second (vs default 10ms)
+        // SYNC FIX: Set to 0 to use SDK default behavior for precise timing.
+        // A large grace window (e.g., 1 second) causes audio to play early because
+        // the SDK starts playback immediately when samples are scheduled within the
+        // grace window, rather than waiting for the scheduled time.
+        //
+        // NOTE: If playback fails to start (chicken-and-egg problem where buffer
+        // fills but scheduled time never arrives), consider a small non-zero value
+        // like 50_000 (50ms) instead of removing entirely.
+        ScheduledStartGraceWindowMicroseconds = 0,  // Use SDK default for accurate sync
     };
 
     /// <summary>
