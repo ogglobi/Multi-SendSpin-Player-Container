@@ -857,3 +857,438 @@ function getCorrectionModeClass(mode) {
         default: return '';
     }
 }
+
+// ============================================
+// CUSTOM SINKS MANAGEMENT
+// ============================================
+
+// State
+let customSinks = {};
+let sinksSectionVisible = false;
+
+// Toggle sinks section visibility
+function toggleSinksSection() {
+    const section = document.getElementById('sinks-section');
+    sinksSectionVisible = !sinksSectionVisible;
+
+    if (sinksSectionVisible) {
+        section.classList.remove('d-none');
+        refreshSinks();
+    } else {
+        section.classList.add('d-none');
+    }
+}
+
+// Refresh custom sinks list
+async function refreshSinks() {
+    try {
+        const response = await fetch('./api/sinks');
+        if (!response.ok) throw new Error('Failed to fetch sinks');
+
+        const data = await response.json();
+        customSinks = {};
+        (data.sinks || []).forEach(s => {
+            customSinks[s.name] = s;
+        });
+
+        renderSinks();
+    } catch (error) {
+        console.error('Error refreshing sinks:', error);
+        const container = document.getElementById('sinks-container');
+        container.innerHTML = `<div class="col-12 text-center py-3 text-danger">
+            <i class="fas fa-exclamation-circle me-2"></i>Failed to load sinks
+        </div>`;
+    }
+}
+
+// Render sink cards
+function renderSinks() {
+    const container = document.getElementById('sinks-container');
+    const sinkNames = Object.keys(customSinks);
+
+    if (sinkNames.length === 0) {
+        container.innerHTML = `
+            <div class="col-12 text-center py-4">
+                <i class="fas fa-layer-group fa-3x text-muted mb-3"></i>
+                <h5>No Custom Sinks</h5>
+                <p class="text-muted mb-0">Create a combine-sink or remap-sink to get started.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = sinkNames.map(name => {
+        const sink = customSinks[name];
+        const typeIcon = sink.type === 'Combine' ? 'fa-layer-group' : 'fa-random';
+        const typeBadgeClass = sink.type === 'Combine' ? 'bg-info' : 'bg-secondary';
+        const stateBadgeClass = getSinkStateBadgeClass(sink.state);
+
+        return `
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card sink-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="card-title mb-0">
+                                <i class="fas ${typeIcon} me-2 text-muted"></i>
+                                ${escapeHtml(sink.name)}
+                            </h6>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="reloadSink('${escapeHtml(name)}'); return false;">
+                                        <i class="fas fa-sync me-2"></i>Reload</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteSink('${escapeHtml(name)}'); return false;">
+                                        <i class="fas fa-trash me-2"></i>Delete</a></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <span class="badge ${typeBadgeClass} sink-type-badge me-1">${sink.type}</span>
+                        <span class="badge bg-${stateBadgeClass}">${sink.state}</span>
+
+                        ${sink.description ? `<p class="text-muted mt-2 mb-0 small">${escapeHtml(sink.description)}</p>` : ''}
+
+                        ${sink.slaves ? `
+                            <div class="mt-2">
+                                <small class="text-muted"><i class="fas fa-link me-1"></i>${sink.slaves.length} devices combined</small>
+                            </div>
+                        ` : ''}
+
+                        ${sink.masterSink ? `
+                            <div class="mt-2">
+                                <small class="text-muted"><i class="fas fa-arrow-right me-1"></i>From: ${escapeHtml(sink.masterSink)}</small>
+                            </div>
+                        ` : ''}
+
+                        ${sink.errorMessage ? `
+                            <div class="mt-2">
+                                <small class="text-danger">
+                                    <i class="fas fa-exclamation-circle me-1"></i>${escapeHtml(sink.errorMessage)}
+                                </small>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function getSinkStateBadgeClass(state) {
+    const stateMap = {
+        'Loaded': 'success',
+        'Loading': 'info',
+        'Error': 'danger',
+        'Created': 'secondary',
+        'Unloading': 'warning'
+    };
+    return stateMap[state] || 'secondary';
+}
+
+// Open Combine Sink Modal
+function openCombineSinkModal() {
+    // Reset form
+    document.getElementById('combineSinkName').value = '';
+    document.getElementById('combineSinkDesc').value = '';
+
+    // Populate device list
+    const deviceList = document.getElementById('combineDeviceList');
+    if (devices.length === 0) {
+        deviceList.innerHTML = '<div class="text-center py-2 text-muted">No devices available</div>';
+    } else {
+        deviceList.innerHTML = devices.map(d => `
+            <div class="form-check device-checkbox-item">
+                <input class="form-check-input" type="checkbox" value="${escapeHtml(d.id)}" id="combine-${escapeHtml(d.id)}">
+                <label class="form-check-label" for="combine-${escapeHtml(d.id)}">
+                    ${escapeHtml(d.name)}
+                    ${d.isDefault ? '<span class="badge bg-primary ms-1">default</span>' : ''}
+                </label>
+            </div>
+        `).join('');
+    }
+
+    new bootstrap.Modal(document.getElementById('combineSinkModal')).show();
+}
+
+// Open Remap Sink Modal
+function openRemapSinkModal() {
+    // Reset form
+    document.getElementById('remapSinkName').value = '';
+    document.getElementById('remapSinkDesc').value = '';
+
+    // Populate master device dropdown
+    const masterSelect = document.getElementById('remapMasterDevice');
+    masterSelect.innerHTML = '<option value="">Select a device...</option>' +
+        devices.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} (${d.maxChannels}ch)</option>`).join('');
+
+    updateChannelPicker();
+
+    new bootstrap.Modal(document.getElementById('remapSinkModal')).show();
+}
+
+// Update channel picker based on selected master device
+function updateChannelPicker() {
+    const masterSelect = document.getElementById('remapMasterDevice');
+    const leftChannel = document.getElementById('leftChannel');
+    const rightChannel = document.getElementById('rightChannel');
+
+    // Get channel count from selected device
+    const selectedDevice = devices.find(d => d.id === masterSelect.value);
+    const channelCount = selectedDevice ? selectedDevice.maxChannels : 2;
+
+    // Build channel options based on channel count
+    let channelOptions = [];
+    if (channelCount >= 8) {
+        channelOptions = [
+            { value: 'front-left', label: 'Front Left' },
+            { value: 'front-right', label: 'Front Right' },
+            { value: 'front-center', label: 'Front Center' },
+            { value: 'lfe', label: 'LFE (Subwoofer)' },
+            { value: 'rear-left', label: 'Rear Left' },
+            { value: 'rear-right', label: 'Rear Right' },
+            { value: 'side-left', label: 'Side Left' },
+            { value: 'side-right', label: 'Side Right' }
+        ];
+    } else if (channelCount >= 6) {
+        channelOptions = [
+            { value: 'front-left', label: 'Front Left' },
+            { value: 'front-right', label: 'Front Right' },
+            { value: 'front-center', label: 'Front Center' },
+            { value: 'lfe', label: 'LFE (Subwoofer)' },
+            { value: 'rear-left', label: 'Rear Left' },
+            { value: 'rear-right', label: 'Rear Right' }
+        ];
+    } else {
+        channelOptions = [
+            { value: 'front-left', label: 'Front Left' },
+            { value: 'front-right', label: 'Front Right' }
+        ];
+    }
+
+    const optionsHtml = channelOptions.map(ch =>
+        `<option value="${ch.value}">${ch.label}</option>`
+    ).join('');
+
+    leftChannel.innerHTML = optionsHtml;
+    rightChannel.innerHTML = optionsHtml;
+
+    // Set defaults
+    leftChannel.value = 'front-left';
+    rightChannel.value = 'front-right';
+}
+
+// Create combine sink
+async function createCombineSink() {
+    const name = document.getElementById('combineSinkName').value.trim();
+    const description = document.getElementById('combineSinkDesc').value.trim();
+    const checkboxes = document.querySelectorAll('#combineDeviceList input:checked');
+    const slaves = Array.from(checkboxes).map(cb => cb.value);
+
+    if (!name) {
+        showAlert('Please enter a sink name', 'warning');
+        return;
+    }
+
+    if (slaves.length < 2) {
+        showAlert('Select at least 2 devices to combine', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('./api/sinks/combine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description: description || null, slaves })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to create sink');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('combineSinkModal')).hide();
+        await refreshSinks();
+        await refreshDevices(); // Custom sink should now appear in device list
+        showAlert(`Combine sink "${name}" created successfully`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Create remap sink
+async function createRemapSink() {
+    const name = document.getElementById('remapSinkName').value.trim();
+    const description = document.getElementById('remapSinkDesc').value.trim();
+    const masterSink = document.getElementById('remapMasterDevice').value;
+    const leftChannel = document.getElementById('leftChannel').value;
+    const rightChannel = document.getElementById('rightChannel').value;
+
+    if (!name) {
+        showAlert('Please enter a sink name', 'warning');
+        return;
+    }
+
+    if (!masterSink) {
+        showAlert('Please select a master device', 'warning');
+        return;
+    }
+
+    const channelMappings = [
+        { outputChannel: 'front-left', masterChannel: leftChannel },
+        { outputChannel: 'front-right', masterChannel: rightChannel }
+    ];
+
+    try {
+        const response = await fetch('./api/sinks/remap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                description: description || null,
+                masterSink,
+                channels: 2,
+                channelMappings,
+                remix: false
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to create sink');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('remapSinkModal')).hide();
+        await refreshSinks();
+        await refreshDevices(); // Custom sink should now appear in device list
+        showAlert(`Remap sink "${name}" created successfully`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Delete sink
+async function deleteSink(name) {
+    if (!confirm(`Delete custom sink "${name}"?`)) return;
+
+    try {
+        const response = await fetch(`./api/sinks/${encodeURIComponent(name)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to delete sink');
+        }
+
+        await refreshSinks();
+        await refreshDevices();
+        showAlert(`Sink "${name}" deleted`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Reload sink
+async function reloadSink(name) {
+    try {
+        const response = await fetch(`./api/sinks/${encodeURIComponent(name)}/reload`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to reload sink');
+        }
+
+        await refreshSinks();
+        showAlert(`Sink "${name}" reloaded`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Open import modal
+async function openImportModal() {
+    const list = document.getElementById('importSinksList');
+    const empty = document.getElementById('importEmpty');
+    const unavailable = document.getElementById('importUnavailable');
+    const importBtn = document.getElementById('importBtn');
+
+    // Reset state
+    list.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Scanning...</div>';
+    list.classList.remove('d-none');
+    empty.classList.add('d-none');
+    unavailable.classList.add('d-none');
+    importBtn.disabled = false;
+
+    const modal = new bootstrap.Modal(document.getElementById('importSinksModal'));
+    modal.show();
+
+    try {
+        const response = await fetch('./api/sinks/import/scan');
+        const data = await response.json();
+
+        if (data.found === 0) {
+            list.classList.add('d-none');
+            empty.classList.remove('d-none');
+            importBtn.disabled = true;
+            return;
+        }
+
+        list.innerHTML = data.sinks.map(sink => `
+            <div class="form-check border-bottom py-2">
+                <input class="form-check-input" type="checkbox"
+                       value="${sink.lineNumber}" id="import-${sink.lineNumber}">
+                <label class="form-check-label w-100" for="import-${sink.lineNumber}">
+                    <div class="d-flex justify-content-between">
+                        <strong>${escapeHtml(sink.name)}</strong>
+                        <span class="badge ${sink.type === 'Combine' ? 'bg-info' : 'bg-secondary'}">${sink.type}</span>
+                    </div>
+                    ${sink.description ? `<small class="text-muted">${escapeHtml(sink.description)}</small><br>` : ''}
+                    <code class="small text-muted">${escapeHtml(sink.preview)}</code>
+                </label>
+            </div>
+        `).join('');
+    } catch (error) {
+        list.classList.add('d-none');
+        unavailable.classList.remove('d-none');
+        importBtn.disabled = true;
+    }
+}
+
+// Import selected sinks
+async function importSelectedSinks() {
+    const checkboxes = document.querySelectorAll('#importSinksList input:checked');
+    const lineNumbers = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (lineNumbers.length === 0) {
+        showAlert('Select at least one sink to import', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('./api/sinks/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lineNumbers })
+        });
+
+        const result = await response.json();
+        bootstrap.Modal.getInstance(document.getElementById('importSinksModal')).hide();
+
+        if (result.imported && result.imported.length > 0) {
+            showAlert(`Imported: ${result.imported.join(', ')}`, 'success');
+        }
+        if (result.errors && result.errors.length > 0) {
+            showAlert(`Errors: ${result.errors.join('; ')}`, 'warning');
+        }
+
+        await refreshSinks();
+        await refreshDevices();
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}

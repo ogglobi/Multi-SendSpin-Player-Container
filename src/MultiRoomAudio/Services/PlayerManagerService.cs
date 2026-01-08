@@ -69,6 +69,16 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         // Standard startup grace period
         StartupGracePeriodMicroseconds = 500_000,
+
+        // Increase scheduled start grace window from 10ms to 1 second
+        // This allows playback to start even if the server schedules audio
+        // slightly in the future to account for network/buffer latency.
+        // Without this, the chicken-and-egg problem occurs:
+        // - ReadRaw waits for scheduled start time
+        // - Buffer fills up (no samples consumed)
+        // - Overruns drop early segments with "past" timestamps
+        // - Only "future" segments remain, timeUntilStart > 10ms forever
+        ScheduledStartGraceWindowMicroseconds = 1_000_000,  // 1 second (vs default 10ms)
     };
 
     /// <summary>
@@ -414,7 +424,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 {
                     // Direct passthrough - no resampling
                     // PulseAudio handles format conversion to device natively
-                    return new BufferedAudioSampleSource(buffer, timeFunc);
+                    return new BufferedAudioSampleSource(
+                        buffer,
+                        timeFunc,
+                        _loggerFactory.CreateLogger<BufferedAudioSampleSource>());
                 },
                 waitForConvergence: true,      // Wait for minimal sync (2 measurements) before playback
                 convergenceTimeoutMs: 1000);   // 1 second timeout (SDK 3.0 uses HasMinimalSync for fast start)

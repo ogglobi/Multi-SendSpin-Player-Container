@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Sendspin.SDK.Audio;
 using Sendspin.SDK.Models;
 
@@ -25,6 +26,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
 {
     private readonly ITimedAudioBuffer _buffer;
     private readonly Func<long> _getCurrentTimeMicroseconds;
+    private readonly ILogger<BufferedAudioSampleSource>? _logger;
 
     // Correction threshold - within 5ms is acceptable, beyond that we correct
     private const long CorrectionThresholdMicroseconds = 5_000;  // 5ms deadband
@@ -41,6 +43,10 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     // Pending insertion - set when we need to insert on next read
     private bool _pendingInsertion;
 
+    // Debug logging rate limiter
+    private long _lastDebugLogTime;
+    private const long DebugLogIntervalMicroseconds = 1_000_000; // 1 second
+
     /// <inheritdoc/>
     public AudioFormat Format => _buffer.Format;
 
@@ -54,15 +60,18 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     /// </summary>
     /// <param name="buffer">The timed audio buffer to read from.</param>
     /// <param name="getCurrentTimeMicroseconds">Function that returns current local time in microseconds.</param>
+    /// <param name="logger">Optional logger for diagnostics.</param>
     public BufferedAudioSampleSource(
         ITimedAudioBuffer buffer,
-        Func<long> getCurrentTimeMicroseconds)
+        Func<long> getCurrentTimeMicroseconds,
+        ILogger<BufferedAudioSampleSource>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(getCurrentTimeMicroseconds);
 
         _buffer = buffer;
         _getCurrentTimeMicroseconds = getCurrentTimeMicroseconds;
+        _logger = logger;
         _channels = buffer.Format.Channels;
 
         if (_channels <= 0)
@@ -102,6 +111,22 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         if (read > 0)
         {
             ApplyFrameCorrection(buffer, offset + insertedSamples, read);
+        }
+        else if (_logger != null)
+        {
+            // Debug: Log when ReadRaw returns 0 (rate limited)
+            if (currentTime - _lastDebugLogTime >= DebugLogIntervalMicroseconds)
+            {
+                _lastDebugLogTime = currentTime;
+                var stats = _buffer.GetStats();
+                _logger.LogWarning(
+                    "ReadRaw returned 0: currentTime={CurrentTime}μs, bufferedMs={BufferedMs:F0}, " +
+                    "isPlaybackActive={IsPlaybackActive}, syncError={SyncError:F0}μs",
+                    currentTime,
+                    stats.BufferedMs,
+                    stats.IsPlaybackActive,
+                    stats.SyncErrorMicroseconds);
+            }
         }
 
         // Fill remainder with silence if underrun

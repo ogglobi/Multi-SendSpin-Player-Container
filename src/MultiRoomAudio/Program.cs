@@ -96,6 +96,12 @@ builder.Services.AddSingleton<BackendFactory>();
 builder.Services.AddSingleton<PlayerManagerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PlayerManagerService>());
 
+// Add CustomSinksService for PulseAudio sink management
+builder.Services.AddSingleton<PaModuleRunner>();
+builder.Services.AddSingleton<DefaultPaParser>();
+builder.Services.AddSingleton<CustomSinksService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CustomSinksService>());
+
 // Static files are served via UseStaticFiles() middleware below
 
 // Configure Kestrel to listen on port 8096 (or PORT env var)
@@ -183,6 +189,7 @@ app.MapHealthEndpoints();
 app.MapPlayersEndpoints();
 app.MapDevicesEndpoints();
 app.MapProvidersEndpoints();
+app.MapSinksEndpoints();
 
 // Root endpoint redirects to index.html or shows API info
 app.MapGet("/api", () => Results.Ok(new
@@ -197,6 +204,7 @@ app.MapGet("/api", () => Results.Ok(new
         players = "/api/players",
         devices = "/api/devices",
         providers = "/api/providers",
+        sinks = "/api/sinks",
         swagger = "/docs"
     }
 }))
