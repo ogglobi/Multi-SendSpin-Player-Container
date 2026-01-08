@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-0bf36c6
+## Development Build: sha-597d2ae
 
 **Current Dev Build Changes** (recent)
 
+- Shifted from PA_SimpleAudio to PA_stream.
 - try to have the right amount of latency.
 - Add 20ms additional latency I guess. Plus console cleanup.
 - clear out the console on start
@@ -14,7 +15,6 @@
 - Remove resampling - use direct passthrough to PulseAudio
 - Load ALSA sinks at higher sample rates when supported
 - Use module-alsa-sink for direct PCM device access
-- Add debug output and /proc/asound mount instructions
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
