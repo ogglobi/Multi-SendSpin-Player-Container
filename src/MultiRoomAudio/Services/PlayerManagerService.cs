@@ -1024,6 +1024,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 context.State = PlayerState.Playing;
             else if (state == AudioPipelineState.Buffering)
                 context.State = PlayerState.Buffering;
+            else if (state == AudioPipelineState.Idle)
+                context.State = PlayerState.Connected;
 
             // Broadcast status update on pipeline state change
             _ = BroadcastStatusAsync();

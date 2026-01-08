@@ -430,12 +430,38 @@ function adjustDelay(name, delta) {
     setDelay(name, newValue);
 }
 
+// Track delay changes for restart on modal close
+let playerStatsInitialDelay = null;
+let playerStatsCurrentPlayer = null;
+
+async function handlePlayerStatsModalClose() {
+    if (playerStatsCurrentPlayer && playerStatsInitialDelay !== null) {
+        const player = players[playerStatsCurrentPlayer];
+        if (player && player.delayMs !== playerStatsInitialDelay) {
+            // Delay was changed, restart player to apply
+            console.log(`Delay offset changed from ${playerStatsInitialDelay}ms to ${player.delayMs}ms, restarting player`);
+            await restartPlayer(playerStatsCurrentPlayer);
+        }
+    }
+    playerStatsInitialDelay = null;
+    playerStatsCurrentPlayer = null;
+}
+
 async function showPlayerStats(name) {
     const player = players[name];
     if (!player) return;
 
+    // Store initial delay to detect changes
+    playerStatsInitialDelay = player.delayMs;
+    playerStatsCurrentPlayer = name;
+
     const modal = document.getElementById('playerStatsModal');
     const body = document.getElementById('playerStatsBody');
+
+    // Set up modal close handler to restart player if delay changed
+    const modalInstance = bootstrap.Modal.getOrCreateInstance(modal);
+    modal.removeEventListener('hidden.bs.modal', handlePlayerStatsModalClose);
+    modal.addEventListener('hidden.bs.modal', handlePlayerStatsModalClose);
 
     body.innerHTML = `
         <div class="row">
@@ -483,7 +509,13 @@ async function showPlayerStats(name) {
             </div>
         </div>
         <h6 class="text-muted text-uppercase small mt-3">Delay Offset</h6>
-        <div class="delay-control d-flex align-items-center gap-2">
+        <p class="text-muted small mb-2">
+            <i class="fas fa-info-circle me-1"></i>
+            Adjust timing to sync this player with others. Use <strong>positive</strong> values to delay playback
+            (if this speaker plays too early), or <strong>negative</strong> values to advance it (if too late).
+            The player will restart when you close this dialog to apply changes.
+        </p>
+        <div class="delay-control d-flex align-items-center gap-2 flex-wrap">
             <button class="btn btn-outline-secondary btn-sm" onclick="adjustDelay('${escapeHtml(name)}', -10)" title="Decrease by 10ms">
                 <i class="fas fa-minus"></i>
             </button>
@@ -497,16 +529,16 @@ async function showPlayerStats(name) {
             <button class="btn btn-outline-secondary btn-sm" onclick="adjustDelay('${escapeHtml(name)}', 10)" title="Increase by 10ms">
                 <i class="fas fa-plus"></i>
             </button>
-            <small class="text-muted ms-2">Range: -5000 to +5000ms</small>
-            <span id="delaySavedIndicator" class="text-success ms-2 small" style="opacity: 0; transition: opacity 0.3s;"><i class="fas fa-check"></i> Saved</span>
+            <small class="text-muted">Range: -5000 to +5000ms</small>
+            <span id="delaySavedIndicator" class="text-success small" style="opacity: 0; transition: opacity 0.3s;"><i class="fas fa-check"></i> Saved</span>
         </div>
         ${player.metrics ? `
         <h6 class="text-muted text-uppercase small mt-3">Metrics</h6>
         <div class="d-flex flex-wrap">
-            <span class="metric-badge bg-light border"><i class="fas fa-database"></i> Buffer: ${player.metrics.bufferLevel}/${player.metrics.bufferCapacity}ms</span>
-            <span class="metric-badge bg-light border"><i class="fas fa-music"></i> Samples: ${player.metrics.samplesPlayed.toLocaleString()}</span>
-            <span class="metric-badge ${player.metrics.underruns > 0 ? 'bg-warning' : 'bg-light border'}"><i class="fas fa-exclamation-triangle"></i> Underruns: ${player.metrics.underruns}</span>
-            <span class="metric-badge ${player.metrics.overruns > 0 ? 'bg-warning' : 'bg-light border'}"><i class="fas fa-level-up-alt"></i> Overruns: ${player.metrics.overruns}</span>
+            <span class="metric-badge bg-body-secondary border"><i class="fas fa-database"></i> Buffer: ${player.metrics.bufferLevel}/${player.metrics.bufferCapacity}ms</span>
+            <span class="metric-badge bg-body-secondary border"><i class="fas fa-music"></i> Samples: ${player.metrics.samplesPlayed.toLocaleString()}</span>
+            <span class="metric-badge ${player.metrics.underruns > 0 ? 'bg-warning' : 'bg-body-secondary border'}"><i class="fas fa-exclamation-triangle"></i> Underruns: ${player.metrics.underruns}</span>
+            <span class="metric-badge ${player.metrics.overruns > 0 ? 'bg-warning' : 'bg-body-secondary border'}"><i class="fas fa-level-up-alt"></i> Overruns: ${player.metrics.overruns}</span>
         </div>
         ` : ''}
     `;

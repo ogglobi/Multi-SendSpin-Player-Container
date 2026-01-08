@@ -311,7 +311,7 @@
     overflow-y: auto;
     border: 1px solid var(--bs-border-color);
     border-radius: 0.25rem;
-    padding: 0.5rem;
+    padding: 0.5rem 0.5rem 0.5rem 2rem;
     background: var(--bs-body-bg);
 }
 
@@ -322,29 +322,6 @@
 
 .device-checkbox-item:last-child {
     border-bottom: none;
-}
-
-/* Ensure checkboxes are visible in dark mode */
-.device-checkboxes .form-check-input[type="checkbox"] {
-    width: 1.25em;
-    height: 1.25em;
-    margin-top: 0.125em;
-    flex-shrink: 0;
-    border: 2px solid var(--bs-secondary-color);
-    border-radius: 0.25em;
-    background-color: transparent;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-}
-
-.device-checkboxes .form-check-input[type="checkbox"]:checked {
-    background-color: var(--bs-primary);
-    border-color: var(--bs-primary);
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
 }
 
 /* Responsive improvements */
