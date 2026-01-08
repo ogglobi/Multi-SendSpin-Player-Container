@@ -1,4 +1,3 @@
-using MultiRoomAudio.Audio.Alsa;
 using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Services;
@@ -6,17 +5,15 @@ using MultiRoomAudio.Services;
 namespace MultiRoomAudio.Audio;
 
 /// <summary>
-/// Factory for creating the appropriate audio backend based on the runtime environment.
+/// Factory for creating the PulseAudio audio backend.
 /// </summary>
 /// <remarks>
-/// - HAOS mode: Uses PulseAudio (containers don't have direct ALSA access)
-/// - Docker standalone mode: Uses ALSA (direct hardware access, supports software-defined devices)
+/// Both HAOS and Docker standalone modes use PulseAudio for consistent behavior.
 /// </remarks>
 public class BackendFactory
 {
     private readonly ILogger<BackendFactory> _logger;
     private readonly IBackend _backend;
-    private readonly EnvironmentService _environment;
 
     /// <summary>
     /// The active audio backend.
@@ -24,19 +21,9 @@ public class BackendFactory
     public IBackend Backend => _backend;
 
     /// <summary>
-    /// Name of the active backend ("alsa" or "pulse").
+    /// Name of the active backend (always "pulse").
     /// </summary>
     public string BackendName => _backend.Name;
-
-    /// <summary>
-    /// Whether ALSA backend is in use.
-    /// </summary>
-    public bool IsAlsaBackend => _backend.Name == "alsa";
-
-    /// <summary>
-    /// Whether PulseAudio backend is in use.
-    /// </summary>
-    public bool IsPulseBackend => _backend.Name == "pulse";
 
     public BackendFactory(
         ILogger<BackendFactory> logger,
@@ -45,20 +32,11 @@ public class BackendFactory
         Utilities.VolumeCommandRunner volumeRunner)
     {
         _logger = logger;
-        _environment = environment;
 
-        if (environment.UseAlsaBackend)
-        {
-            _logger.LogInformation("Initializing ALSA audio backend for Docker mode");
-            _backend = new AlsaBackend(loggerFactory.CreateLogger<AlsaBackend>());
-        }
-        else
-        {
-            _logger.LogInformation("Initializing PulseAudio backend for HAOS mode");
-            _backend = new PulseAudioBackend(
-                loggerFactory.CreateLogger<PulseAudioBackend>(),
-                volumeRunner);
-        }
+        _logger.LogInformation("Initializing PulseAudio backend");
+        _backend = new PulseAudioBackend(
+            loggerFactory.CreateLogger<PulseAudioBackend>(),
+            volumeRunner);
 
         _logger.LogInformation("Audio backend: {Backend}", _backend.Name);
     }
@@ -104,11 +82,27 @@ public class BackendFactory
     }
 
     /// <summary>
+    /// Gets device capabilities (supported sample rates, bit depths).
+    /// </summary>
+    public DeviceCapabilities? GetDeviceCapabilities(string? deviceId)
+    {
+        return _backend.GetDeviceCapabilities(deviceId);
+    }
+
+    /// <summary>
     /// Creates an audio player for the specified device.
     /// </summary>
     public Sendspin.SDK.Audio.IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory)
     {
         return _backend.CreatePlayer(deviceId, loggerFactory);
+    }
+
+    /// <summary>
+    /// Creates an audio player with a specific output format.
+    /// </summary>
+    public Sendspin.SDK.Audio.IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory, AudioOutputFormat? outputFormat)
+    {
+        return _backend.CreatePlayer(deviceId, loggerFactory, outputFormat);
     }
 
     /// <summary>

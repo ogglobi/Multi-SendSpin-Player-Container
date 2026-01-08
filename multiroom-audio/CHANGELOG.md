@@ -1,5 +1,62 @@
 # Changelog
 
+## [2.0.14] - ALSA Latency Detection & Delay Offset
+
+### Fixed
+- **ALSA sync offset on USB/virtual devices**: Fixed constant sync error (~200ms) on devices where ALSA allocates larger buffers than requested
+  - Now queries actual buffer size via `snd_pcm_get_params` instead of using hardcoded 50ms target
+  - USB audio devices, dmix, and PulseAudio-bridged devices now report accurate latency
+  - Eliminates runaway buffer growth caused by sync correction responding to phantom offset
+- **Delay offset not applied**: Fixed player delay offset setting not being applied to the SDK
+  - Now properly sets `ClockSync.StaticDelayMs` for immediate effect
+  - Delay is applied at player creation and persisted across restarts
+  - Allows fine-tuning synchronization between players (±5000ms range)
+
+### Technical
+- Added `AlsaNative.GetParams()` and `AlsaNative.GetDelay()` P/Invoke bindings
+- Added `AlsaNative.CalculateLatencyMs()` helper for buffer-to-latency conversion
+- Both initial connection and reconnection now query actual ALSA buffer parameters
+- Added `PlayerManagerService.SetDelayOffset()` method for runtime delay adjustment
+
+---
+
+## [2.0.13] - Unified Polyphase Resampler & Stats for Nerds
+
+### Fixed
+- **Warbling artifacts with hi-res output**: Eliminated audio warbling during 96kHz/192kHz playback with sync correction active
+- **TPDF dithering**: Fixed dithering to use proper triangular probability distribution instead of rectangular
+
+### Changed
+- **Unified polyphase resampler**: Replaced dual-resampler chain with single high-quality resampler
+  - Combines static rate conversion AND dynamic sync adjustment in one pass
+  - 64-phase polyphase filter bank with Kaiser window (β=6.0)
+  - Fractional phase interpolation for seamless rate changes
+  - No more aliasing from linear interpolation on upsampled signals
+- **SendSpin.SDK 3.3.1**: Added OutputFormat properties for accurate format reporting
+
+### Added
+- **Stats for Nerds**: Real-time audio diagnostics panel accessible from each player card
+  - Audio format info (input/output rates, channels, bit depth, bitrate)
+  - Sync status with color-coded error display (green <5ms, yellow <20ms, red >20ms)
+  - Buffer statistics (level, underruns, overruns)
+  - Clock sync details (offset, drift rate, measurement count)
+  - Resampler info (conversion ratio, quality preset, effective ratio)
+  - Throughput counters (samples read/written, dropped/inserted)
+  - Dark-themed modal with 500ms auto-refresh polling
+- **Configurable quality presets**: Choose resampler quality based on CPU/quality tradeoff
+  - `HighestQuality`: 128 phases, 48 taps (~48KB filter bank)
+  - `MediumQuality`: 64 phases, 32 taps (~16KB filter bank) [DEFAULT]
+  - `LowResource`: 32 phases, 24 taps (~6KB filter bank)
+- Quality can be changed at runtime (filter bank rebuilds on next Read)
+
+### Technical
+- New `UnifiedPolyphaseResampler` replaces `SampleRateConverter` + `ResamplingAudioSampleSource`
+- Thread-safe playback rate updates via atomic double (no locks)
+- Same-rate passthrough optimization when inputRate == outputRate and rate == 1.0
+- New `/api/players/{name}/stats` endpoint for real-time diagnostics
+
+---
+
 ## [2.0.12] - Audio Quality & PulseAudio Fixes
 
 ### Fixed

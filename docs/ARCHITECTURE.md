@@ -267,37 +267,47 @@ public class AlsaCommandRunner
 
 ```
 Music Assistant
-      │
-      │ Sendspin Protocol (mDNS discovery, audio streaming)
+      |
+      | Sendspin Protocol (mDNS discovery, audio streaming)
       v
-┌─────────────────┐
-│ SendSpin.SDK    │
-│                 │
-│ - Protocol impl │
-│ - Buffering     │
-│ - Sync timing   │
-└────────┬────────┘
-         │ PCM samples
-         v
-┌─────────────────┐
-│ PortAudioPlayer │
-│                 │
-│ - Sample buffer │
-│ - Rate convert  │
-│ - Volume apply  │
-└────────┬────────┘
-         │ Audio frames
-         v
-┌─────────────────┐
-│ PortAudio       │
-│                 │
-│ - Device I/O    │
-│ - Low latency   │
-└────────┬────────┘
-         │
-         v
-    USB DAC / Sound Card
++-------------------------------------------------------------+
+| SendSpin.SDK                                                 |
+|                                                              |
+| - Protocol impl                                              |
+| - TimedAudioBuffer (buffering + sync timing + rate adj)     |
+| - Clock synchronization                                      |
++---------------------------+----------------------------------+
+                            | Sync-adjusted PCM samples
+                            v
++-------------------------------------------------------------+
+| BufferedAudioSampleSource                                    |
+|                                                              |
+| - Direct passthrough (no resampling)                        |
+| - Bridges SDK buffer to audio player                        |
++---------------------------+----------------------------------+
+                            | PCM Float32 (source rate)
+                            v
++-------------------------------------------------------------+
+| PulseAudioPlayer                                             |
+|                                                              |
+| - Sample format conversion (float -> S32_LE/S24_LE/S16_LE)  |
+| - Volume control                                             |
+| - PulseAudio output via pa_simple API                       |
++---------------------------+----------------------------------+
+                            |
+                            v
++-------------------------------------------------------------+
+| PulseAudio Server                                            |
+|                                                              |
+| - Sample rate conversion to device native rate              |
+| - Format negotiation with device                            |
++---------------------------+----------------------------------+
+                            |
+                            v
+                   USB DAC / Sound Card
 ```
+
+For detailed audio pipeline documentation, see [AUDIO_PIPELINE.md](AUDIO_PIPELINE.md).
 
 ---
 

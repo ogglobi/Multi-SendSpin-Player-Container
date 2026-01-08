@@ -9,9 +9,13 @@ squeezelite-docker/
 ├── src/
 │   └── MultiRoomAudio/               # Main C# application
 │       ├── Audio/                    # Audio output layer
-│       │   ├── BufferedAudioSampleSource.cs
-│       │   ├── PortAudioDeviceEnumerator.cs
-│       │   └── PortAudioPlayer.cs
+│       │   ├── BufferedAudioSampleSource.cs  # Bridges SDK buffer to player
+│       │   ├── Alsa/
+│       │   │   ├── AlsaPlayer.cs
+│       │   │   └── AlsaDeviceEnumerator.cs
+│       │   └── PulseAudio/           # Primary audio backend
+│       │       ├── PulseAudioPlayer.cs
+│       │       └── PulseAudioDeviceEnumerator.cs
 │       ├── Controllers/              # REST API endpoints
 │       │   ├── DevicesEndpoint.cs
 │       │   ├── HealthEndpoint.cs

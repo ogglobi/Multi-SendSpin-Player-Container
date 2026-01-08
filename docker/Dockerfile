@@ -15,14 +15,11 @@ WORKDIR /app
 EXPOSE 8096
 
 # Audio dependencies:
-# - pulseaudio: Full daemon for standalone Docker mode
-# - alsa-utils: ALSA tools for device detection and /proc/asound/cards
-# - libasound2: ALSA library
+# - pulseaudio: Audio daemon (used for both HAOS and Docker modes)
+# - libasound2: ALSA library (required for PulseAudio's ALSA output backend)
 # - libasound2-plugins: ALSA plugins including PulseAudio bridge
-# Note: udev removed - doesn't work in containers, we enumerate /proc/asound/cards directly
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
-    alsa-utils \
     libasound2 \
     libasound2-plugins \
     curl \

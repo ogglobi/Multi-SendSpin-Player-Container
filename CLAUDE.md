@@ -45,9 +45,10 @@ ASP.NET Core 8.0 Application
 │   ├── PlayerManagerService.cs   # SDK player lifecycle
 │   ├── ConfigurationService.cs   # YAML persistence
 │   └── EnvironmentService.cs     # Docker vs HAOS detection
-├── Audio/                        # PortAudio SDK integration
-│   ├── PortAudioPlayer.cs       # IAudioPlayer implementation
-│   └── PortAudioDeviceEnumerator.cs
+├── Audio/                        # Audio output layer
+│   ├── BufferedAudioSampleSource.cs  # Bridges timed buffer to audio output
+│   ├── PulseAudio/              # PulseAudio backend (primary)
+│   └── Alsa/                    # ALSA backend (Docker fallback)
 ├── Utilities/
 │   ├── ClientIdGenerator.cs     # MD5-based IDs
 │   └── AlsaCommandRunner.cs     # Volume control

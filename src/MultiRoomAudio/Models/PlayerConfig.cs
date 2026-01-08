@@ -67,6 +67,20 @@ public class PlayerCreateRequest
     /// Persisted players will autostart on next launch.
     /// </summary>
     public bool Persist { get; set; } = true;
+
+    /// <summary>
+    /// Output sample rate in Hz. If null, auto-detect from device or use 48kHz default.
+    /// Supported values: 44100, 48000, 88200, 96000, 176400, 192000.
+    /// </summary>
+    [Range(44100, 192000, ErrorMessage = "OutputSampleRate must be between 44100 and 192000 Hz.")]
+    public int? OutputSampleRate { get; set; }
+
+    /// <summary>
+    /// Output bit depth. If null, auto-detect from device or use 32-bit float default.
+    /// Supported values: 16, 24, 32.
+    /// </summary>
+    [Range(16, 32, ErrorMessage = "OutputBitDepth must be 16, 24, or 32.")]
+    public int? OutputBitDepth { get; set; }
 }
 
 /// <summary>
@@ -110,6 +124,37 @@ public record RenameRequest(
     string NewName);
 
 /// <summary>
+/// Request to update a player's configuration.
+/// All fields are optional - only provided fields will be updated.
+/// </summary>
+public class PlayerUpdateRequest
+{
+    /// <summary>
+    /// New name for the player. If provided, the player will be renamed.
+    /// </summary>
+    [StringLength(100, MinimumLength = 1, ErrorMessage = "Player name must be between 1 and 100 characters.")]
+    [RegularExpression(@"^[a-zA-Z0-9\s\-_]+$", ErrorMessage = "Player name can only contain alphanumeric characters, spaces, hyphens, and underscores.")]
+    public string? Name { get; set; }
+
+    /// <summary>
+    /// The audio device to use. Set to empty string for default device.
+    /// </summary>
+    [StringLength(100, ErrorMessage = "Device name cannot exceed 100 characters.")]
+    public string? Device { get; set; }
+
+    /// <summary>
+    /// The server URL to connect to. Set to empty string for mDNS discovery.
+    /// </summary>
+    public string? ServerUrl { get; set; }
+
+    /// <summary>
+    /// Volume level from 0 to 100.
+    /// </summary>
+    [Range(0, 100, ErrorMessage = "Volume must be between 0 and 100.")]
+    public int? Volume { get; set; }
+}
+
+/// <summary>
 /// Player configuration stored in memory.
 /// </summary>
 public class PlayerConfig
@@ -124,4 +169,7 @@ public class PlayerConfig
     public int BufferSizeMs { get; set; } = 100;
     public int Volume { get; set; } = 75;
     public bool IsMuted { get; set; }
+    public int? OutputSampleRate { get; set; }
+    public int? OutputBitDepth { get; set; }
+    public AudioOutputFormat? OutputFormat { get; set; }
 }
