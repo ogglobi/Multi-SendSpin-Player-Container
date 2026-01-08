@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-7c83333
+## Development Build: sha-9bbb047
 
 **Current Dev Build Changes** (recent)
 
+- add linear interpolation and dynamic correction rate with some tracking
 - swap from read to readraw
 - Fix bug in stats for nerds display
 - Testing gracewindow changes to see if audio syncs more naturally.
@@ -14,7 +15,6 @@
 - Additional logging enhancements and sink creation improvements
 - pulseplayer updates and stats for nerds fix
 - read vs readraw
-- Add sink creation, attempt bugfix of playback.
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
