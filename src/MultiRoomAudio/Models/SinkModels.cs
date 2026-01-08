@@ -32,6 +32,7 @@ public enum CustomSinkState
 
 /// <summary>
 /// Channel mapping for remap-sink.
+/// Defines how a single output channel maps to a source channel from the master sink.
 /// </summary>
 public class ChannelMapping
 {

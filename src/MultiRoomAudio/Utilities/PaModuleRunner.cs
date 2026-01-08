@@ -218,7 +218,9 @@ public partial class PaModuleRunner
             $"channels={channels}",
             $"channel_map={channelMap}",
             $"master_channel_map={masterChannelMap}",
-            $"remix={(!remix).ToString().ToLowerInvariant()}" // PulseAudio uses remix=no for no remixing
+            // PulseAudio remix parameter: true = allow channel remixing, false = no remixing
+            // Pass the value directly - when user sets remix=false, we send remix=false to PulseAudio
+            $"remix={remix.ToString().ToLowerInvariant()}"
         };
 
         // Add description if provided

@@ -47,6 +47,19 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     private long _lastDebugLogTime;
     private const long DebugLogIntervalMicroseconds = 1_000_000; // 1 second
 
+    // Diagnostic counters for tracking buffer behavior
+    private long _totalReads;
+    private long _zeroReads;
+    private long _successfulReads;
+    private long _firstReadTime;
+    private long _lastSuccessfulReadTime;
+    private bool _hasEverReceivedSamples;
+
+    // Overrun tracking - detect when SDK starts dropping samples
+    private long _lastKnownDroppedSamples;
+    private long _lastKnownOverrunCount;
+    private bool _hasLoggedOverrunStart;
+
     /// <inheritdoc/>
     public AudioFormat Format => _buffer.Format;
 
@@ -54,6 +67,22 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     /// Gets the underlying timed audio buffer.
     /// </summary>
     public ITimedAudioBuffer Buffer => _buffer;
+
+    // Diagnostic properties for Stats for Nerds
+    /// <summary>Total number of read attempts.</summary>
+    public long TotalReads => _totalReads;
+    /// <summary>Number of reads that returned 0 samples.</summary>
+    public long ZeroReads => _zeroReads;
+    /// <summary>Number of reads that returned samples.</summary>
+    public long SuccessfulReads => _successfulReads;
+    /// <summary>Time of first read attempt in microseconds.</summary>
+    public long FirstReadTime => _firstReadTime;
+    /// <summary>Time of last successful read in microseconds.</summary>
+    public long LastSuccessfulReadTime => _lastSuccessfulReadTime;
+    /// <summary>Whether any samples have ever been received.</summary>
+    public bool HasEverReceivedSamples => _hasEverReceivedSamples;
+    /// <summary>Function to get current time in microseconds.</summary>
+    public long CurrentTimeMicroseconds => _getCurrentTimeMicroseconds();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BufferedAudioSampleSource"/> class.
@@ -88,6 +117,13 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     public int Read(float[] buffer, int offset, int count)
     {
         var currentTime = _getCurrentTimeMicroseconds();
+        _totalReads++;
+
+        // Track first read time for diagnostics
+        if (_firstReadTime == 0)
+        {
+            _firstReadTime = currentTime;
+        }
 
         // Handle pending frame insertion from previous correction decision
         int insertedSamples = 0;
@@ -115,20 +151,77 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         // Note: We're NOT applying our own frame correction since Read() handles it internally
         // ApplyFrameCorrection is only for ReadRaw() with external correction
 
-        if (read == 0 && _logger != null)
+        if (read > 0)
         {
+            _successfulReads++;
+            _lastSuccessfulReadTime = currentTime;
+
+            // Log first successful read - important milestone
+            if (!_hasEverReceivedSamples)
+            {
+                _hasEverReceivedSamples = true;
+                var elapsedMs = (currentTime - _firstReadTime) / 1000.0;
+                _logger?.LogInformation(
+                    "First samples received from buffer: elapsedMs={ElapsedMs:F1}, " +
+                    "totalReads={TotalReads}, zeroReads={ZeroReads}",
+                    elapsedMs, _totalReads, _zeroReads);
+            }
+        }
+        else
+        {
+            _zeroReads++;
+
             // Debug: Log when Read returns 0 (rate limited)
-            if (currentTime - _lastDebugLogTime >= DebugLogIntervalMicroseconds)
+            if (_logger != null && currentTime - _lastDebugLogTime >= DebugLogIntervalMicroseconds)
             {
                 _lastDebugLogTime = currentTime;
                 var stats = _buffer.GetStats();
+                var elapsedSinceFirstMs = (currentTime - _firstReadTime) / 1000.0;
+                var elapsedSinceLastSuccessMs = _lastSuccessfulReadTime > 0
+                    ? (currentTime - _lastSuccessfulReadTime) / 1000.0
+                    : -1;
+
+                // Determine the likely reason for zero read
+                string reason;
+                if (!stats.IsPlaybackActive && stats.BufferedMs > 0)
+                {
+                    reason = "SDK scheduled start not reached";
+                }
+                else if (stats.BufferedMs == 0)
+                {
+                    reason = "Buffer empty";
+                }
+                else
+                {
+                    reason = "Unknown";
+                }
+
                 _logger.LogWarning(
-                    "Read returned 0: currentTime={CurrentTime}μs, bufferedMs={BufferedMs:F0}, " +
-                    "isPlaybackActive={IsPlaybackActive}, syncError={SyncError:F0}μs",
+                    "Read returned 0 [{Reason}]: currentTime={CurrentTime}μs, bufferedMs={BufferedMs:F0}, " +
+                    "targetMs={TargetMs:F0}, isPlaybackActive={IsPlaybackActive}, syncError={SyncError:F1}ms, " +
+                    "elapsedMs={ElapsedMs:F0}, sinceLastSuccessMs={SinceLastSuccess:F0}, " +
+                    "zeroReads={ZeroReads}/{TotalReads}, overruns={Overruns}, underruns={Underruns}",
+                    reason,
                     currentTime,
                     stats.BufferedMs,
+                    stats.TargetMs,
                     stats.IsPlaybackActive,
-                    stats.SyncErrorMicroseconds);
+                    stats.SyncErrorMicroseconds / 1000.0,
+                    elapsedSinceFirstMs,
+                    elapsedSinceLastSuccessMs,
+                    _zeroReads, _totalReads,
+                    stats.OverrunCount,
+                    stats.UnderrunCount);
+
+                // Additional detailed log for buffer state
+                _logger.LogWarning(
+                    "Buffer state: samplesWritten={Written}, samplesRead={Read}, " +
+                    "droppedOverflow={DroppedOverflow}, droppedSync={DroppedSync}, insertedSync={InsertedSync}",
+                    stats.TotalSamplesWritten,
+                    stats.TotalSamplesRead,
+                    stats.DroppedSamples,
+                    stats.SamplesDroppedForSync,
+                    stats.SamplesInsertedForSync);
             }
         }
 
@@ -139,8 +232,59 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
             buffer.AsSpan(offset + totalSamples, count - totalSamples).Fill(0f);
         }
 
+        // Check for overruns (SDK dropping samples due to buffer full)
+        // This happens when Read() isn't consuming samples fast enough (or at all)
+        CheckForOverruns();
+
         // Always return requested count to keep audio output happy
         return count;
+    }
+
+    /// <summary>
+    /// Checks if the SDK has started dropping samples due to buffer overflow.
+    /// Logs a warning when overruns are first detected and periodically thereafter.
+    /// </summary>
+    private void CheckForOverruns()
+    {
+        if (_logger == null) return;
+
+        var stats = _buffer.GetStats();
+        var currentDropped = stats.DroppedSamples;
+        var currentOverruns = stats.OverrunCount;
+
+        // Detect new overruns
+        if (currentDropped > _lastKnownDroppedSamples || currentOverruns > _lastKnownOverrunCount)
+        {
+            var newDrops = currentDropped - _lastKnownDroppedSamples;
+            var newOverruns = currentOverruns - _lastKnownOverrunCount;
+
+            // Log first occurrence with full context
+            if (!_hasLoggedOverrunStart)
+            {
+                _hasLoggedOverrunStart = true;
+                _logger.LogError(
+                    "BUFFER OVERFLOW DETECTED: SDK is dropping samples because buffer is full and Read() isn't consuming. " +
+                    "bufferedMs={BufferedMs:F0}, targetMs={TargetMs:F0}, isPlaybackActive={IsPlaybackActive}, " +
+                    "totalDropped={Dropped}, overrunCount={Overruns}. " +
+                    "This indicates scheduled start time was never reached.",
+                    stats.BufferedMs,
+                    stats.TargetMs,
+                    stats.IsPlaybackActive,
+                    currentDropped,
+                    currentOverruns);
+            }
+            else if (newDrops > 10000 || newOverruns > 0)
+            {
+                // Log periodic updates when drops are significant
+                _logger.LogWarning(
+                    "Buffer overflow continues: +{NewDrops} samples dropped, total={Dropped}, overruns={Overruns}, " +
+                    "bufferedMs={BufferedMs:F0}, isPlaybackActive={IsPlaybackActive}",
+                    newDrops, currentDropped, currentOverruns, stats.BufferedMs, stats.IsPlaybackActive);
+            }
+
+            _lastKnownDroppedSamples = currentDropped;
+            _lastKnownOverrunCount = currentOverruns;
+        }
     }
 
     /// <summary>

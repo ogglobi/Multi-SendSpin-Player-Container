@@ -280,10 +280,11 @@ public static class SinksEndpoint
                     // Import into app management
                     await service.ImportSinkAsync(sink, ct);
 
-                    // Comment out in default.pa
-                    if (!parser.CommentOutLine(lineNum))
+                    // Comment out in default.pa (handles multi-line entries with continuations)
+                    if (!parser.CommentOutLines(sink.LineNumber, sink.EndLineNumber))
                     {
-                        logger.LogWarning("Failed to comment out line {Line} in default.pa", lineNum);
+                        logger.LogWarning("Failed to comment out lines {Start}-{End} in default.pa",
+                            sink.LineNumber, sink.EndLineNumber);
                     }
 
                     imported.Add(sink.SinkName);

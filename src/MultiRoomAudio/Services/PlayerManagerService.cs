@@ -1204,6 +1204,55 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             ThresholdMs: 5  // Our 5ms threshold
         );
 
+        // Buffer Diagnostics - helps debug why playback isn't starting
+        var bufferedMs = bufferStats?.BufferedMs ?? 0;
+        var targetMs = bufferStats?.TargetMs ?? 1;  // Avoid divide by zero
+        var fillPercent = (int)(bufferedMs / targetMs * 100);
+        var isPlaybackActive = bufferStats?.IsPlaybackActive ?? false;
+        var samplesRead = bufferStats?.TotalSamplesRead ?? 0;
+        var droppedOverflow = bufferStats?.DroppedSamples ?? 0;
+
+        // Determine buffer state for diagnostic purposes
+        string bufferState;
+        if (!isPlaybackActive && bufferedMs > 0 && samplesRead == 0)
+        {
+            bufferState = "Waiting for scheduled start";
+        }
+        else if (!isPlaybackActive && bufferedMs > 0 && samplesRead > 0 && droppedOverflow > 0)
+        {
+            bufferState = "Stalled (was playing, now dropping)";
+        }
+        else if (!isPlaybackActive && bufferedMs > 0)
+        {
+            bufferState = "Buffered but not playing";
+        }
+        else if (isPlaybackActive && bufferedMs > 0)
+        {
+            bufferState = "Playing";
+        }
+        else if (bufferedMs == 0)
+        {
+            bufferState = "Empty";
+        }
+        else
+        {
+            bufferState = "Unknown";
+        }
+
+        // Get pipeline state
+        var pipelineState = context.Pipeline.State.ToString();
+
+        var diagnostics = new BufferDiagnostics(
+            State: bufferState,
+            FillPercent: Math.Min(fillPercent, 100),
+            HasReceivedSamples: samplesRead > 0,
+            ElapsedSinceFirstReadMs: -1,  // Not available without BufferedAudioSampleSource ref
+            ElapsedSinceLastSuccessMs: -1,  // Not available without BufferedAudioSampleSource ref
+            DroppedOverflow: droppedOverflow,
+            PipelineState: pipelineState,
+            SmoothedSyncErrorUs: (long)(bufferStats?.SyncErrorMicroseconds ?? 0)
+        );
+
         return new PlayerStatsResponse(
             PlayerName: name,
             AudioFormat: audioFormat,
@@ -1211,7 +1260,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             Buffer: buffer,
             ClockSync: clockSync,
             Throughput: throughput,
-            Correction: correction
+            Correction: correction,
+            Diagnostics: diagnostics
         );
     }
 

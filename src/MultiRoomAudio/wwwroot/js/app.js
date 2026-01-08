@@ -822,6 +822,37 @@ function renderStatsPanel(stats) {
                 <span class="stats-value">${formatSampleCount(stats.throughput.samplesRead)}</span>
             </div>
         </div>
+
+        <!-- Buffer Diagnostics Section -->
+        <div class="stats-section">
+            <div class="stats-section-header">
+                <i class="fas fa-stethoscope me-1"></i>Buffer Diagnostics
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">State</span>
+                <span class="stats-value ${getBufferStateClass(stats.diagnostics.state)}">${escapeHtml(stats.diagnostics.state)}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Fill Level</span>
+                <span class="stats-value">${stats.diagnostics.fillPercent}%</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Pipeline State</span>
+                <span class="stats-value info">${escapeHtml(stats.diagnostics.pipelineState)}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Has Received Data</span>
+                <span class="stats-value ${stats.diagnostics.hasReceivedSamples ? 'good' : 'warning'}">${stats.diagnostics.hasReceivedSamples ? 'Yes' : 'No'}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Dropped (Overflow)</span>
+                <span class="stats-value ${stats.diagnostics.droppedOverflow > 0 ? 'bad' : 'good'}">${formatSampleCount(stats.diagnostics.droppedOverflow)}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Smoothed Sync Error</span>
+                <span class="stats-value">${formatUs(stats.diagnostics.smoothedSyncErrorUs)}</span>
+            </div>
+        </div>
     `;
 }
 
@@ -856,6 +887,19 @@ function getCorrectionModeClass(mode) {
         case 'Inserting': return 'warning';
         default: return '';
     }
+}
+
+function getBufferStateClass(state) {
+    if (state === 'Playing') return 'good';
+    if (state === 'Empty') return 'muted';
+    if (state.includes('Waiting') || state.includes('Buffered')) return 'warning';
+    if (state.includes('Stalled') || state.includes('dropping')) return 'bad';
+    return '';
+}
+
+function formatUs(us) {
+    if (Math.abs(us) < 1000) return us.toFixed(0) + 'us';
+    return (us / 1000).toFixed(2) + 'ms';
 }
 
 // ============================================

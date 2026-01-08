@@ -129,12 +129,7 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
     {
         ValidateSinkName(request.Name);
 
-        if (_sinks.ContainsKey(request.Name))
-        {
-            throw new InvalidOperationException($"Sink '{request.Name}' already exists.");
-        }
-
-        // Check if sink name already exists in PulseAudio
+        // Check if sink name already exists in PulseAudio before we try to add locally
         if (await _moduleRunner.SinkExistsAsync(request.Name, cancellationToken))
         {
             throw new InvalidOperationException($"A PulseAudio sink with name '{request.Name}' already exists.");
@@ -153,7 +148,11 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
             State = CustomSinkState.Loading
         };
 
-        _sinks[request.Name] = context;
+        // TryAdd is atomic - if another thread added the same name, we fail gracefully
+        if (!_sinks.TryAdd(request.Name, context))
+        {
+            throw new InvalidOperationException($"Sink '{request.Name}' already exists.");
+        }
 
         try
         {
@@ -199,12 +198,7 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
     {
         ValidateSinkName(request.Name);
 
-        if (_sinks.ContainsKey(request.Name))
-        {
-            throw new InvalidOperationException($"Sink '{request.Name}' already exists.");
-        }
-
-        // Check if sink name already exists in PulseAudio
+        // Check if sink name already exists in PulseAudio before we try to add locally
         if (await _moduleRunner.SinkExistsAsync(request.Name, cancellationToken))
         {
             throw new InvalidOperationException($"A PulseAudio sink with name '{request.Name}' already exists.");
@@ -230,7 +224,11 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
             State = CustomSinkState.Loading
         };
 
-        _sinks[request.Name] = context;
+        // TryAdd is atomic - if another thread added the same name, we fail gracefully
+        if (!_sinks.TryAdd(request.Name, context))
+        {
+            throw new InvalidOperationException($"Sink '{request.Name}' already exists.");
+        }
 
         try
         {

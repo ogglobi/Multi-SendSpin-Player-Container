@@ -30,6 +30,11 @@ public partial class DefaultPaParser
     /// </summary>
     private const string CommentMarker = "# [MRA-IMPORTED] ";
 
+    /// <summary>
+    /// Backup file extension for safety before modifications.
+    /// </summary>
+    private const string BackupExtension = ".mra-backup";
+
     public DefaultPaParser(ILogger<DefaultPaParser> logger, string? defaultPaPath = null)
     {
         _logger = logger;
@@ -63,12 +68,15 @@ public partial class DefaultPaParser
                 if (line.TrimStart().StartsWith('#'))
                     continue;
 
-                // Handle line continuations (\)
+                // Handle line continuations (\) - track both start and end line numbers
                 var fullLine = line;
+                var startLine = lineNumber;
                 while (fullLine.TrimEnd().EndsWith('\\') && i + 1 < lines.Length)
                 {
                     fullLine = fullLine.TrimEnd().TrimEnd('\\') + " " + lines[++i].Trim();
                 }
+                // End line is current position + 1 (1-based)
+                var endLine = i + 1;
 
                 var match = LoadModulePattern().Match(fullLine);
                 if (!match.Success)
@@ -77,11 +85,18 @@ public partial class DefaultPaParser
                 var moduleType = match.Groups[1].Value.ToLowerInvariant();
                 var arguments = match.Groups[2].Value;
 
-                var sink = ParseModuleArguments(moduleType, arguments, lineNumber, fullLine);
+                var sink = ParseModuleArguments(moduleType, arguments, startLine, endLine, fullLine);
                 if (sink != null)
                 {
                     detected.Add(sink);
-                    _logger.LogDebug("Found {Type}-sink '{Name}' at line {Line}", moduleType, sink.SinkName, lineNumber);
+                    if (startLine == endLine)
+                    {
+                        _logger.LogDebug("Found {Type}-sink '{Name}' at line {Line}", moduleType, sink.SinkName, startLine);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Found {Type}-sink '{Name}' at lines {StartLine}-{EndLine}", moduleType, sink.SinkName, startLine, endLine);
+                    }
                 }
             }
 
@@ -95,7 +110,7 @@ public partial class DefaultPaParser
         return detected;
     }
 
-    private DetectedSink? ParseModuleArguments(string moduleType, string arguments, int lineNumber, string rawLine)
+    private DetectedSink? ParseModuleArguments(string moduleType, string arguments, int startLine, int endLine, string rawLine)
     {
         var keyValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -112,7 +127,7 @@ public partial class DefaultPaParser
         // Extract sink name (required)
         if (!keyValues.TryGetValue("sink_name", out var sinkName) || string.IsNullOrWhiteSpace(sinkName))
         {
-            _logger.LogDebug("Skipping line {Line}: no sink_name found", lineNumber);
+            _logger.LogDebug("Skipping line {Line}: no sink_name found", startLine);
             return null;
         }
 
@@ -164,7 +179,8 @@ public partial class DefaultPaParser
         }
 
         return new DetectedSink(
-            LineNumber: lineNumber,
+            LineNumber: startLine,
+            EndLineNumber: endLine,
             RawLine: rawLine,
             Type: type,
             SinkName: sinkName,
@@ -179,41 +195,60 @@ public partial class DefaultPaParser
     }
 
     /// <summary>
-    /// Comment out a specific line in default.pa by prepending our marker.
+    /// Comment out a range of lines in default.pa by prepending our marker.
+    /// Creates a backup file on first modification for recovery purposes.
     /// </summary>
-    /// <param name="lineNumber">1-based line number to comment out.</param>
+    /// <param name="startLine">1-based line number where the entry starts.</param>
+    /// <param name="endLine">1-based line number where the entry ends (inclusive).</param>
     /// <returns>True if successfully commented out.</returns>
-    public bool CommentOutLine(int lineNumber)
+    public bool CommentOutLines(int startLine, int endLine)
     {
         if (!File.Exists(_defaultPaPath))
         {
-            _logger.LogWarning("Cannot comment out line: default.pa not found at {Path}", _defaultPaPath);
+            _logger.LogWarning("Cannot comment out lines: default.pa not found at {Path}", _defaultPaPath);
             return false;
         }
 
         try
         {
             var lines = File.ReadAllLines(_defaultPaPath).ToList();
-            var index = lineNumber - 1; // Convert to 0-based
+            var startIndex = startLine - 1; // Convert to 0-based
+            var endIndex = endLine - 1;
 
-            if (index < 0 || index >= lines.Count)
+            if (startIndex < 0 || endIndex >= lines.Count || startIndex > endIndex)
             {
-                _logger.LogWarning("Line number {Line} is out of range (file has {Total} lines)", lineNumber, lines.Count);
+                _logger.LogWarning("Line range {Start}-{End} is invalid (file has {Total} lines)", startLine, endLine, lines.Count);
                 return false;
             }
 
-            // Check if already commented by us
-            if (lines[index].StartsWith(CommentMarker))
+            // Check if first line is already commented by us (assume all are if first is)
+            if (lines[startIndex].StartsWith(CommentMarker))
             {
-                _logger.LogDebug("Line {Line} is already commented out by us", lineNumber);
+                _logger.LogDebug("Lines {Start}-{End} are already commented out by us", startLine, endLine);
                 return true;
             }
 
-            // Add our comment marker
-            lines[index] = CommentMarker + lines[index];
+            // Create backup on first modification (don't overwrite existing backup)
+            EnsureBackupExists();
+
+            // Comment out all lines in the range
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                if (!lines[i].StartsWith(CommentMarker))
+                {
+                    lines[i] = CommentMarker + lines[i];
+                }
+            }
 
             File.WriteAllLines(_defaultPaPath, lines);
-            _logger.LogInformation("Commented out line {Line} in default.pa", lineNumber);
+            if (startLine == endLine)
+            {
+                _logger.LogInformation("Commented out line {Line} in default.pa", startLine);
+            }
+            else
+            {
+                _logger.LogInformation("Commented out lines {Start}-{End} in default.pa", startLine, endLine);
+            }
             return true;
         }
         catch (UnauthorizedAccessException)
@@ -223,7 +258,7 @@ public partial class DefaultPaParser
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to comment out line {Line} in default.pa", lineNumber);
+            _logger.LogError(ex, "Failed to comment out lines {Start}-{End} in default.pa", startLine, endLine);
             return false;
         }
     }
@@ -258,6 +293,9 @@ public partial class DefaultPaParser
                 _logger.LogDebug("Line {Line} was not commented out by us", lineNumber);
                 return false;
             }
+
+            // Create backup on first modification (don't overwrite existing backup)
+            EnsureBackupExists();
 
             lines[index] = lines[index][CommentMarker.Length..];
 
@@ -303,13 +341,51 @@ public partial class DefaultPaParser
             return false;
         }
     }
+
+    /// <summary>
+    /// Creates a backup of default.pa if one doesn't already exist.
+    /// The backup is only created once to preserve the original state before any modifications.
+    /// </summary>
+    private void EnsureBackupExists()
+    {
+        var backupPath = _defaultPaPath + BackupExtension;
+        if (File.Exists(backupPath))
+        {
+            // Backup already exists - don't overwrite it so we preserve the original state
+            return;
+        }
+
+        try
+        {
+            File.Copy(_defaultPaPath, backupPath);
+            _logger.LogInformation("Created backup of default.pa at {BackupPath}", backupPath);
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail - backup is a safety feature, not required
+            _logger.LogWarning(ex, "Could not create backup of default.pa");
+        }
+    }
 }
 
 /// <summary>
 /// Represents a sink detected in default.pa.
 /// </summary>
+/// <param name="LineNumber">1-based line number where the entry starts.</param>
+/// <param name="EndLineNumber">1-based line number where the entry ends (same as LineNumber for single-line entries).</param>
+/// <param name="RawLine">The complete line content (with continuations merged).</param>
+/// <param name="Type">Type of sink (Combine or Remap).</param>
+/// <param name="SinkName">The sink_name parameter value.</param>
+/// <param name="Description">Optional description from sink_properties.</param>
+/// <param name="Slaves">List of slave sinks (for combine-sink).</param>
+/// <param name="MasterSink">Master sink name (for remap-sink).</param>
+/// <param name="Channels">Number of channels (for remap-sink).</param>
+/// <param name="ChannelMap">Output channel map (for remap-sink).</param>
+/// <param name="MasterChannelMap">Master channel map (for remap-sink).</param>
+/// <param name="Remix">Remix setting (for remap-sink).</param>
 public record DetectedSink(
     int LineNumber,
+    int EndLineNumber,
     string RawLine,
     CustomSinkType Type,
     string SinkName,
