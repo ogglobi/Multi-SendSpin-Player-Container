@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-38b05af
+## Development Build: sha-adb6e3d
 
 **Current Dev Build Changes** (recent)
 
+- Add startup logging for discovered sound cards
 - support loading by card
 - Add card profile support via API
 - Device Ailasing Plan
@@ -14,7 +15,6 @@
 - add linear interpolation and dynamic correction rate with some tracking
 - swap from read to readraw
 - Fix bug in stats for nerds display
-- Testing gracewindow changes to see if audio syncs more naturally.
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
