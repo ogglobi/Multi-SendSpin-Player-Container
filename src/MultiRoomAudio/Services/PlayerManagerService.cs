@@ -193,15 +193,15 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
-    /// Converts volume percentage (0-100) to normalized audio level (0.0-1.0)
-    /// using squared scaling for perceived loudness (volume 50 sounds half as loud).
+    /// Converts user-facing volume percentage to hardware volume with squared scaling.
+    /// This provides perceptually linear volume control (50% sounds like half volume).
     /// </summary>
     /// <param name="volumePercent">Volume as integer percentage (0-100).</param>
-    /// <returns>Normalized volume for audio player (0.0-1.0, squared).</returns>
-    private static float NormalizeVolume(int volumePercent)
+    /// <returns>Hardware volume percentage with squared scaling applied.</returns>
+    private static int ToHardwareVolume(int volumePercent)
     {
-        var normalized = Math.Clamp(volumePercent, 0, 100) / 100f;
-        return normalized * normalized;
+        volumePercent = Math.Clamp(volumePercent, 0, 100);
+        return (int)Math.Round(volumePercent * volumePercent / 100.0);
     }
 
     /// <summary>
@@ -498,8 +498,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // 10. Store context
             _players[request.Name] = context;
 
-            // 11. Apply initial volume (software volume scaling)
-            player.Volume = NormalizeVolume(request.Volume);
+            // 11. Apply initial volume via hardware (software volume bypassed)
+            player.Volume = 1.0f;  // Hardware handles volume via pactl
+            if (!string.IsNullOrEmpty(request.Device))
+            {
+                _ = _backendFactory.SetVolumeAsync(request.Device, ToHardwareVolume(request.Volume), default);
+            }
 
             // 12. Apply delay offset from user configuration
             clockSync.StaticDelayMs = request.DelayMs;
@@ -612,8 +616,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // 1. Update local config (always)
         context.Config.Volume = volume;
 
-        // 2. Apply software volume to audio player
-        context.Player.Volume = NormalizeVolume(volume);
+        // 2. Bypass software volume (hardware handles it via pactl)
+        context.Player.Volume = 1.0f;
 
         // 3. Notify server of volume change (only if in an active state)
         if (IsPlayerInActiveState(context.State))
@@ -629,12 +633,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
-        // 4. Optionally set hardware/OS volume via PulseAudio pactl
+        // 4. Set hardware/OS volume via PulseAudio pactl (squared for perceptual scaling)
         // Only if we have a specific device (not default)
         // Fire-and-forget with error handling via ContinueWith
         if (!string.IsNullOrEmpty(context.Config.DeviceId))
         {
-            _ = _backendFactory.SetVolumeAsync(context.Config.DeviceId, volume, ct)
+            _ = _backendFactory.SetVolumeAsync(context.Config.DeviceId, ToHardwareVolume(volume), ct)
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted && t.Exception != null)
@@ -1098,12 +1102,22 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
                 context.Config.Volume = serverVolume;
 
-                // Only apply software volume if player is in an active state
+                // Only apply volume if player is in an active state
                 if (IsPlayerInActiveState(context.State))
                 {
                     try
                     {
-                        context.Player.Volume = NormalizeVolume(serverVolume);
+                        // Bypass software volume (hardware handles it)
+                        context.Player.Volume = 1.0f;
+
+                        // Sync hardware volume with server (squared for perceptual scaling)
+                        if (!string.IsNullOrEmpty(context.Config.DeviceId))
+                        {
+                            _ = _backendFactory.SetVolumeAsync(
+                                context.Config.DeviceId,
+                                ToHardwareVolume(serverVolume),
+                                default);
+                        }
                     }
                     catch (Exception ex)
                     {
