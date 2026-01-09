@@ -157,8 +157,8 @@ echo "PulseAudio is ready!"
 echo ""
 
 # In Docker, udev doesn't work so module-udev-detect won't find devices.
-# We use module-alsa-sink with direct PCM device detection, which works reliably
-# in all Docker configurations (privileged or not, with or without /proc/asound).
+# We try module-alsa-card first (provides card profiles for multi-channel devices),
+# then fall back to module-alsa-sink for direct PCM access if that fails.
 echo "Detecting ALSA audio devices..."
 
 # Debug: show what's available
@@ -167,6 +167,7 @@ ls -la /dev/snd/ 2>/dev/null || echo "    /dev/snd NOT MOUNTED"
 echo ""
 
 CARDS_LOADED=0
+CARDS_WITH_PROFILES=""
 
 # Show card info from /proc/asound/cards if available (diagnostic only)
 if [ -f /proc/asound/cards ]; then
@@ -175,16 +176,41 @@ if [ -f /proc/asound/cards ]; then
     echo ""
 fi
 
-# Always use PCM device detection with module-alsa-sink
-# This method works reliably in Docker (module-alsa-card does not)
 if [ -d /dev/snd ]; then
-    echo "  Loading PCM playback devices via module-alsa-sink..."
+    # Phase 1: Try module-alsa-card for each card (provides profile support)
+    # This enables users to switch between stereo/5.1/7.1 profiles
+    echo "  Phase 1: Trying module-alsa-card for profile support..."
+    for control in /dev/snd/controlC*; do
+        if [ -e "$control" ]; then
+            card_num=$(basename "$control" | sed 's/controlC//')
+            card_name="alsa_card_$card_num"
+
+            # Try to load with module-alsa-card
+            if load_output=$(pactl load-module module-alsa-card device_id="$card_num" name="$card_name" 2>&1); then
+                echo "    Card $card_num: Loaded with profile support (module $load_output)"
+                CARDS_WITH_PROFILES="$CARDS_WITH_PROFILES $card_num"
+                CARDS_LOADED=$((CARDS_LOADED + 1))
+            else
+                echo "    Card $card_num: module-alsa-card failed, will try direct sink"
+            fi
+        fi
+    done
+    echo ""
+
+    # Phase 2: For cards that didn't load with module-alsa-card, use module-alsa-sink
+    echo "  Phase 2: Loading remaining devices via module-alsa-sink..."
     for pcm in /dev/snd/pcmC*D*p; do
         if [ -e "$pcm" ]; then
             # Extract card and device from pcmC0D3p -> 0,3
             pcm_name=$(basename "$pcm")
             card_num=$(echo "$pcm_name" | sed 's/pcmC\([0-9]*\)D.*/\1/')
             dev_num=$(echo "$pcm_name" | sed 's/pcmC[0-9]*D\([0-9]*\)p/\1/')
+
+            # Skip if this card was already loaded with module-alsa-card
+            if echo "$CARDS_WITH_PROFILES" | grep -q " $card_num"; then
+                echo "  Skipping hw:$card_num,$dev_num (card loaded with profile support)"
+                continue
+            fi
 
             echo "  Found PCM playback: hw:$card_num,$dev_num ($pcm_name)"
 
@@ -227,6 +253,17 @@ echo ""
 echo "PulseAudio server info:"
 pactl info 2>/dev/null | grep -E "^(Server|Default Sink|Default Source)" || true
 echo ""
+
+# Show available cards and their profiles (if any)
+CARD_COUNT=$(pactl list cards short 2>/dev/null | wc -l)
+if [ "$CARD_COUNT" -gt 0 ]; then
+    echo "Available PulseAudio cards (with profile support):"
+    pactl list cards short 2>/dev/null
+    echo ""
+    echo "  Use /api/cards endpoint to view and change profiles"
+    echo ""
+fi
+
 echo "Available PulseAudio sinks:"
 pactl list sinks short 2>/dev/null || echo "  (none detected)"
 echo ""

@@ -107,6 +107,10 @@ builder.Services.AddSingleton<DefaultPaParser>();
 builder.Services.AddSingleton<CustomSinksService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<CustomSinksService>());
 
+// Add CardProfileService for sound card profile management
+builder.Services.AddSingleton<CardProfileService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CardProfileService>());
+
 // Static files are served via UseStaticFiles() middleware below
 
 // Configure Kestrel to listen on port 8096 (or PORT env var)
@@ -196,6 +200,7 @@ app.MapDevicesEndpoints();
 app.MapProvidersEndpoints();
 app.MapSinksEndpoints();
 app.MapOnboardingEndpoints();
+app.MapCardsEndpoints();
 
 // Root endpoint redirects to index.html or shows API info
 app.MapGet("/api", () => Results.Ok(new
@@ -211,6 +216,7 @@ app.MapGet("/api", () => Results.Ok(new
         devices = "/api/devices",
         providers = "/api/providers",
         sinks = "/api/sinks",
+        cards = "/api/cards",
         swagger = "/docs"
     }
 }))
