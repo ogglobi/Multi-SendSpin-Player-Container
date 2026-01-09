@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-0003636
+## Development Build: sha-e02acef
 
 **Current Dev Build Changes** (recent)
 
+- Add card profile support via API
+- Device Ailasing Plan
 - Fix Card Detection (Drop /asound)
 - don't crap the bed when cards fail to load
 - Add additional device level logging
@@ -13,8 +15,6 @@
 - Fix bug in stats for nerds display
 - Testing gracewindow changes to see if audio syncs more naturally.
 - Fix a couple styling issues, card playing status and apply offset after being changed.
-- fix _disposed handling and checkbox rendering
-- Update to Bootstrap latest, use their dark mode
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
