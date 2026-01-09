@@ -213,13 +213,17 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private async Task PushVolumeToServerAsync(string name, PlayerContext context)
     {
         if (!IsPlayerInActiveState(context.State))
+        {
+            _logger.LogDebug("Skipping volume push for '{Name}' - not in active state ({State})",
+                name, context.State);
             return;
+        }
 
         try
         {
-            await context.Client.SetVolumeAsync(context.Config.Volume);
-            _logger.LogDebug("Pushed volume {Volume} to server for player '{Name}'",
+            _logger.LogInformation("Pushing volume {Volume}% to server for player '{Name}'",
                 context.Config.Volume, name);
+            await context.Client.SetVolumeAsync(context.Config.Volume);
         }
         catch (Exception ex)
         {
@@ -414,7 +418,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 ClientName = request.Name,
                 Roles = new List<string> { "player@v1" },
                 AudioFormats = GetDefaultFormats(),
-                BufferCapacity = AudioBufferCapacityBytes
+                BufferCapacity = AudioBufferCapacityBytes,
+                InitialVolume = request.Volume  // Set initial volume for hello message
             };
 
             // 2. Create clock synchronizer
