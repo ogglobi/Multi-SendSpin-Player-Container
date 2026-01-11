@@ -31,6 +31,22 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private readonly ConcurrentDictionary<string, PlayerContext> _players = new();
     private readonly MdnsServerDiscovery _serverDiscovery;
     private bool _disposed;
+    private readonly object _playersLock = new();
+
+    /// <summary>
+    /// Tracks players pending reconnection with their retry state.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ReconnectionState> _pendingReconnections = new();
+
+    /// <summary>
+    /// Cancellation token source for the reconnection background task.
+    /// </summary>
+    private CancellationTokenSource? _reconnectionCts;
+
+    /// <summary>
+    /// Background task that processes pending reconnections.
+    /// </summary>
+    private Task? _reconnectionTask;
 
     #region Constants
 
@@ -103,6 +119,21 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private static readonly Regex ValidPlayerNamePattern = new(
         @"^[a-zA-Z0-9\s\-_]+$",
         RegexOptions.Compiled);
+
+    /// <summary>
+    /// Initial delay before first reconnection attempt.
+    /// </summary>
+    private static readonly TimeSpan InitialReconnectDelay = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Maximum delay between reconnection attempts (caps exponential backoff).
+    /// </summary>
+    private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Maximum number of reconnection attempts before giving up (0 = unlimited).
+    /// </summary>
+    private const int MaxReconnectAttempts = 0; // Unlimited - keep trying forever
 
     #endregion
 
@@ -193,16 +224,37 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
-    /// Converts volume percentage (0-100) to normalized audio level (0.0-1.0)
-    /// using squared scaling for perceived loudness (volume 50 sounds half as loud).
+    /// Pushes the current configured volume to the server.
+    /// Called on connection and when playback starts to ensure server has correct volume.
+    /// This addresses the issue where the SDK sends volume:100 in the initial hello,
+    /// overriding the user's configured volume.
     /// </summary>
-    /// <param name="volumePercent">Volume as integer percentage (0-100).</param>
-    /// <returns>Normalized volume for audio player (0.0-1.0, squared).</returns>
-    private static float NormalizeVolume(int volumePercent)
+    private async Task PushVolumeToServerAsync(string name, PlayerContext context)
     {
-        var normalized = Math.Clamp(volumePercent, 0, 100) / 100f;
-        return normalized * normalized;
+        if (!IsPlayerInActiveState(context.State))
+        {
+            _logger.LogDebug("Skipping volume push for '{Name}' - not in active state ({State})",
+                name, context.State);
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation("VOLUME [PushToServer] Player '{Name}': {Volume}%",
+                name, context.Config.Volume);
+            await context.Client.SetVolumeAsync(context.Config.Volume);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to push volume to server for player '{Name}'", name);
+        }
     }
+
+    /// <summary>
+    /// Hardware volume percentage used for all audio outputs.
+    /// Set to 80% to avoid clipping while allowing server to control actual volume.
+    /// </summary>
+    private const int HardwareVolumePercent = 80;
 
     #endregion
 
@@ -226,7 +278,24 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         public string? ErrorMessage { get; set; }
         public DateTime? ConnectedAt { get; set; }
         public long SamplesPlayed { get; set; }
+
+        // Event handler references for proper cleanup (prevents memory leaks)
+        public EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateHandler { get; set; }
+        public EventHandler<AudioPipelineState>? PipelineStateHandler { get; set; }
+        public EventHandler<AudioPipelineError>? PipelineErrorHandler { get; set; }
+        public EventHandler<AudioPlayerError>? PlayerErrorHandler { get; set; }
+        public EventHandler<GroupState>? GroupStateHandler { get; set; }
     }
+
+    /// <summary>
+    /// Tracks reconnection state for a player.
+    /// </summary>
+    private record ReconnectionState(
+        PlayerConfiguration Config,
+        int RetryCount = 0,
+        DateTime? NextRetryTime = null,
+        bool WasUserStopped = false
+    );
 
     public PlayerManagerService(
         ILogger<PlayerManagerService> logger,
@@ -248,9 +317,66 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             loggerFactory.CreateLogger<MdnsServerDiscovery>());
     }
 
+    /// <summary>
+    /// Initializes all audio device hardware volumes to a fixed level.
+    /// This is called once at container startup to set a safe volume level
+    /// that avoids clipping. The server (Music Assistant) then controls the
+    /// actual volume level via its own volume control.
+    /// </summary>
+    private async Task InitializeHardwareVolumesAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Initializing hardware volumes to {Volume}%...", HardwareVolumePercent);
+
+        try
+        {
+            var devices = _backendFactory.GetOutputDevices().ToList();
+
+            if (devices.Count == 0)
+            {
+                _logger.LogWarning("No audio output devices found for volume initialization");
+                return;
+            }
+
+            _logger.LogInformation("Found {Count} audio output device(s)", devices.Count);
+
+            foreach (var device in devices)
+            {
+                try
+                {
+                    var success = await _backendFactory.SetVolumeAsync(device.Id, HardwareVolumePercent, cancellationToken);
+                    if (success)
+                    {
+                        _logger.LogInformation("VOLUME [Init] Device '{Name}' ({Id}): set to {Volume}%",
+                            device.Name, device.Id, HardwareVolumePercent);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("VOLUME [Init] Device '{Name}' ({Id}): failed to set volume",
+                            device.Name, device.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VOLUME [Init] Device '{Name}' ({Id}): error setting volume",
+                        device.Name, device.Id);
+                }
+            }
+
+            _logger.LogInformation("Hardware volume initialization complete");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to initialize hardware volumes (non-fatal)");
+        }
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("PlayerManagerService starting...");
+
+        // Initialize all audio device hardware volumes to 80% to avoid clipping
+        // Server (Music Assistant) controls the actual volume level
+        await InitializeHardwareVolumesAsync(cancellationToken);
 
         // Autostart configured players
         var autostartPlayers = _config.GetAutostartPlayers();
@@ -285,11 +411,14 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex,
-                        "Failed to autostart player {PlayerName}. Device: {Device}, Server: {Server}",
+                    _logger.LogWarning(ex,
+                        "Failed to autostart player {PlayerName}, queuing for reconnection. Device: {Device}, Server: {Server}",
                         playerConfig.Name,
                         playerConfig.Device ?? "(default)",
                         playerConfig.Server ?? "(auto-discover)");
+
+                    // Queue for reconnection instead of giving up
+                    QueueForReconnection(playerConfig, isInitialFailure: true);
                 }
             }
         }
@@ -298,14 +427,34 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogInformation("No players configured for autostart");
         }
 
-        _logger.LogInformation("PlayerManagerService started with {PlayerCount} active players",
-            _players.Count);
+        // Start the background reconnection task
+        _reconnectionCts = new CancellationTokenSource();
+        _reconnectionTask = ProcessReconnectionsAsync(_reconnectionCts.Token);
+
+        _logger.LogInformation("PlayerManagerService started with {PlayerCount} active players, {PendingCount} pending reconnection",
+            _players.Count, _pendingReconnections.Count);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("PlayerManagerService stopping with {PlayerCount} active players...",
-            _players.Count);
+        _logger.LogInformation("PlayerManagerService stopping with {PlayerCount} active players, {PendingCount} pending reconnection...",
+            _players.Count, _pendingReconnections.Count);
+
+        // Stop reconnection task first
+        _reconnectionCts?.Cancel();
+        if (_reconnectionTask != null)
+        {
+            try
+            {
+                await _reconnectionTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Reconnection task did not stop in time");
+            }
+            catch (OperationCanceledException) { }
+        }
+        _pendingReconnections.Clear();
 
         var playerNames = _players.Keys.ToList();
         foreach (var name in playerNames)
@@ -365,9 +514,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             throw new ArgumentException(nameError, nameof(request.Name));
         }
 
-        if (_players.ContainsKey(request.Name))
+        // Early disposed check before expensive setup
+        if (_disposed)
         {
-            throw new InvalidOperationException($"Player '{request.Name}' already exists");
+            throw new ObjectDisposedException(nameof(PlayerManagerService));
         }
 
         // Validate device if specified
@@ -467,20 +617,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // 9. Wire up events
             WireEvents(request.Name, context);
 
-            // 10. Store context
-            _players[request.Name] = context;
-
-            // 11. Apply initial volume (software volume scaling)
-            player.Volume = NormalizeVolume(request.Volume);
-
-            // 12. Apply delay offset from user configuration
-            clockSync.StaticDelayMs = request.DelayMs;
-            if (request.DelayMs != 0)
-            {
-                _logger.LogInformation("Delay offset for '{Name}': {DelayMs}ms", request.Name, request.DelayMs);
-            }
-
-            // 13. Persist configuration if requested
+            // 10. Persist configuration FIRST if requested
+            // This ensures config is saved before player runs, so reboot behavior is consistent
+            // If save fails, we throw before adding to _players (clean failure)
             if (request.Persist)
             {
                 var persistConfig = new PlayerConfiguration
@@ -496,6 +635,52 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 _config.SetPlayer(request.Name, persistConfig);
                 _config.Save();
                 _logger.LogDebug("Persisted configuration for player '{Name}'", request.Name);
+            }
+
+            // 11. Store context atomically - handles race condition where another thread
+            // created a player with the same name between validation and here
+            if (!_players.TryAdd(request.Name, context))
+            {
+                _logger.LogWarning("Race condition: player '{Name}' was created by another thread", request.Name);
+                // Roll back config if we just saved it
+                if (request.Persist)
+                {
+                    try
+                    {
+                        _config.DeletePlayer(request.Name);
+                        _config.Save();
+                    }
+                    catch (Exception configEx)
+                    {
+                        _logger.LogWarning(configEx, "Failed to roll back config for '{Name}'", request.Name);
+                    }
+                }
+                // Unsubscribe event handlers first to prevent memory leaks
+                UnwireEvents(context);
+                context.Cts.Cancel();
+                try
+                {
+                    await DisposePlayerContextAsync(context);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing orphaned context for '{Name}'", request.Name);
+                }
+                throw new InvalidOperationException($"Player '{request.Name}' already exists");
+            }
+
+            // 12. Software volume stays at 1.0 (passthrough)
+            // Hardware volume is set to 80% on container startup to avoid clipping
+            // Server (Music Assistant) controls the actual volume level
+            player.Volume = 1.0f;
+            _logger.LogInformation("VOLUME [Create] Player '{Name}': initial volume {Volume}% (sent to server)",
+                request.Name, request.Volume);
+
+            // 13. Apply delay offset from user configuration
+            clockSync.StaticDelayMs = request.DelayMs;
+            if (request.DelayMs != 0)
+            {
+                _logger.LogInformation("Delay offset for '{Name}': {DelayMs}ms", request.Name, request.DelayMs);
             }
 
             // 14. Start connection in background with proper error handling
@@ -527,12 +712,59 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
-    /// Gets all active players.
+    /// Gets all players, including those that failed to start.
     /// </summary>
     public PlayersListResponse GetAllPlayers()
     {
-        var players = _players
-            .Select(kvp => CreateResponse(kvp.Key, kvp.Value))
+        var responses = new List<PlayerResponse>();
+
+        // Get all configured players from config
+        var configuredPlayers = _config.Players;
+
+        foreach (var (name, config) in configuredPlayers)
+        {
+            if (_players.TryGetValue(name, out var context))
+            {
+                // Player is active - use live status
+                responses.Add(CreateResponse(name, context));
+            }
+            else
+            {
+                // Player is configured but not active (failed to start or was stopped)
+                // Check if it's pending reconnection
+                var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
+                var state = isPendingReconnection && !reconnectState!.WasUserStopped
+                    ? PlayerState.Reconnecting
+                    : PlayerState.Error;
+                var errorMessage = isPendingReconnection && !reconnectState!.WasUserStopped
+                    ? $"Reconnecting... (attempt {reconnectState.RetryCount})"
+                    : "Player not running. Device may be unavailable or misconfigured.";
+
+                // Return a placeholder response so user can edit/reconfigure it
+                responses.Add(new PlayerResponse(
+                    Name: name,
+                    State: state,
+                    Device: config.Device,
+                    ClientId: ClientIdGenerator.Generate(name),
+                    ServerUrl: config.Server,
+                    Volume: config.Volume ?? 100,
+                    IsMuted: false,
+                    DelayMs: config.DelayMs,
+                    OutputLatencyMs: 0,
+                    CreatedAt: DateTime.MinValue,
+                    ConnectedAt: null,
+                    ErrorMessage: errorMessage,
+                    IsClockSynced: false,
+                    Metrics: null,
+                    DeviceCapabilities: null,
+                    IsPendingReconnection: isPendingReconnection,
+                    ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
+                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
+                ));
+            }
+        }
+
+        var players = responses
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -571,7 +803,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     /// <summary>
     /// Sets the volume for a player (0-100).
-    /// Updates local config, notifies server (if connected), and applies to audio output.
+    /// Updates local config and notifies server. Hardware volume is fixed at 80% on startup.
     /// </summary>
     public async Task<bool> SetVolumeAsync(string name, int volume, CancellationToken ct = default)
     {
@@ -579,15 +811,16 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return false;
 
         volume = Math.Clamp(volume, 0, 100);
-        _logger.LogDebug("Setting volume for '{Name}' to {Volume}", name, volume);
+        _logger.LogInformation("VOLUME [Set] Player '{Name}': {Volume}%", name, volume);
 
         // 1. Update local config (always)
         context.Config.Volume = volume;
 
-        // 2. Apply software volume to audio player
-        context.Player.Volume = NormalizeVolume(volume);
+        // 2. Software volume stays at 1.0 (passthrough) - server controls actual volume
+        context.Player.Volume = 1.0f;
 
         // 3. Notify server of volume change (only if in an active state)
+        // Server (Music Assistant) handles the actual volume control
         if (IsPlayerInActiveState(context.State))
         {
             try
@@ -601,23 +834,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
-        // 4. Optionally set hardware/OS volume via PulseAudio pactl
-        // Only if we have a specific device (not default)
-        // Fire-and-forget with error handling via ContinueWith
-        if (!string.IsNullOrEmpty(context.Config.DeviceId))
-        {
-            _ = _backendFactory.SetVolumeAsync(context.Config.DeviceId, volume, ct)
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted && t.Exception != null)
-                    {
-                        _logger.LogDebug(t.Exception.InnerException ?? t.Exception,
-                            "Hardware volume control not available for '{Name}'", name);
-                    }
-                }, TaskScheduler.Default);
-        }
-
-        // 5. Broadcast status update to all clients
+        // 4. Broadcast status update to all clients
         _ = BroadcastStatusAsync();
 
         return true;
@@ -660,6 +877,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogInformation("Set delay offset for '{Name}': {DelayMs}ms", name, delayMs);
         }
 
+        // Broadcast status update so UI reflects the change
+        _ = BroadcastStatusAsync();
+
         return true;
     }
 
@@ -692,8 +912,17 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     public async Task<bool> StopPlayerAsync(string name)
     {
+        if (_disposed)
+            return false;
+
         if (!_players.TryGetValue(name, out var context))
             return false;
+
+        // Mark as user-stopped to prevent auto-reconnection
+        if (_pendingReconnections.TryGetValue(name, out var reconnectState))
+        {
+            _pendingReconnections[name] = reconnectState with { WasUserStopped = true };
+        }
 
         // Already stopped?
         if (context.State == PlayerState.Stopped)
@@ -702,7 +931,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return true;
         }
 
-        _logger.LogInformation("Stopping player '{Name}'", name);
+        _logger.LogInformation("Stopping player '{Name}' (user-initiated)", name);
 
         try
         {
@@ -752,6 +981,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     private async Task<bool> RemoveAndDisposePlayerAsync(string name)
     {
+        if (_disposed)
+            return false;
+
         if (!_players.TryRemove(name, out var context))
             return false;
 
@@ -759,6 +991,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         try
         {
+            // Unsubscribe event handlers FIRST to prevent:
+            // 1. Memory leaks from handler closures holding context references
+            // 2. Events firing during disposal that access disposed objects
+            UnwireEvents(context);
+
             context.Cts.Cancel();
 
             await context.Client.DisconnectAsync("Player removed").WaitAsync(DisposalTimeout);
@@ -788,6 +1025,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     public async Task<bool> DeletePlayerAsync(string name)
     {
+        if (_disposed)
+            return false;
+
+        // Remove from reconnection queue first
+        RemoveFromReconnectionQueue(name);
+
         var removed = await RemoveAndDisposePlayerAsync(name);
 
         // Also remove from configuration
@@ -805,6 +1048,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     public async Task<PlayerResponse?> RestartPlayerAsync(string name, CancellationToken ct = default)
     {
+        if (_disposed)
+            return null;
+
         if (!_players.TryGetValue(name, out var context))
             return null;
 
@@ -830,23 +1076,31 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// <summary>
     /// Pauses playback for a player.
     /// </summary>
-    public void PausePlayer(string name)
+    /// <param name="name">The name of the player to pause.</param>
+    /// <returns>True if the player was found and paused, false if not found.</returns>
+    public bool PausePlayer(string name)
     {
         if (_players.TryGetValue(name, out var context))
         {
             context.Player.Pause();
+            return true;
         }
+        return false;
     }
 
     /// <summary>
     /// Resumes playback for a player.
     /// </summary>
-    public void ResumePlayer(string name)
+    /// <param name="name">The name of the player to resume.</param>
+    /// <returns>True if the player was found and resumed, false if not found.</returns>
+    public bool ResumePlayer(string name)
     {
         if (_players.TryGetValue(name, out var context))
         {
             context.Player.Play();
+            return true;
         }
+        return false;
     }
 
     /// <summary>
@@ -858,52 +1112,70 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// <returns>True if the rename was successful, false if the player was not found.</returns>
     public bool RenamePlayer(string currentName, string newName)
     {
-        // Validate new name
+        // Validate new name (can happen outside lock)
         if (!ValidatePlayerName(newName, out var nameError))
         {
             throw new ArgumentException(nameError, nameof(newName));
         }
 
-        // Check if new name already exists (and it's not the same player)
-        if (currentName != newName && _players.ContainsKey(newName))
-        {
-            throw new InvalidOperationException($"A player named '{newName}' already exists");
-        }
-
-        // Get the player context
-        if (!_players.TryGetValue(currentName, out var context))
-        {
-            return false;
-        }
-
-        _logger.LogInformation("Renaming player '{OldName}' to '{NewName}'", currentName, newName);
-
-        // If same name, nothing to do
+        // Early return for same name (no lock needed)
         if (currentName == newName)
         {
-            return true;
+            return _players.ContainsKey(currentName);
         }
 
-        // Update the in-memory player dictionary
-        if (!_players.TryRemove(currentName, out _))
+        // Early disposed check
+        if (_disposed)
         {
             return false;
         }
 
-        // Update the config name
-        context.Config.Name = newName;
+        // Lock for the entire rename operation to make it atomic
+        // This prevents race conditions where another thread creates a player
+        // with newName between our check and the add
+        lock (_playersLock)
+        {
+            // Re-check disposed inside lock
+            if (_disposed)
+            {
+                return false;
+            }
 
-        // Add with new name
-        _players[newName] = context;
+            // Check if new name already exists
+            if (_players.ContainsKey(newName))
+            {
+                throw new InvalidOperationException($"A player named '{newName}' already exists");
+            }
 
-        // Update persisted configuration
+            // Get the player context
+            if (!_players.TryGetValue(currentName, out var context))
+            {
+                return false;
+            }
+
+            _logger.LogInformation("Renaming player '{OldName}' to '{NewName}'", currentName, newName);
+
+            // Atomic rename: remove old and add new within lock
+            if (!_players.TryRemove(currentName, out _))
+            {
+                return false;
+            }
+
+            // Update the config name
+            context.Config.Name = newName;
+
+            // Add with new name - this will succeed since we verified
+            // newName doesn't exist and we hold the lock
+            _players[newName] = context;
+        }
+
+        // Config update and broadcast can happen outside lock (I/O operations)
         if (_config.RenamePlayer(currentName, newName))
         {
             _config.Save();
             _logger.LogDebug("Persisted rename for player '{OldName}' -> '{NewName}'", currentName, newName);
         }
 
-        // Broadcast status update
         _ = BroadcastStatusAsync();
 
         _logger.LogInformation("Player renamed from '{OldName}' to '{NewName}'", currentName, newName);
@@ -947,8 +1219,19 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             else
             {
                 _logger.LogInformation("Discovering Sendspin servers via mDNS...");
-                var servers = await _serverDiscovery.ScanAsync(
-                    MdnsDiscoveryTimeout, ct);
+
+                // Defensive timeout wrapper - ensures we don't hang indefinitely even if
+                // the SDK's ScanAsync doesn't properly respect the timeout parameter
+                var scanTask = _serverDiscovery.ScanAsync(MdnsDiscoveryTimeout, ct);
+                var timeoutTask = Task.Delay(MdnsDiscoveryTimeout.Add(TimeSpan.FromSeconds(1)), ct);
+
+                var completedTask = await Task.WhenAny(scanTask, timeoutTask);
+                if (completedTask == timeoutTask)
+                {
+                    throw new TimeoutException($"mDNS server discovery timed out after {MdnsDiscoveryTimeout.TotalSeconds + 1} seconds");
+                }
+
+                var servers = await scanTask;
 
                 var server = servers.FirstOrDefault();
                 if (server == null)
@@ -1001,9 +1284,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     private void WireEvents(string name, PlayerContext context)
     {
-        context.Client.ConnectionStateChanged += (_, args) =>
+        // Store handler references for proper cleanup (prevents memory leaks)
+        context.ConnectionStateHandler = (_, args) =>
         {
             _logger.LogDebug("Player '{Name}' connection state: {State}", name, args.NewState);
+
+            var previousState = context.State;
 
             context.State = args.NewState switch
             {
@@ -1012,11 +1298,38 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 _ => context.State
             };
 
+            // Handle disconnection - queue for reconnection if appropriate
+            if (args.NewState == ConnectionState.Disconnected &&
+                previousState != PlayerState.Stopped &&  // Not user-stopped
+                previousState != PlayerState.Error)       // Not already errored
+            {
+                _logger.LogWarning("Player '{Name}' disconnected unexpectedly, queuing for reconnection", name);
+
+                // Get the persisted configuration for reconnection
+                var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
+                if (persistedConfig == null)
+                {
+                    _logger.LogWarning("Player '{Name}' has no persisted configuration, cannot auto-reconnect", name);
+                    return;
+                }
+
+                // Fire and forget the reconnection setup (can't await in event handler)
+                FireAndForget(async () =>
+                {
+                    // Small delay to let disposal complete
+                    await Task.Delay(100);
+
+                    // Remove the disconnected player and queue for reconnection
+                    await RemoveAndDisposePlayerAsync(name);
+                    QueueForReconnection(persistedConfig);
+                }, $"Reconnection setup for '{name}'");
+            }
+
             // Broadcast status update on connection state change
             _ = BroadcastStatusAsync();
         };
 
-        context.Pipeline.StateChanged += (_, state) =>
+        context.PipelineStateHandler = (_, state) =>
         {
             _logger.LogDebug("Player '{Name}' pipeline state: {State}", name, state);
 
@@ -1026,12 +1339,17 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 context.State = PlayerState.Buffering;
             else if (state == AudioPipelineState.Idle)
                 context.State = PlayerState.Connected;
+            else
+            {
+                // Log unknown states so we can track SDK changes
+                _logger.LogWarning("Player '{Name}' received unknown pipeline state: {State}", name, state);
+            }
 
             // Broadcast status update on pipeline state change
             _ = BroadcastStatusAsync();
         };
 
-        context.Pipeline.ErrorOccurred += (_, error) =>
+        context.PipelineErrorHandler = (_, error) =>
         {
             _logger.LogError(error.Exception, "Player '{Name}' pipeline error: {Message}",
                 name, error.Message);
@@ -1044,7 +1362,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 $"StopPlayerInternalAsync for '{name}' (pipeline error)");
         };
 
-        context.Player.ErrorOccurred += (_, error) =>
+        context.PlayerErrorHandler = (_, error) =>
         {
             _logger.LogError(error.Exception, "Player '{Name}' audio error: {Message}",
                 name, error.Message);
@@ -1058,7 +1376,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         };
 
         // Handle volume changes from server (Music Assistant UI, etc.)
-        context.Client.GroupStateChanged += (_, group) =>
+        context.GroupStateHandler = (_, group) =>
         {
             // Clamp volume to valid range
             var serverVolume = Math.Clamp(group.Volume, 0, 100);
@@ -1066,33 +1384,70 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Update volume if changed
             if (serverVolume != context.Config.Volume)
             {
-                _logger.LogDebug("Player '{Name}' volume changed by server: {OldVol} -> {NewVol}",
+                _logger.LogInformation("VOLUME [ServerSync] Player '{Name}': {OldVol}% -> {NewVol}%",
                     name, context.Config.Volume, serverVolume);
 
+                // Just update our config to reflect server state - no hardware adjustment
+                // Server (Music Assistant) controls actual volume level
                 context.Config.Volume = serverVolume;
-
-                // Only apply software volume if player is in an active state
-                if (IsPlayerInActiveState(context.State))
-                {
-                    try
-                    {
-                        context.Player.Volume = NormalizeVolume(serverVolume);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to apply volume change from server for player '{Name}'", name);
-                    }
-                }
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
             }
         };
+
+        // Subscribe to events
+        context.Client.ConnectionStateChanged += context.ConnectionStateHandler;
+        context.Pipeline.StateChanged += context.PipelineStateHandler;
+        context.Pipeline.ErrorOccurred += context.PipelineErrorHandler;
+        context.Player.ErrorOccurred += context.PlayerErrorHandler;
+        context.Client.GroupStateChanged += context.GroupStateHandler;
+    }
+
+    /// <summary>
+    /// Unsubscribes all event handlers from a player context.
+    /// Must be called before disposal to prevent memory leaks and access to disposed objects.
+    /// </summary>
+    private void UnwireEvents(PlayerContext context)
+    {
+        // Unsubscribe in reverse order of subscription
+        if (context.GroupStateHandler != null)
+        {
+            context.Client.GroupStateChanged -= context.GroupStateHandler;
+            context.GroupStateHandler = null;
+        }
+
+        if (context.PlayerErrorHandler != null)
+        {
+            context.Player.ErrorOccurred -= context.PlayerErrorHandler;
+            context.PlayerErrorHandler = null;
+        }
+
+        if (context.PipelineErrorHandler != null)
+        {
+            context.Pipeline.ErrorOccurred -= context.PipelineErrorHandler;
+            context.PipelineErrorHandler = null;
+        }
+
+        if (context.PipelineStateHandler != null)
+        {
+            context.Pipeline.StateChanged -= context.PipelineStateHandler;
+            context.PipelineStateHandler = null;
+        }
+
+        if (context.ConnectionStateHandler != null)
+        {
+            context.Client.ConnectionStateChanged -= context.ConnectionStateHandler;
+            context.ConnectionStateHandler = null;
+        }
     }
 
     private PlayerResponse CreateResponse(string name, PlayerContext context)
     {
         var bufferStats = context.Pipeline.BufferStats;
+
+        // Check if player is pending reconnection
+        var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
 
         return new PlayerResponse(
             Name: name,
@@ -1115,7 +1470,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 Underruns: bufferStats.UnderrunCount,
                 Overruns: bufferStats.OverrunCount
             ) : null,
-            DeviceCapabilities: context.DeviceCapabilities
+            DeviceCapabilities: context.DeviceCapabilities,
+            IsPendingReconnection: isPendingReconnection,
+            ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
+            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
         );
     }
 
@@ -1410,21 +1768,196 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
+    /// Fire-and-forget overload that accepts an async lambda.
+    /// </summary>
+    private void FireAndForget(Func<Task> taskFactory, string context)
+    {
+        FireAndForget(Task.Run(taskFactory), context);
+    }
+
+    #region Reconnection Methods
+
+    /// <summary>
+    /// Queues a player for automatic reconnection.
+    /// </summary>
+    private void QueueForReconnection(PlayerConfiguration config, bool isInitialFailure = false)
+    {
+        if (_disposed) return;
+
+        var state = _pendingReconnections.GetOrAdd(config.Name, _ => new ReconnectionState(config));
+
+        // Calculate next retry time with exponential backoff
+        var delay = CalculateBackoffDelay(state.RetryCount);
+        var nextRetry = DateTime.UtcNow.Add(delay);
+
+        _pendingReconnections[config.Name] = state with
+        {
+            RetryCount = state.RetryCount + 1,
+            NextRetryTime = nextRetry
+        };
+
+        _logger.LogInformation(
+            "Player '{Name}' queued for reconnection (attempt {Attempt}, next retry in {Delay:F0}s)",
+            config.Name, state.RetryCount + 1, delay.TotalSeconds);
+
+        // Broadcast status so UI shows reconnection state
+        _ = BroadcastStatusAsync();
+    }
+
+    /// <summary>
+    /// Removes a player from the reconnection queue.
+    /// </summary>
+    private void RemoveFromReconnectionQueue(string name)
+    {
+        if (_pendingReconnections.TryRemove(name, out _))
+        {
+            _logger.LogDebug("Player '{Name}' removed from reconnection queue", name);
+        }
+    }
+
+    /// <summary>
+    /// Calculates exponential backoff delay for reconnection attempts.
+    /// </summary>
+    private static TimeSpan CalculateBackoffDelay(int retryCount)
+    {
+        // Exponential backoff: 5s, 10s, 20s, 40s, 80s, 120s (max)
+        var delaySeconds = InitialReconnectDelay.TotalSeconds * Math.Pow(2, retryCount);
+        var cappedSeconds = Math.Min(delaySeconds, MaxReconnectDelay.TotalSeconds);
+        return TimeSpan.FromSeconds(cappedSeconds);
+    }
+
+    /// <summary>
+    /// Background task that processes pending reconnection attempts.
+    /// </summary>
+    private async Task ProcessReconnectionsAsync(CancellationToken ct)
+    {
+        _logger.LogDebug("Reconnection background task started");
+
+        while (!ct.IsCancellationRequested && !_disposed)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+
+                var now = DateTime.UtcNow;
+                var playersToReconnect = _pendingReconnections
+                    .Where(kvp => kvp.Value.NextRetryTime <= now && !kvp.Value.WasUserStopped)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var name in playersToReconnect)
+                {
+                    if (ct.IsCancellationRequested || _disposed)
+                        break;
+
+                    if (!_pendingReconnections.TryGetValue(name, out var state))
+                        continue;
+
+                    // Check if max attempts reached (if configured)
+                    if (MaxReconnectAttempts > 0 && state.RetryCount >= MaxReconnectAttempts)
+                    {
+                        _logger.LogWarning(
+                            "Player '{Name}' exceeded max reconnection attempts ({Max}), giving up",
+                            name, MaxReconnectAttempts);
+                        _pendingReconnections.TryRemove(name, out _);
+                        continue;
+                    }
+
+                    await TryReconnectPlayerAsync(name, state, ct);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in reconnection background task");
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            }
+        }
+
+        _logger.LogDebug("Reconnection background task stopped");
+    }
+
+    /// <summary>
+    /// Attempts to reconnect a single player.
+    /// </summary>
+    private async Task TryReconnectPlayerAsync(string name, ReconnectionState state, CancellationToken ct)
+    {
+        _logger.LogInformation("Attempting to reconnect player '{Name}' (attempt {Attempt})",
+            name, state.RetryCount);
+
+        try
+        {
+            var request = new PlayerCreateRequest
+            {
+                Name = state.Config.Name,
+                Device = state.Config.PortAudioDeviceIndex?.ToString() ?? state.Config.Device,
+                ClientId = ClientIdGenerator.Generate(state.Config.Name),
+                ServerUrl = state.Config.Server,
+                Volume = state.Config.Volume ?? 100,
+                DelayMs = state.Config.DelayMs,
+                Persist = false // Already persisted
+            };
+
+            await CreatePlayerAsync(request, ct);
+
+            // Success - remove from queue
+            _pendingReconnections.TryRemove(name, out _);
+            _logger.LogInformation("Player '{Name}' reconnected successfully after {Attempts} attempt(s)",
+                name, state.RetryCount);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
+        {
+            // Player was created by another path, remove from queue
+            _pendingReconnections.TryRemove(name, out _);
+            _logger.LogDebug("Player '{Name}' already exists, removing from reconnection queue", name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Reconnection attempt {Attempt} failed for player '{Name}'",
+                state.RetryCount, name);
+
+            // Queue next attempt
+            QueueForReconnection(state.Config);
+        }
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    /// <summary>
     /// Synchronously disposes of all managed resources.
     /// WARNING: This method blocks until all resources are disposed or timeout occurs.
     /// Prefer using DisposeAsync when possible to avoid potential deadlocks.
     /// </summary>
     public void Dispose()
     {
-        lock (_players)
+        List<PlayerContext> contextsToDispose;
+
+        lock (_playersLock)
         {
             if (_disposed)
                 return;
             _disposed = true;
+
+            // Stop reconnection task
+            _reconnectionCts?.Cancel();
+            _pendingReconnections.Clear();
+
+            // Take snapshot and clear while holding lock
+            // This prevents race conditions with concurrent player operations
+            contextsToDispose = _players.Values.ToList();
+            _players.Clear();
         }
 
-        foreach (var context in _players.Values)
+        // Dispose outside lock to avoid potential deadlocks
+        foreach (var context in contextsToDispose)
         {
+            // Unsubscribe event handlers first to prevent memory leaks and disposal crashes
+            UnwireEvents(context);
             context.Cts.Cancel();
             try
             {
@@ -1438,11 +1971,6 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
-        _players.Clear();
-
-        // Note: MdnsServerDiscovery does not implement IDisposable
-        // If it did, we would dispose it here
-
         _logger.LogInformation("PlayerManagerService disposed");
     }
 
@@ -1451,15 +1979,29 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        lock (_players)
+        List<PlayerContext> contextsToDispose;
+
+        lock (_playersLock)
         {
             if (_disposed)
                 return;
             _disposed = true;
+
+            // Stop reconnection task
+            _reconnectionCts?.Cancel();
+            _pendingReconnections.Clear();
+
+            // Take snapshot and clear while holding lock
+            // This prevents race conditions with concurrent player operations
+            contextsToDispose = _players.Values.ToList();
+            _players.Clear();
         }
 
-        foreach (var context in _players.Values)
+        // Dispose outside lock to avoid potential deadlocks
+        foreach (var context in contextsToDispose)
         {
+            // Unsubscribe event handlers first to prevent memory leaks and disposal crashes
+            UnwireEvents(context);
             context.Cts.Cancel();
             try
             {
@@ -1471,11 +2013,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
-        _players.Clear();
-
-        // Note: MdnsServerDiscovery does not implement IDisposable or IAsyncDisposable
-        // If it did, we would dispose it here
-
         _logger.LogInformation("PlayerManagerService disposed asynchronously");
     }
+
+    #endregion
 }

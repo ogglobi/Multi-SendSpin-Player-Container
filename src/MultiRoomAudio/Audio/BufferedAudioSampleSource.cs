@@ -465,5 +465,6 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         _lastOutputFrame = null;
         _totalDropped = 0;
         _totalInserted = 0;
+        _hasLoggedOverrunStart = false;  // Allow ERROR level logging on next overrun
     }
 }

@@ -1315,7 +1315,7 @@ const Wizard = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    devicesConfigured: Object.keys(this.identifiedDevices).length,
+                    devicesConfigured: Object.keys(this.deviceState).length,
                     playersCreated: this.playersToCreate.length
                 })
             });
