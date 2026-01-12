@@ -5,13 +5,13 @@
 // It guides users through device discovery, identification, naming, and player creation.
 
 // Sanitize a string to be a valid player name
-// Player names can only contain: alphanumeric, spaces, hyphens, underscores
+// Player names can only contain: alphanumeric, spaces, hyphens, underscores, apostrophes
 // This matches the backend validation in PlayerManagerService.ValidatePlayerName()
 function sanitizePlayerName(name) {
     if (!name) return '';
 
-    // Remove any characters that aren't alphanumeric, space, hyphen, or underscore
-    let sanitized = name.replace(/[^a-zA-Z0-9\s\-_]/g, '');
+    // Remove any characters that aren't alphanumeric, space, hyphen, underscore, or apostrophe
+    let sanitized = name.replace(/[^a-zA-Z0-9\s\-_']/g, '');
 
     // Collapse multiple spaces into one
     sanitized = sanitized.replace(/\s+/g, ' ').trim();
@@ -124,9 +124,44 @@ const Wizard = {
         // Load cards first so progress indicator shows Cards step if needed
         await this.loadCards();
 
+        // Load existing custom sinks to filter out their master/slave devices
+        await this.loadExistingCustomSinks();
+
         this.renderProgress();
         this.renderStep();
         this.modal.show();
+    },
+
+    // Load existing custom sinks from the API
+    async loadExistingCustomSinks() {
+        try {
+            const response = await fetch('./api/sinks');
+            if (response.ok) {
+                const sinks = await response.json();
+                // Store sinks with their slaves/masterSink info for filtering
+                this.customSinks = sinks.map(s => ({
+                    id: s.sinkName || s.name,
+                    name: s.sinkName || s.name,
+                    type: s.type?.toLowerCase() || 'unknown',
+                    description: s.description,
+                    slaves: s.slaves || [],
+                    masterSink: s.masterSink || null,
+                    maxChannels: 2,
+                    defaultSampleRate: 48000
+                }));
+            }
+        } catch (error) {
+            console.warn('Failed to load existing custom sinks:', error);
+            // Continue without existing sinks - not fatal
+        }
+    },
+
+    // Check if a device is used as a master sink or slave by any custom sink
+    isDeviceUsedBySink(deviceId) {
+        return this.customSinks.some(sink =>
+            sink.masterSink === deviceId ||
+            (sink.slaves && sink.slaves.includes(deviceId))
+        );
     },
 
     // Hide the wizard
@@ -863,12 +898,14 @@ const Wizard = {
                 throw new Error(result.message || result.detail || 'Failed to create combine sink');
             }
 
-            // Add to custom sinks list
+            // Add to custom sinks list (include slaves for filtering)
             this.customSinks.push({
                 id: result.sinkName || name,
                 name: result.sinkName || name,
                 type: 'combine',
                 description: description,
+                slaves: slaves,
+                masterSink: null,
                 maxChannels: 2,
                 defaultSampleRate: 48000
             });
@@ -952,12 +989,14 @@ const Wizard = {
                 throw new Error(result.message || result.detail || 'Failed to create remap sink');
             }
 
-            // Add to custom sinks list
+            // Add to custom sinks list (include masterSink for filtering)
             this.customSinks.push({
                 id: result.sinkName || name,
                 name: result.sinkName || name,
                 type: 'remap',
                 description: description,
+                slaves: [],
+                masterSink: masterSink,
                 maxChannels: 2,
                 defaultSampleRate: 48000
             });
@@ -1035,9 +1074,12 @@ const Wizard = {
 
     // Step 4: Create Players
     renderPlayers() {
-        // Combine devices and custom sinks, excluding hidden devices
+        // Combine devices and custom sinks, excluding:
+        // - Hidden devices
+        // - Devices used as master/slave by custom sinks (use the sink instead)
         const allDevices = [...this.devices, ...this.customSinks].filter(d =>
-            !(this.deviceState[d.id]?.hidden || d.hidden)
+            !(this.deviceState[d.id]?.hidden || d.hidden) &&
+            !this.isDeviceUsedBySink(d.id)
         );
 
         const playerHtml = allDevices.map(device => {

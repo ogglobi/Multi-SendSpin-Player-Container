@@ -1107,6 +1107,7 @@ let editingRemapSink = null;
 // Cached modal instances to avoid creating duplicates
 let combineSinkModalInstance = null;
 let remapSinkModalInstance = null;
+let importSinksModalInstance = null;
 
 // Open Combine Sink Modal (editData is optional - if provided, we're editing)
 function openCombineSinkModal(editData = null) {
@@ -1494,6 +1495,11 @@ async function playTestToneForSink(name) {
 
 // Open import modal
 async function openImportModal() {
+    // Hide parent modal to avoid stacking issues
+    if (customSinksModal) {
+        customSinksModal.hide();
+    }
+
     const list = document.getElementById('importSinksList');
     const empty = document.getElementById('importEmpty');
     const unavailable = document.getElementById('importUnavailable');
@@ -1506,8 +1512,18 @@ async function openImportModal() {
     unavailable.classList.add('d-none');
     importBtn.disabled = false;
 
-    const modal = new bootstrap.Modal(document.getElementById('importSinksModal'));
-    modal.show();
+    // Get or create cached modal instance
+    const modalEl = document.getElementById('importSinksModal');
+    if (!importSinksModalInstance) {
+        importSinksModalInstance = new bootstrap.Modal(modalEl);
+        // Re-show parent modal when this one closes
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            if (customSinksModal) {
+                customSinksModal.show();
+            }
+        });
+    }
+    importSinksModalInstance.show();
 
     try {
         const response = await fetch('./api/sinks/import/scan');
@@ -1574,7 +1590,9 @@ async function importSelectedSinks() {
         // Refresh before hiding modal to avoid race condition
         await refreshSinks();
         await refreshDevices();
-        bootstrap.Modal.getInstance(document.getElementById('importSinksModal')).hide();
+        if (importSinksModalInstance) {
+            importSinksModalInstance.hide();
+        }
     } catch (error) {
         showAlert(error.message, 'danger');
     } finally {

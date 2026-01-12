@@ -71,16 +71,24 @@ public partial class PaModuleRunner
 
     /// <summary>
     /// Sanitizes a description string for use in device.description property.
+    /// Handles special characters that could cause issues in PulseAudio property values.
     /// </summary>
     private static string SanitizeDescription(string description)
     {
-        // Remove dangerous characters and escape for PulseAudio properties
+        if (string.IsNullOrWhiteSpace(description))
+            return description;
+
+        // Sanitize for PulseAudio property values (quoted strings)
         return description
-            .Replace("\"", "")
-            .Replace("\\", "")
-            .Replace("\n", " ")
-            .Replace("\r", "")
+            .Replace("\\", "")      // Remove backslashes (escape char)
+            .Replace("\"", "'")     // Replace double quotes with single (preserve intent)
+            .Replace("\n", " ")     // Replace newlines with spaces
+            .Replace("\r", "")      // Remove carriage returns
+            .Replace("\0", "")      // Remove null chars
             .Trim();
+
+        // Note: Spaces and & are allowed - PulseAudio handles them correctly
+        // when the value is quoted in sink_properties=device.description="value"
     }
 
     /// <summary>

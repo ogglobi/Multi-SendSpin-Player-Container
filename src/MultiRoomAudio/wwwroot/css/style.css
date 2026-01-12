@@ -314,7 +314,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .volume-display {
-    min-width: 42px;
+    min-width: 3.5em;  /* Increased from 42px to accommodate "100%" */
     font-weight: 600;
     font-size: 0.875rem;
     color: var(--accent-primary);
