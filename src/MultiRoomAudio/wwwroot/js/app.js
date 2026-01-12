@@ -40,6 +40,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up SignalR connection
     setupSignalR();
 
+    // Check if onboarding wizard should show on fresh install
+    if (typeof Wizard !== 'undefined') {
+        const shouldShow = await Wizard.shouldShow();
+        if (shouldShow) {
+            await Wizard.show();
+        }
+    }
+
     // Poll for status updates as fallback
     setInterval(refreshStatus, 5000);
 });
