@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-d5ed7f5
+## Development Build: sha-8e8dcc2
 
 **Current Dev Build Changes** (recent)
 
+- Fix Sprint 1 issues: wizard filtering, modal stacking, validation
 - Proper Sink Error handling + sink edit screen
 - Fix Auto-Naming Problems
 - load things in the right order.
@@ -14,7 +15,6 @@
 - Add SOund Generation/Test Tone to sink creation page
 - Fix Onboarding Wizard not launching on Fresh Install
 - Fix players where the hardware has changed/is not available to not lock and be uneditable.
-- Fix Linter Errors
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
