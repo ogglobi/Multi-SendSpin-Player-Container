@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-1757dce
+## Development Build: sha-c6a954b
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #41 from chrisuthe/onboarding
+- Merge origin/dev into onboarding
+- Remove HTML pattern attributes to fix Chrome v flag regex errors
+- Fix HTML pattern regex for modern browser Unicode v flag
+- Upgrade SDK to 5.1.0 and improve error handling
+- Clarify buffer constant naming and fix modal stacking
+- Add automatic player reconnection on server unavailability
+- pull back dev changes (logging, tests)
 - Restructure Menus
 - Add Logging and Testing
-- stop touching the volume, MA does that. Set hardware to 80% and passthrough what we get from MA to the player (we dont' control any volume)
-- Volume logging and get rid of adjustments before applying
-- add card profile UI
-- fix double volume control
-- Bump SDK version to allow initial volume setting, set volume.
-- attempt to fix volume issue
-- Add startup logging for discovered sound cards
-- support loading by card
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
