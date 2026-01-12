@@ -560,7 +560,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 ClientName = request.Name,
                 Roles = new List<string> { "player@v1" },
                 AudioFormats = GetDefaultFormats(),
-                BufferCapacity = ServerAnnouncedBufferCapacityBytes
+                BufferCapacity = ServerAnnouncedBufferCapacityBytes,
+                InitialVolume = request.Volume  // Set initial volume for hello message
             };
 
             // 2. Create clock synchronizer
@@ -1277,16 +1278,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
             _logger.LogInformation("Player '{Name}' connected to server", name);
 
-            // Push our configured volume to the server (overrides server's stored value)
-            try
-            {
-                await context.Client.SetVolumeAsync(context.Config.Volume);
-                _logger.LogDebug("Player '{Name}' pushed volume {Volume} to server", name, context.Config.Volume);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to push initial volume for player '{Name}'", name);
-            }
+            // Push our configured volume to the server (overrides SDK's default volume:100)
+            await PushVolumeToServerAsync(name, context);
         }
         catch (OperationCanceledException)
         {
@@ -1362,6 +1355,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             {
                 // Log unknown states so we can track SDK changes
                 _logger.LogWarning("Player '{Name}' received unknown pipeline state: {State}", name, state);
+            }
+
+            // Push volume to server when playback starts to ensure correct level
+            // This handles the case where SDK sends volume:100 in initial hello
+            if (state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering)
+            {
+                _ = PushVolumeToServerAsync(name, context);
             }
 
             // Broadcast status update on pipeline state change
