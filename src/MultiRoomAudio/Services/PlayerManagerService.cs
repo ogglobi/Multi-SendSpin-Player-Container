@@ -48,6 +48,21 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     private Task? _reconnectionTask;
 
+    /// <summary>
+    /// Cached server URI from mDNS discovery to avoid race conditions.
+    /// </summary>
+    private Uri? _cachedServerUri;
+
+    /// <summary>
+    /// Expiry time for the cached server URI.
+    /// </summary>
+    private DateTime _cachedServerUriExpiry = DateTime.MinValue;
+
+    /// <summary>
+    /// Lock for serializing mDNS discovery requests.
+    /// </summary>
+    private readonly SemaphoreSlim _discoveryLock = new(1, 1);
+
     #region Constants
 
     /// <summary>
@@ -120,6 +135,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// Timeout for mDNS server discovery.
     /// </summary>
     private static readonly TimeSpan MdnsDiscoveryTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long to cache a discovered server URI before re-discovering.
+    /// </summary>
+    private static readonly TimeSpan CachedServerTtl = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// Timeout for graceful disposal of player resources.
@@ -1232,6 +1252,62 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
     }
 
+    /// <summary>
+    /// Gets a cached server URI or performs mDNS discovery.
+    /// Uses caching and locking to avoid race conditions when multiple players
+    /// are created simultaneously.
+    /// </summary>
+    private async Task<Uri> GetOrDiscoverServerAsync(CancellationToken ct)
+    {
+        // Quick check without lock
+        if (_cachedServerUri != null && DateTime.UtcNow < _cachedServerUriExpiry)
+        {
+            _logger.LogDebug("Using cached server URI: {Uri}", _cachedServerUri);
+            return _cachedServerUri;
+        }
+
+        // Acquire lock to serialize discovery requests
+        await _discoveryLock.WaitAsync(ct);
+        try
+        {
+            // Double-check after acquiring lock (another thread may have discovered)
+            if (_cachedServerUri != null && DateTime.UtcNow < _cachedServerUriExpiry)
+            {
+                _logger.LogDebug("Using cached server URI (after lock): {Uri}", _cachedServerUri);
+                return _cachedServerUri;
+            }
+
+            _logger.LogInformation("Discovering Sendspin servers via mDNS...");
+
+            // Defensive timeout wrapper - ensures we don't hang indefinitely even if
+            // the SDK's ScanAsync doesn't properly respect the timeout parameter
+            var scanTask = _serverDiscovery.ScanAsync(MdnsDiscoveryTimeout, ct);
+            var timeoutTask = Task.Delay(MdnsDiscoveryTimeout.Add(TimeSpan.FromSeconds(1)), ct);
+
+            var completedTask = await Task.WhenAny(scanTask, timeoutTask);
+            if (completedTask == timeoutTask)
+            {
+                throw new TimeoutException($"mDNS server discovery timed out after {MdnsDiscoveryTimeout.TotalSeconds + 1} seconds");
+            }
+
+            var servers = await scanTask;
+            var server = servers.FirstOrDefault()
+                ?? throw new InvalidOperationException("No Sendspin servers found via mDNS discovery");
+
+            // Construct WebSocket URI from discovered server
+            var host = server.IpAddresses.FirstOrDefault() ?? server.Host;
+            _cachedServerUri = new Uri($"ws://{host}:{server.Port}/sendspin");
+            _cachedServerUriExpiry = DateTime.UtcNow.Add(CachedServerTtl);
+
+            _logger.LogInformation("Found server: {ServerName} at {Uri}", server.Name, _cachedServerUri);
+            return _cachedServerUri;
+        }
+        finally
+        {
+            _discoveryLock.Release();
+        }
+    }
+
     private async Task ConnectPlayerAsync(string name, PlayerContext context, CancellationToken ct)
     {
         try
@@ -1247,32 +1323,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
             else
             {
-                _logger.LogInformation("Discovering Sendspin servers via mDNS...");
-
-                // Defensive timeout wrapper - ensures we don't hang indefinitely even if
-                // the SDK's ScanAsync doesn't properly respect the timeout parameter
-                var scanTask = _serverDiscovery.ScanAsync(MdnsDiscoveryTimeout, ct);
-                var timeoutTask = Task.Delay(MdnsDiscoveryTimeout.Add(TimeSpan.FromSeconds(1)), ct);
-
-                var completedTask = await Task.WhenAny(scanTask, timeoutTask);
-                if (completedTask == timeoutTask)
-                {
-                    throw new TimeoutException($"mDNS server discovery timed out after {MdnsDiscoveryTimeout.TotalSeconds + 1} seconds");
-                }
-
-                var servers = await scanTask;
-
-                var server = servers.FirstOrDefault();
-                if (server == null)
-                {
-                    throw new InvalidOperationException("No Sendspin servers found via mDNS discovery");
-                }
-
-                // Construct WebSocket URI from discovered server
-                var host = server.IpAddresses.FirstOrDefault() ?? server.Host;
-                serverUri = new Uri($"ws://{host}:{server.Port}/sendspin");
-                _logger.LogInformation("Found server: {ServerName} at {Uri}",
-                    server.Name, serverUri);
+                // Use cached discovery to avoid race conditions when creating multiple players
+                serverUri = await GetOrDiscoverServerAsync(ct);
             }
 
             // Connect

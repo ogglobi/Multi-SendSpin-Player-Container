@@ -168,17 +168,18 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
                 context.State = CustomSinkState.Loaded;
                 _logger.LogInformation("Created combine-sink '{Name}' with module index {Index}",
                     request.Name, moduleIndex.Value);
+
+                // Persist to YAML only on success
+                SaveConfiguration(config);
+
+                return ToResponse(request.Name, context);
             }
             else
             {
-                context.State = CustomSinkState.Error;
-                context.ErrorMessage = "Failed to load module (no module index returned)";
+                // Module failed to load - remove from tracking and throw
+                _sinks.TryRemove(request.Name, out _);
+                throw new InvalidOperationException($"Failed to load combine-sink '{request.Name}' in PulseAudio");
             }
-
-            // Persist to YAML
-            SaveConfiguration(config);
-
-            return ToResponse(request.Name, context);
         }
         catch (Exception ex)
         {
@@ -248,17 +249,18 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
                 context.State = CustomSinkState.Loaded;
                 _logger.LogInformation("Created remap-sink '{Name}' with module index {Index}",
                     request.Name, moduleIndex.Value);
+
+                // Persist to YAML only on success
+                SaveConfiguration(config);
+
+                return ToResponse(request.Name, context);
             }
             else
             {
-                context.State = CustomSinkState.Error;
-                context.ErrorMessage = "Failed to load module (no module index returned)";
+                // Module failed to load - remove from tracking and throw
+                _sinks.TryRemove(request.Name, out _);
+                throw new InvalidOperationException($"Failed to load remap-sink '{request.Name}' in PulseAudio");
             }
-
-            // Persist to YAML
-            SaveConfiguration(config);
-
-            return ToResponse(request.Name, context);
         }
         catch (Exception ex)
         {
