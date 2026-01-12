@@ -95,6 +95,11 @@ builder.Services.AddSingleton<LoggingService>();
 builder.Services.AddSingleton<ConfigurationService>();
 builder.Services.AddSingleton<VolumeCommandRunner>();
 builder.Services.AddSingleton<BackendFactory>();
+builder.Services.AddSingleton<DeviceMatchingService>();
+
+// Onboarding services
+builder.Services.AddSingleton<ToneGeneratorService>();
+builder.Services.AddSingleton<OnboardingService>();
 
 // Add PlayerManagerService as singleton and hosted service
 builder.Services.AddSingleton<PlayerManagerService>();
@@ -199,6 +204,7 @@ app.MapPlayersEndpoints();
 app.MapDevicesEndpoints();
 app.MapProvidersEndpoints();
 app.MapSinksEndpoints();
+app.MapOnboardingEndpoints();
 app.MapCardsEndpoints();
 app.MapLogsEndpoints();
 

@@ -206,7 +206,8 @@ public class PulseAudioPlayer : IAudioPlayer
                         var state = ContextGetState(_context);
                         if (state == ContextState.Failed || state == ContextState.Terminated)
                         {
-                            throw new InvalidOperationException($"PulseAudio context failed: {state}");
+                            var errorMsg = GetContextError(_context);
+                            throw new InvalidOperationException($"PulseAudio context failed: {errorMsg}");
                         }
 
                         if (DateTime.UtcNow > timeout)
@@ -297,7 +298,9 @@ public class PulseAudioPlayer : IAudioPlayer
                         var state = StreamGetState(_stream);
                         if (state == StreamState.Failed || state == StreamState.Terminated)
                         {
-                            throw new InvalidOperationException($"PulseAudio stream failed: {state}");
+                            var errorMsg = GetContextError(_context);
+                            throw new InvalidOperationException(
+                                $"PulseAudio stream failed: {errorMsg}. Sink: {_sinkName ?? "default"}");
                         }
 
                         if (DateTime.UtcNow > timeout)
@@ -535,7 +538,11 @@ public class PulseAudioPlayer : IAudioPlayer
         {
             _streamReady = false;
             ThreadedMainloopSignal(_mainloop, 0);
-            _logger.LogWarning("PulseAudio stream disconnected: {State}", state);
+
+            // Get actual error from PulseAudio context
+            var errorMsg = _context != IntPtr.Zero ? GetContextError(_context) : "Unknown";
+            _logger.LogWarning("PulseAudio stream disconnected: {State}. Error: {Error}. Sink: {Sink}",
+                state, errorMsg, _sinkName ?? "default");
         }
     }
 

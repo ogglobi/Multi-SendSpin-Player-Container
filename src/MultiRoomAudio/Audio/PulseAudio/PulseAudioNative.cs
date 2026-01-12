@@ -385,6 +385,21 @@ internal static class PulseAudioNative
     [DllImport(LibPulse, EntryPoint = "pa_context_get_state")]
     public static extern ContextState ContextGetState(IntPtr context);
 
+    /// <summary>
+    /// Get the error number of the last failed operation on the context.
+    /// </summary>
+    [DllImport(LibPulse, EntryPoint = "pa_context_errno")]
+    public static extern int ContextErrno(IntPtr context);
+
+    /// <summary>
+    /// Get the error message for the last failed operation on the context.
+    /// </summary>
+    public static string GetContextError(IntPtr context)
+    {
+        var errno = ContextErrno(context);
+        return GetErrorMessage(errno);
+    }
+
     #endregion
 
     #region Async API - Stream

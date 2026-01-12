@@ -188,8 +188,13 @@ async function openEditPlayerModal(playerName) {
 
         // Set device dropdown
         await refreshDevices();
+        const audioDeviceSelect = document.getElementById('audioDevice');
         if (player.device) {
-            document.getElementById('audioDevice').value = player.device;
+            audioDeviceSelect.value = player.device;
+            // Check if the device was actually found in the list
+            if (audioDeviceSelect.value !== player.device) {
+                showAlert(`Warning: Previously configured device "${player.device}" is no longer available. Please select a new device.`, 'warning');
+            }
         }
 
         // Set modal to Edit mode
@@ -220,6 +225,10 @@ async function savePlayer() {
         showAlert('Please enter a player name', 'warning');
         return;
     }
+
+    // Disable submit button to prevent double-click
+    const submitBtn = document.getElementById('playerModalSubmit');
+    submitBtn.disabled = true;
 
     try {
         if (isEditing) {
@@ -296,6 +305,8 @@ async function savePlayer() {
     } catch (error) {
         console.error('Error saving player:', error);
         showAlert(error.message, 'danger');
+    } finally {
+        submitBtn.disabled = false;
     }
 }
 
@@ -323,6 +334,10 @@ async function deletePlayer(name) {
 }
 
 async function stopPlayer(name) {
+    if (!confirm(`Stop player "${name}"? This will disconnect it from the server.`)) {
+        return;
+    }
+
     try {
         const response = await fetch(`./api/players/${encodeURIComponent(name)}/stop`, {
             method: 'POST'
@@ -613,12 +628,14 @@ function renderPlayers() {
                             </div>
                         </div>
 
-                        ${player.isClockSynced ? `
-                            <small class="text-success"><i class="fas fa-clock me-1"></i>Clock synced</small>
-                        ` : ''}
-                        ${player.errorMessage ? `
-                            <small class="text-danger d-block"><i class="fas fa-exclamation-circle me-1"></i>${escapeHtml(player.errorMessage)}</small>
-                        ` : ''}
+                        <div class="player-status-area">
+                            ${player.isClockSynced ? `
+                                <small class="text-success"><i class="fas fa-clock me-1"></i>Clock synced</small>
+                            ` : ''}
+                            ${player.errorMessage ? `
+                                <small class="text-danger d-block mt-1"><i class="fas fa-exclamation-circle me-1"></i>${escapeHtml(player.errorMessage)}</small>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -940,23 +957,22 @@ function formatUs(us) {
 
 // State
 let customSinks = {};
-let sinksSectionVisible = false;
+let customSinksModal = null;
 
-// Toggle sinks section visibility
-function toggleSinksSection() {
-    const section = document.getElementById('sinks-section');
-    sinksSectionVisible = !sinksSectionVisible;
-
-    if (sinksSectionVisible) {
-        section.classList.remove('d-none');
-        refreshSinks();
-    } else {
-        section.classList.add('d-none');
+// Open custom sinks modal
+function openCustomSinksModal() {
+    if (!customSinksModal) {
+        customSinksModal = new bootstrap.Modal(document.getElementById('customSinksModal'));
     }
+    customSinksModal.show();
+    refreshSinks();
 }
 
 // Refresh custom sinks list
 async function refreshSinks() {
+    const container = document.getElementById('customSinksContainer');
+    if (!container) return;
+
     try {
         const response = await fetch('./api/sinks');
         if (!response.ok) throw new Error('Failed to fetch sinks');
@@ -970,8 +986,7 @@ async function refreshSinks() {
         renderSinks();
     } catch (error) {
         console.error('Error refreshing sinks:', error);
-        const container = document.getElementById('sinks-container');
-        container.innerHTML = `<div class="col-12 text-center py-3 text-danger">
+        container.innerHTML = `<div class="text-center py-3 text-danger">
             <i class="fas fa-exclamation-circle me-2"></i>Failed to load sinks
         </div>`;
     }
@@ -979,13 +994,14 @@ async function refreshSinks() {
 
 // Render sink cards
 function renderSinks() {
-    const container = document.getElementById('sinks-container');
+    const container = document.getElementById('customSinksContainer');
+    if (!container) return;
     const sinkNames = Object.keys(customSinks);
 
     if (sinkNames.length === 0) {
         container.innerHTML = `
-            <div class="col-12 text-center py-4">
-                <i class="fas fa-layer-group fa-3x text-muted mb-3"></i>
+            <div class="text-center py-4">
+                <i class="fas fa-layer-group fa-3x text-muted mb-3 d-block"></i>
                 <h5>No Custom Sinks</h5>
                 <p class="text-muted mb-0">Create a combine-sink or remap-sink to get started.</p>
             </div>
@@ -993,14 +1009,14 @@ function renderSinks() {
         return;
     }
 
-    container.innerHTML = sinkNames.map(name => {
+    container.innerHTML = '<div class="row">' + sinkNames.map(name => {
         const sink = customSinks[name];
         const typeIcon = sink.type === 'Combine' ? 'fa-layer-group' : 'fa-random';
         const typeBadgeClass = sink.type === 'Combine' ? 'bg-info' : 'bg-secondary';
         const stateBadgeClass = getSinkStateBadgeClass(sink.state);
 
         return `
-            <div class="col-md-6 col-lg-4 mb-3">
+            <div class="col-md-6 mb-3">
                 <div class="card sink-card h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -1050,7 +1066,7 @@ function renderSinks() {
                 </div>
             </div>
         `;
-    }).join('');
+    }).join('') + '</div>';
 }
 
 function getSinkStateBadgeClass(state) {
@@ -1066,6 +1082,11 @@ function getSinkStateBadgeClass(state) {
 
 // Open Combine Sink Modal
 function openCombineSinkModal() {
+    // Hide parent modal to avoid stacking issues
+    if (customSinksModal) {
+        customSinksModal.hide();
+    }
+
     // Reset form
     document.getElementById('combineSinkName').value = '';
     document.getElementById('combineSinkDesc').value = '';
@@ -1086,11 +1107,24 @@ function openCombineSinkModal() {
         `).join('');
     }
 
-    new bootstrap.Modal(document.getElementById('combineSinkModal')).show();
+    const combineModal = new bootstrap.Modal(document.getElementById('combineSinkModal'));
+    // Reopen parent modal when this one closes
+    document.getElementById('combineSinkModal').addEventListener('hidden.bs.modal', function handler() {
+        document.getElementById('combineSinkModal').removeEventListener('hidden.bs.modal', handler);
+        if (customSinksModal) {
+            customSinksModal.show();
+        }
+    });
+    combineModal.show();
 }
 
 // Open Remap Sink Modal
 function openRemapSinkModal() {
+    // Hide parent modal to avoid stacking issues
+    if (customSinksModal) {
+        customSinksModal.hide();
+    }
+
     // Reset form
     document.getElementById('remapSinkName').value = '';
     document.getElementById('remapSinkDesc').value = '';
@@ -1102,7 +1136,15 @@ function openRemapSinkModal() {
 
     updateChannelPicker();
 
-    new bootstrap.Modal(document.getElementById('remapSinkModal')).show();
+    const remapModal = new bootstrap.Modal(document.getElementById('remapSinkModal'));
+    // Reopen parent modal when this one closes
+    document.getElementById('remapSinkModal').addEventListener('hidden.bs.modal', function handler() {
+        document.getElementById('remapSinkModal').removeEventListener('hidden.bs.modal', handler);
+        if (customSinksModal) {
+            customSinksModal.show();
+        }
+    });
+    remapModal.show();
 }
 
 // Update channel picker based on selected master device
@@ -1345,6 +1387,10 @@ async function importSelectedSinks() {
         return;
     }
 
+    // Disable button during import to prevent double-click
+    const importBtn = document.getElementById('importBtn');
+    importBtn.disabled = true;
+
     try {
         const response = await fetch('./api/sinks/import', {
             method: 'POST',
@@ -1353,7 +1399,6 @@ async function importSelectedSinks() {
         });
 
         const result = await response.json();
-        bootstrap.Modal.getInstance(document.getElementById('importSinksModal')).hide();
 
         if (result.imported && result.imported.length > 0) {
             showAlert(`Imported: ${result.imported.join(', ')}`, 'success');
@@ -1362,10 +1407,14 @@ async function importSelectedSinks() {
             showAlert(`Errors: ${result.errors.join('; ')}`, 'warning');
         }
 
+        // Refresh before hiding modal to avoid race condition
         await refreshSinks();
         await refreshDevices();
+        bootstrap.Modal.getInstance(document.getElementById('importSinksModal')).hide();
     } catch (error) {
         showAlert(error.message, 'danger');
+    } finally {
+        importBtn.disabled = false;
     }
 }
 
@@ -1611,6 +1660,10 @@ function setupLogsSignalR() {
 
         // Add to top of list (newest first)
         logsData.unshift(entry);
+        // Limit array size to prevent memory leak (matches DOM limit of 500)
+        if (logsData.length > 500) {
+            logsData.pop();
+        }
         prependLogEntry(entry);
         updateLogsCount();
 
@@ -1816,6 +1869,41 @@ function downloadLogs() {
     a.download = `multiroom-audio-logs-${new Date().toISOString().slice(0,10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+}
+
+// ============================================
+// ONBOARDING WIZARD INTEGRATION
+// ============================================
+
+// Run the setup wizard manually
+function runSetupWizard() {
+    if (typeof OnboardingWizard !== 'undefined') {
+        OnboardingWizard.start();
+    } else {
+        showAlert('Setup wizard is not available', 'warning');
+    }
+}
+
+// Reset first-run state to allow wizard to show again
+async function resetOnboarding() {
+    if (!confirm('Reset first-run state? The setup wizard will appear on the next page load.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('./api/onboarding/reset', {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to reset onboarding state');
+        }
+
+        showAlert('First-run state reset. Refresh the page to see the wizard.', 'success');
+    } catch (error) {
+        console.error('Error resetting onboarding:', error);
+        showAlert(error.message, 'danger');
+    }
 }
 
 // Toggle handlers for switches
