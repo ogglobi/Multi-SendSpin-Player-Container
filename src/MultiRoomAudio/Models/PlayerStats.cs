@@ -10,7 +10,8 @@ public record PlayerStatsResponse(
     BufferStatsInfo Buffer,
     ClockSyncStats ClockSync,
     ThroughputStats Throughput,
-    ResamplerStats Resampler
+    SyncCorrectionStats Correction,
+    BufferDiagnostics Diagnostics
 );
 
 /// <summary>
@@ -28,12 +29,11 @@ public record AudioFormatStats(
 );
 
 /// <summary>
-/// Sync status and correction information.
+/// Sync status information.
 /// </summary>
 public record SyncStats(
     double SyncErrorMs,
-    string CorrectionMode,
-    double PlaybackRate,
+    bool IsWithinTolerance,
     bool IsPlaybackActive
 );
 
@@ -67,18 +67,39 @@ public record ClockSyncStats(
 public record ThroughputStats(
     long SamplesWritten,
     long SamplesRead,
-    long SamplesDroppedSync,
-    long SamplesInsertedSync,
     long SamplesDroppedOverflow
 );
 
 /// <summary>
-/// Audio format conversion information.
-/// Shows input vs output sample rates. PulseAudio handles format conversion.
+/// Sync correction statistics.
+/// Uses frame drop/insert when sync error exceeds 5ms threshold.
 /// </summary>
-public record ResamplerStats(
-    int InputRate,
-    int OutputRate,
-    string Quality,
-    double EffectiveRatio
+public record SyncCorrectionStats(
+    string Mode,
+    long FramesDropped,
+    long FramesInserted,
+    int ThresholdMs
+);
+
+/// <summary>
+/// Buffer diagnostic information for debugging playback issues.
+/// Shows why the buffer might not be releasing samples.
+/// </summary>
+public record BufferDiagnostics(
+    /// <summary>Current buffer state description.</summary>
+    string State,
+    /// <summary>Buffer fill percentage (0-100).</summary>
+    int FillPercent,
+    /// <summary>Whether samples have ever been successfully read from the buffer.</summary>
+    bool HasReceivedSamples,
+    /// <summary>Time since first read attempt in milliseconds.</summary>
+    long ElapsedSinceFirstReadMs,
+    /// <summary>Time since last successful sample read in milliseconds, or -1 if never.</summary>
+    long ElapsedSinceLastSuccessMs,
+    /// <summary>Samples dropped due to buffer overflow (too full, SDK dropping old data).</summary>
+    long DroppedOverflow,
+    /// <summary>Pipeline state from SDK.</summary>
+    string PipelineState,
+    /// <summary>Smoothed sync error in microseconds.</summary>
+    long SmoothedSyncErrorUs
 );

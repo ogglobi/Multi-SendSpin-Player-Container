@@ -53,20 +53,12 @@ public interface IBackend
 
     /// <summary>
     /// Creates an audio player for the specified device.
+    /// PulseAudio handles all format conversion natively (always float32 input).
     /// </summary>
     /// <param name="deviceId">Device ID or null for default.</param>
     /// <param name="loggerFactory">Logger factory for diagnostics.</param>
     /// <returns>A new audio player instance.</returns>
     IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory);
-
-    /// <summary>
-    /// Creates an audio player with a specific output format.
-    /// </summary>
-    /// <param name="deviceId">Device ID or null for default.</param>
-    /// <param name="loggerFactory">Logger factory for diagnostics.</param>
-    /// <param name="outputFormat">Output format configuration (sample rate, bit depth).</param>
-    /// <returns>A new audio player instance.</returns>
-    IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory, AudioOutputFormat? outputFormat);
 
     /// <summary>
     /// Sets hardware volume for a device.

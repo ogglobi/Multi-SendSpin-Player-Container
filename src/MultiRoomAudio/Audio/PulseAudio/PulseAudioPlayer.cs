@@ -1,4 +1,4 @@
-using MultiRoomAudio.Models;
+using System.Runtime.InteropServices;
 using Sendspin.SDK.Audio;
 using Sendspin.SDK.Models;
 using static MultiRoomAudio.Audio.PulseAudio.PulseAudioNative;
@@ -6,68 +6,95 @@ using static MultiRoomAudio.Audio.PulseAudio.PulseAudioNative;
 namespace MultiRoomAudio.Audio.PulseAudio;
 
 /// <summary>
-/// IAudioPlayer implementation using direct PulseAudio pa_simple API.
-/// Designed for both HAOS and Docker environments where PulseAudio is available.
+/// IAudioPlayer implementation using PulseAudio's async pa_stream API.
+/// Uses callbacks for accurate real-time latency measurement.
 /// </summary>
 /// <remarks>
-/// This player uses PulseAudio's simple synchronous API. Audio data is written
-/// directly to the PulseAudio server on a dedicated thread.
+/// This player uses a threaded mainloop with write callbacks. PulseAudio calls
+/// our write callback when it needs audio data, and we query the actual latency
+/// at that moment for accurate sync correction.
 /// </remarks>
 public class PulseAudioPlayer : IAudioPlayer
 {
     private readonly ILogger<PulseAudioPlayer> _logger;
     private readonly object _lock = new();
 
-    private IntPtr _paHandle = IntPtr.Zero;
-    private IAudioSampleSource? _sampleSource;
+    // PulseAudio async API handles
+    private IntPtr _mainloop = IntPtr.Zero;
+    private IntPtr _context = IntPtr.Zero;
+    private IntPtr _stream = IntPtr.Zero;
+
+    // CRITICAL: Store callbacks as fields to prevent GC collection
+    // If these get collected, PulseAudio will call garbage memory and crash
+    private ContextNotifyCallback? _contextStateCallback;
+    private StreamNotifyCallback? _streamStateCallback;
+    private StreamRequestCallback? _writeCallback;
+    private StreamNotifyCallback? _underflowCallback;
+
+    // THREAD SAFETY: These fields are accessed from both the main thread (via public API)
+    // and PulseAudio's internal mainloop thread (via write callback). Using volatile ensures
+    // visibility of writes across threads. The write callback runs on PA's thread which already
+    // holds the mainloop lock, so we cannot take _lock there - volatile is our synchronization.
+    private volatile IAudioSampleSource? _sampleSource;
     private AudioFormat? _currentFormat;
     private string? _sinkName;
-    private bool _disposed;
+    private volatile bool _disposed;
 
-    private Thread? _playbackThread;
-    private CancellationTokenSource? _playbackCts;
     private volatile bool _isPlaying;
     private volatile bool _isPaused;
+    private volatile bool _contextReady;
+    private volatile bool _streamReady;
 
-    // Pre-allocated buffers for the playback thread
-    private float[]? _sampleBuffer;
-    private byte[]? _byteBuffer;
+    // Pre-allocated buffers for the write callback.
+    // These are set once during initialization and read from the callback thread.
+    // Volatile ensures the callback sees the initialized values.
+    private volatile float[]? _sampleBuffer;
+    private volatile byte[]? _byteBuffer;
 
-    // Output format configuration
-    private AudioOutputFormat? _outputFormat;
-    private SampleFormat _paFormat = SampleFormat.FLOAT32LE;
-    private int _bytesPerSample = 4;
-    private bool _needsBitDepthConversion;
+    // Pre-allocated silence buffer to avoid GC allocations in the write callback.
+    // Resized as needed but typically stays at the initial size.
+    private byte[] _silenceBuffer = new byte[8192];
 
     /// <summary>
-    /// Buffer size in milliseconds. Larger values increase latency but reduce underruns.
+    /// Target buffer size in milliseconds. PulseAudio will request ~this much audio.
     /// </summary>
     private const int BufferMs = 50;
 
     /// <summary>
-    /// Frames per write operation. At 48kHz, 1024 frames = ~21ms of audio.
+    /// Initial latency estimate before real measurements are available.
+    /// </summary>
+    private const int InitialLatencyEstimateMs = 70;
+
+    /// <summary>
+    /// Frames to request per write. At 48kHz, 1024 frames = ~21ms.
     /// </summary>
     private const int FramesPerWrite = 1024;
 
     /// <summary>
-    /// Number of consecutive write failures before attempting reconnection.
+    /// Connection timeout in milliseconds.
     /// </summary>
-    private const int MaxConsecutiveFailures = 5;
+    private const int ConnectionTimeoutMs = 10000;
 
     /// <summary>
-    /// Maximum reconnection attempts before giving up.
+    /// Number of underflows before logging a warning.
     /// </summary>
-    private const int MaxReconnectAttempts = 10;
+    private const int UnderflowWarningThreshold = 5;
 
     /// <summary>
-    /// Base delay between reconnection attempts (exponential backoff).
+    /// How often to log diagnostic info (in callbacks).
+    /// At ~10ms per callback, 100 = log every ~1 second.
     /// </summary>
-    private const int ReconnectBaseDelayMs = 500;
+    private const int DiagnosticLogInterval = 100;
 
-    /// <summary>
-    /// Maximum delay between reconnection attempts.
-    /// </summary>
-    private const int ReconnectMaxDelayMs = 10000;
+    private int _underflowCount;
+    private ulong _lastMeasuredLatencyUs;
+
+    // Diagnostic counters for monitoring callback behavior
+    private long _callbackCount;
+    private long _silenceWriteCount;
+    private long _zeroReadCount;
+    private DateTime _playbackStartTime;
+    private bool _hasLoggedFirstAudio;
 
     public AudioPlayerState State { get; private set; } = AudioPlayerState.Uninitialized;
 
@@ -86,6 +113,9 @@ public class PulseAudioPlayer : IAudioPlayer
         set => _isMuted = value;
     }
 
+    /// <summary>
+    /// Gets the output latency in milliseconds, measured from write callbacks.
+    /// </summary>
     public int OutputLatencyMs { get; private set; }
 
     public event EventHandler<AudioPlayerState>? StateChanged;
@@ -97,42 +127,16 @@ public class PulseAudioPlayer : IAudioPlayer
     /// <param name="logger">Logger for diagnostic output.</param>
     /// <param name="sinkName">
     /// Optional PulseAudio sink name. If null, uses the default sink.
-    /// Can be a sink name like "alsa_output.usb-..." or sink index.
     /// </param>
-    /// <param name="outputFormat">
-    /// Optional output format configuration. If null, uses 32-bit float output.
-    /// Specifies the sample rate and bit depth to send to PulseAudio.
-    /// PulseAudio handles any necessary format conversion to the device.
-    /// </param>
-    public PulseAudioPlayer(ILogger<PulseAudioPlayer> logger, string? sinkName = null, AudioOutputFormat? outputFormat = null)
+    public PulseAudioPlayer(ILogger<PulseAudioPlayer> logger, string? sinkName = null)
     {
         _logger = logger;
         _sinkName = sinkName;
-        _outputFormat = outputFormat;
-
-        // Determine PulseAudio format based on requested bit depth
-        if (outputFormat != null)
-        {
-            (_paFormat, _bytesPerSample, _needsBitDepthConversion) = outputFormat.BitDepth switch
-            {
-                16 => (SampleFormat.S16LE, 2, true),
-                24 => (SampleFormat.S24_32LE, 4, true),  // 24-bit in 32-bit container
-                32 => (SampleFormat.FLOAT32LE, 4, false),
-                _ => (SampleFormat.FLOAT32LE, 4, false)
-            };
-        }
     }
-
-    /// <summary>
-    /// Gets the configured output format, or null if using default.
-    /// </summary>
-    public AudioOutputFormat? OutputFormat => _outputFormat;
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
     {
-        // If we're currently playing, stop first to clean up the playback thread.
-        // This handles the case where the SDK calls InitializeAsync without calling Stop()
-        // first (e.g., when switching tracks).
+        // Stop any existing playback first
         if (_isPlaying)
         {
             _logger.LogDebug("Stopping active playback before re-initialization");
@@ -141,107 +145,203 @@ public class PulseAudioPlayer : IAudioPlayer
 
         lock (_lock)
         {
+            // Reset disposed flag to allow re-initialization of the same instance.
+            // The SDK reuses player instances via playerFactory, so we must support
+            // being re-initialized after a previous disposal.
+            _disposed = false;
+
             try
             {
-                // Free any existing handle first (handles track switching where SDK reuses the player).
-                // Stop() above doesn't free the handle - only Flush() is called.
-                // We must free it here to avoid resource leaks.
-                if (_paHandle != IntPtr.Zero)
-                {
-                    _logger.LogDebug("Freeing existing PulseAudio handle before re-initialization");
-                    try
-                    {
-                        SimpleFree(_paHandle);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Error freeing previous PulseAudio handle");
-                    }
-                    _paHandle = IntPtr.Zero;
-                }
-
-                // Determine actual sample rate to use (output format overrides incoming)
-                var actualSampleRate = _outputFormat?.SampleRate ?? format.SampleRate;
+                // Clean up any existing resources
+                CleanupResources();
 
                 _logger.LogInformation(
-                    "Initializing PulseAudio player: {SampleRate}Hz, {Channels}ch, {BitDepth}-bit, sink: {Sink}",
-                    actualSampleRate, format.Channels,
-                    _outputFormat?.BitDepth ?? 32, _sinkName ?? "default");
+                    "Initializing PulseAudio player: {SampleRate}Hz, {Channels}ch, FLOAT32, sink: {Sink}",
+                    format.SampleRate, format.Channels, _sinkName ?? "default");
 
-                // Create sample spec for PulseAudio
+                // Create the threaded mainloop
+                _mainloop = ThreadedMainloopNew();
+                if (_mainloop == IntPtr.Zero)
+                {
+                    throw new InvalidOperationException("Failed to create PulseAudio mainloop");
+                }
+
+                // Get the mainloop API
+                var api = ThreadedMainloopGetApi(_mainloop);
+                if (api == IntPtr.Zero)
+                {
+                    throw new InvalidOperationException("Failed to get PulseAudio mainloop API");
+                }
+
+                // Create the context
+                _context = ContextNew(api, "MultiRoomAudio");
+                if (_context == IntPtr.Zero)
+                {
+                    throw new InvalidOperationException("Failed to create PulseAudio context");
+                }
+
+                // Set up context state callback (store delegate to prevent GC)
+                _contextStateCallback = OnContextStateChanged;
+                ContextSetStateCallback(_context, _contextStateCallback, IntPtr.Zero);
+
+                // Start the mainloop
+                if (ThreadedMainloopStart(_mainloop) < 0)
+                {
+                    throw new InvalidOperationException("Failed to start PulseAudio mainloop");
+                }
+
+                // Connect to PulseAudio server
+                ThreadedMainloopLock(_mainloop);
+                try
+                {
+                    if (ContextConnect(_context, null, 0, IntPtr.Zero) < 0)
+                    {
+                        throw new InvalidOperationException("Failed to connect to PulseAudio server");
+                    }
+
+                    // Wait for context to be ready
+                    var timeout = DateTime.UtcNow.AddMilliseconds(ConnectionTimeoutMs);
+                    while (!_contextReady)
+                    {
+                        var state = ContextGetState(_context);
+                        if (state == ContextState.Failed || state == ContextState.Terminated)
+                        {
+                            var errorMsg = GetContextError(_context);
+                            throw new InvalidOperationException($"PulseAudio context failed: {errorMsg}");
+                        }
+
+                        if (DateTime.UtcNow > timeout)
+                        {
+                            throw new TimeoutException("Timeout waiting for PulseAudio context");
+                        }
+
+                        ThreadedMainloopWait(_mainloop);
+                    }
+                }
+                finally
+                {
+                    ThreadedMainloopUnlock(_mainloop);
+                }
+
+                _logger.LogDebug("PulseAudio context connected");
+
+                // Create the stream
                 var sampleSpec = new SampleSpec
                 {
-                    Format = _paFormat,
-                    Rate = (uint)actualSampleRate,
+                    Format = SampleFormat.FLOAT32LE,
+                    Rate = (uint)format.SampleRate,
                     Channels = (byte)format.Channels
                 };
 
-                // Configure buffer attributes for low latency
-                var targetLatencyBytes = BytesForMs(ref sampleSpec, BufferMs);
-                var bufferAttr = new BufferAttr
+                ThreadedMainloopLock(_mainloop);
+                try
                 {
-                    MaxLength = uint.MaxValue,  // Let server decide
-                    TLength = targetLatencyBytes,
-                    PreBuf = targetLatencyBytes / 2,
-                    MinReq = uint.MaxValue,     // Let server decide
-                    FragSize = uint.MaxValue    // Not used for playback
-                };
+                    _stream = StreamNew(_context, "Sendspin Audio", ref sampleSpec, IntPtr.Zero);
+                    if (_stream == IntPtr.Zero)
+                    {
+                        throw new InvalidOperationException("Failed to create PulseAudio stream");
+                    }
 
-                // Connect to PulseAudio
-                _paHandle = SimpleNewWithAttr(
-                    server: null,  // Use default server (PULSE_SERVER env var)
-                    name: "MultiRoomAudio",
-                    dir: StreamDirection.Playback,
-                    dev: _sinkName,  // null = default sink
-                    streamName: "Sendspin Audio",
-                    ss: ref sampleSpec,
-                    map: IntPtr.Zero,
-                    attr: ref bufferAttr,
-                    error: out var error);
+                    // Set up stream callbacks (store delegates to prevent GC)
+                    _streamStateCallback = OnStreamStateChanged;
+                    _writeCallback = OnWriteCallback;
+                    _underflowCallback = OnUnderflow;
 
-                if (_paHandle == IntPtr.Zero)
+                    StreamSetStateCallback(_stream, _streamStateCallback, IntPtr.Zero);
+                    StreamSetWriteCallback(_stream, _writeCallback, IntPtr.Zero);
+                    StreamSetUnderflowCallback(_stream, _underflowCallback, IntPtr.Zero);
+
+                    // Configure buffer attributes for low-latency playback.
+                    // Per PulseAudio docs: set fields to uint.MaxValue (-1) to let PA choose defaults,
+                    // except for the fields we want to control.
+                    var targetLatencyBytes = BytesForMs(ref sampleSpec, BufferMs);
+                    var minReqBytes = BytesForMs(ref sampleSpec, 10); // Request callbacks every ~10ms
+                    var bufferAttr = new BufferAttr
+                    {
+                        // MaxLength: Maximum buffer size. Let PA choose.
+                        MaxLength = uint.MaxValue,
+                        // TLength: Target buffer length (our latency target of 50ms).
+                        TLength = targetLatencyBytes,
+                        // PreBuf: Prebuffering amount before playback starts.
+                        // Set to 0 to start immediately when uncorked - we handle underflows gracefully.
+                        // Previously was targetLatencyBytes/2 which delayed startup by ~25ms.
+                        PreBuf = 0,
+                        // MinReq: Minimum request size for write callbacks.
+                        // Smaller = more frequent callbacks = better responsiveness to timing changes.
+                        // ~10ms gives good balance between responsiveness and CPU overhead.
+                        MinReq = minReqBytes,
+                        // FragSize: Fragment size (recording only, not relevant for playback).
+                        FragSize = uint.MaxValue
+                    };
+
+                    // Connect stream for playback with timing flags.
+                    // StartCorked: Stream starts paused - audio won't flow until explicitly uncorked
+                    // in Play(). This prevents audio playing before sample source is ready and ensures
+                    // timing info is available before playback begins.
+                    // InterpolateTiming + AutoTimingUpdate: Enable latency interpolation with automatic
+                    // timing updates every 100ms, allowing accurate pa_stream_get_latency() calls.
+                    // AdjustLatency: Tell PA to reconfigure hardware buffers to meet our target latency.
+                    var flags = StreamFlags.StartCorked |
+                                StreamFlags.InterpolateTiming |
+                                StreamFlags.AutoTimingUpdate |
+                                StreamFlags.AdjustLatency;
+
+                    if (StreamConnectPlayback(_stream, _sinkName, ref bufferAttr, flags, IntPtr.Zero, IntPtr.Zero) < 0)
+                    {
+                        throw new InvalidOperationException("Failed to connect PulseAudio stream");
+                    }
+
+                    // Wait for stream to be ready
+                    var timeout = DateTime.UtcNow.AddMilliseconds(ConnectionTimeoutMs);
+                    while (!_streamReady)
+                    {
+                        var state = StreamGetState(_stream);
+                        if (state == StreamState.Failed || state == StreamState.Terminated)
+                        {
+                            var errorMsg = GetContextError(_context);
+                            throw new InvalidOperationException(
+                                $"PulseAudio stream failed: {errorMsg}. Sink: {_sinkName ?? "default"}");
+                        }
+
+                        if (DateTime.UtcNow > timeout)
+                        {
+                            throw new TimeoutException("Timeout waiting for PulseAudio stream");
+                        }
+
+                        ThreadedMainloopWait(_mainloop);
+                    }
+
+                    // Request initial timing info update.
+                    // pa_stream_get_latency() returns PA_ERR_NODATA until timing info is available.
+                    // With AUTO_TIMING_UPDATE, PA updates timing every ~100ms, but we request
+                    // an immediate update so latency is available when Play() is called.
+                    StreamUpdateTimingInfo(_stream, IntPtr.Zero, IntPtr.Zero);
+                }
+                finally
                 {
-                    var errorMsg = GetErrorMessage(error);
-                    throw new InvalidOperationException($"Failed to connect to PulseAudio: {errorMsg}");
+                    ThreadedMainloopUnlock(_mainloop);
                 }
 
                 _currentFormat = format;
 
-                // Get actual latency
-                var latencyUs = SimpleGetLatency(_paHandle, out var latencyError);
-                if (latencyError != 0)
-                {
-                    _logger.LogWarning(
-                        "Could not query PulseAudio latency: {Error}. Using fallback {BufferMs}ms",
-                        GetErrorMessage(latencyError), BufferMs);
-                    OutputLatencyMs = BufferMs;
-                }
-                else
-                {
-                    OutputLatencyMs = (int)(latencyUs / 1000);
-                    if (OutputLatencyMs <= 0)
-                    {
-                        _logger.LogDebug(
-                            "PulseAudio reported invalid latency {Latency}μs. Using fallback {BufferMs}ms",
-                            latencyUs, BufferMs);
-                        OutputLatencyMs = BufferMs;
-                    }
-                }
+                // Set initial latency estimate; will be updated by write callback
+                OutputLatencyMs = InitialLatencyEstimateMs;
 
                 // Pre-allocate buffers
                 var samplesPerWrite = FramesPerWrite * format.Channels;
                 _sampleBuffer = new float[samplesPerWrite];
-                _byteBuffer = new byte[samplesPerWrite * _bytesPerSample];
+                _byteBuffer = new byte[samplesPerWrite * sizeof(float)];
 
                 SetState(AudioPlayerState.Stopped);
 
                 _logger.LogInformation(
-                    "PulseAudio player initialized. Sink: {Sink}, Latency: {Latency}ms",
+                    "PulseAudio player initialized (async API). Sink: {Sink}, Initial latency estimate: {Latency}ms",
                     _sinkName ?? "default", OutputLatencyMs);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to initialize PulseAudio player");
+                CleanupResources();
                 SetState(AudioPlayerState.Error);
                 OnError("Initialization failed", ex);
                 throw;
@@ -253,18 +353,17 @@ public class PulseAudioPlayer : IAudioPlayer
 
     public void SetSampleSource(IAudioSampleSource source)
     {
-        lock (_lock)
-        {
-            _sampleSource = source;
-            _logger.LogDebug("Sample source set");
-        }
+        // No lock needed - _sampleSource is volatile for cross-thread visibility.
+        // The write callback will see this value on its next iteration.
+        _sampleSource = source;
+        _logger.LogDebug("Sample source set");
     }
 
     public void Play()
     {
         lock (_lock)
         {
-            if (_paHandle == IntPtr.Zero)
+            if (_stream == IntPtr.Zero)
             {
                 _logger.LogWarning("Cannot play - not initialized");
                 return;
@@ -276,41 +375,32 @@ public class PulseAudioPlayer : IAudioPlayer
                 return;
             }
 
-            if (_isPaused)
-            {
-                // Resume from pause
-                _isPaused = false;
-                SetState(AudioPlayerState.Playing);
-                _logger.LogInformation("Playback resumed");
-                return;
-            }
-
-            // Start playback thread
-            _playbackCts = new CancellationTokenSource();
             _isPlaying = true;
             _isPaused = false;
 
-            _playbackThread = new Thread(PlaybackLoop)
-            {
-                Name = "PulseAudio-Playback",
-                IsBackground = true
-            };
+            // Reset diagnostic counters for fresh monitoring
+            _callbackCount = 0;
+            _silenceWriteCount = 0;
+            _zeroReadCount = 0;
+            _underflowCount = 0;
+            _hasLoggedFirstAudio = false;
+            _playbackStartTime = DateTime.UtcNow;
 
+            // Uncork the stream to start/resume playback.
+            // Stream is connected with StartCorked flag, so we must uncork to begin.
+            // This also handles resume from pause (re-uncorking is safe).
+            ThreadedMainloopLock(_mainloop);
             try
             {
-                _playbackThread.Priority = ThreadPriority.AboveNormal;
+                StreamCork(_stream, 0, IntPtr.Zero, IntPtr.Zero);
             }
-            catch (Exception ex)
+            finally
             {
-                _logger.LogDebug(ex,
-                    "Could not set thread priority to AboveNormal. Audio may have higher latency. " +
-                    "This is normal in containers without elevated privileges.");
+                ThreadedMainloopUnlock(_mainloop);
             }
-
-            _playbackThread.Start();
 
             SetState(AudioPlayerState.Playing);
-            _logger.LogInformation("Playback started");
+            _logger.LogInformation("Playback started (stream uncorked). Monitoring callbacks...");
         }
     }
 
@@ -318,10 +408,22 @@ public class PulseAudioPlayer : IAudioPlayer
     {
         lock (_lock)
         {
-            if (!_isPlaying)
+            if (!_isPlaying || _stream == IntPtr.Zero)
                 return;
 
             _isPaused = true;
+
+            // Cork (pause) the stream
+            ThreadedMainloopLock(_mainloop);
+            try
+            {
+                StreamCork(_stream, 1, IntPtr.Zero, IntPtr.Zero);
+            }
+            finally
+            {
+                ThreadedMainloopUnlock(_mainloop);
+            }
+
             SetState(AudioPlayerState.Paused);
             _logger.LogInformation("Playback paused");
         }
@@ -329,39 +431,23 @@ public class PulseAudioPlayer : IAudioPlayer
 
     public void Stop()
     {
-        Thread? threadToJoin = null;
-
         lock (_lock)
         {
-            if (!_isPlaying)
-                return;
-
             _isPlaying = false;
             _isPaused = false;
-            _playbackCts?.Cancel();
-            threadToJoin = _playbackThread;
-        }
 
-        // Wait for thread outside lock - increased timeout for safety
-        if (threadToJoin != null)
-        {
-            if (!threadToJoin.Join(TimeSpan.FromSeconds(5)))
+            if (_stream != IntPtr.Zero && _mainloop != IntPtr.Zero)
             {
-                _logger.LogWarning(
-                    "Playback thread did not exit within 5 seconds, may be hung in native call");
-            }
-        }
-
-        lock (_lock)
-        {
-            _playbackThread = null;
-            _playbackCts?.Dispose();
-            _playbackCts = null;
-
-            // Flush any remaining audio
-            if (_paHandle != IntPtr.Zero)
-            {
-                SimpleFlush(_paHandle, out _);
+                ThreadedMainloopLock(_mainloop);
+                try
+                {
+                    // Flush any remaining audio
+                    StreamFlush(_stream, IntPtr.Zero, IntPtr.Zero);
+                }
+                finally
+                {
+                    ThreadedMainloopUnlock(_mainloop);
+                }
             }
 
             SetState(AudioPlayerState.Stopped);
@@ -376,35 +462,22 @@ public class PulseAudioPlayer : IAudioPlayer
         var wasPlaying = State == AudioPlayerState.Playing;
         var savedSource = _sampleSource;
         var savedFormat = _currentFormat;
-        var savedSinkName = _sinkName;
-        IntPtr oldHandle = IntPtr.Zero;
 
-        // Stop current playback
         Stop();
 
-        // Save the old handle but don't free it yet (in case we need to restore)
-        lock (_lock)
-        {
-            oldHandle = _paHandle;
-            _paHandle = IntPtr.Zero;
-        }
-
-        // Update sink name
         _sinkName = deviceId;
 
-        // Reinitialize with new sink
         if (savedFormat != null)
         {
             try
             {
-                await InitializeAsync(savedFormat, cancellationToken);
-
-                // Only free old handle after successful initialization
-                if (oldHandle != IntPtr.Zero)
+                // Clean up old resources
+                lock (_lock)
                 {
-                    SimpleFree(oldHandle);
-                    oldHandle = IntPtr.Zero;
+                    CleanupResources();
                 }
+
+                await InitializeAsync(savedFormat, cancellationToken);
 
                 if (savedSource != null)
                 {
@@ -420,298 +493,315 @@ public class PulseAudioPlayer : IAudioPlayer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Device switch failed, restoring previous state");
-
-                // Restore the old handle on failure
-                lock (_lock)
-                {
-                    if (_paHandle == IntPtr.Zero && oldHandle != IntPtr.Zero)
-                    {
-                        _paHandle = oldHandle;
-                        oldHandle = IntPtr.Zero; // Prevent cleanup
-                        _sinkName = savedSinkName;
-                        SetState(AudioPlayerState.Stopped);
-                    }
-                }
-
+                _logger.LogError(ex, "Device switch failed");
                 OnError("Device switch failed", ex);
                 throw;
             }
-            finally
-            {
-                // Clean up old handle if not restored
-                if (oldHandle != IntPtr.Zero)
-                {
-                    SimpleFree(oldHandle);
-                }
-            }
         }
-    }
-
-    private void PlaybackLoop()
-    {
-        _logger.LogDebug("Playback thread started");
-        int consecutiveFailures = 0;
-
-        try
-        {
-            var ct = _playbackCts?.Token ?? CancellationToken.None;
-
-            while (_isPlaying && !ct.IsCancellationRequested)
-            {
-                if (_isPaused)
-                {
-                    // When paused, sleep briefly and check again
-                    Thread.Sleep(10);
-                    continue;
-                }
-
-                var source = _sampleSource;
-                var buffer = _sampleBuffer;
-                var byteBuffer = _byteBuffer;
-
-                if (source == null || buffer == null || byteBuffer == null)
-                {
-                    // No source or not initialized - output silence
-                    Thread.Sleep(10);
-                    continue;
-                }
-
-                // Capture handle under lock to prevent race with disposal/reconnection
-                IntPtr handle;
-                lock (_lock)
-                {
-                    handle = _paHandle;
-                }
-
-                // Check if handle is valid, attempt reconnect if needed
-                if (handle == IntPtr.Zero)
-                {
-                    _logger.LogWarning("PulseAudio handle is null - attempting reconnection...");
-                    if (!TryReconnect())
-                    {
-                        _logger.LogError("PulseAudio reconnection failed - stopping playback");
-                        OnError("PulseAudio connection lost and could not reconnect", null);
-                        break;
-                    }
-                    consecutiveFailures = 0;
-                    continue;
-                }
-
-                // Read samples from source
-                var samplesRead = source.Read(buffer, 0, buffer.Length);
-
-                if (samplesRead == 0)
-                {
-                    // No data available - small sleep to avoid busy loop
-                    Thread.Sleep(1);
-                    continue;
-                }
-
-                // Apply volume and mute
-                var vol = IsMuted ? 0f : Volume;
-                for (int i = 0; i < samplesRead; i++)
-                {
-                    buffer[i] *= vol;
-                }
-
-                // Convert float samples to output format
-                if (_needsBitDepthConversion)
-                {
-                    var bitDepth = _outputFormat?.BitDepth ?? 32;
-                    BitDepthConverter.Convert(
-                        buffer.AsSpan(0, samplesRead),
-                        byteBuffer.AsSpan(0, samplesRead * _bytesPerSample),
-                        bitDepth);
-                }
-                else
-                {
-                    // Direct copy for float output
-                    Buffer.BlockCopy(buffer, 0, byteBuffer, 0, samplesRead * sizeof(float));
-                }
-
-                // Write to PulseAudio using the captured handle
-                // Note: The handle was captured at loop start; if disposal occurred mid-loop,
-                // the native call may fail but won't crash due to null pointer
-                bool writeSuccess = false;
-                unsafe
-                {
-                    fixed (byte* ptr = byteBuffer)
-                    {
-                        var result = SimpleWrite(
-                            handle,
-                            (IntPtr)ptr,
-                            (UIntPtr)(samplesRead * _bytesPerSample),
-                            out var error);
-
-                        if (result < 0)
-                        {
-                            var errorMsg = GetErrorMessage(error);
-                            consecutiveFailures++;
-
-                            if (consecutiveFailures >= MaxConsecutiveFailures)
-                            {
-                                _logger.LogWarning(
-                                    "PulseAudio write failed {Count} consecutive times: {Error}. Attempting reconnection...",
-                                    consecutiveFailures, errorMsg);
-
-                                if (!TryReconnect())
-                                {
-                                    _logger.LogError("PulseAudio reconnection failed - stopping playback");
-                                    OnError($"PulseAudio connection lost: {errorMsg}", null);
-                                    break;
-                                }
-                                consecutiveFailures = 0;
-                            }
-                            else
-                            {
-                                _logger.LogDebug(
-                                    "PulseAudio write error ({Count}/{Max}): {Error}",
-                                    consecutiveFailures, MaxConsecutiveFailures, errorMsg);
-                                Thread.Sleep(10);
-                            }
-                        }
-                        else
-                        {
-                            writeSuccess = true;
-                        }
-                    }
-                }
-
-                // Reset failure counter on successful write
-                if (writeSuccess)
-                {
-                    consecutiveFailures = 0;
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal cancellation
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in playback thread");
-            OnError("Playback error", ex);
-        }
-
-        _logger.LogDebug("Playback thread exited");
     }
 
     /// <summary>
-    /// Attempts to reconnect to PulseAudio with exponential backoff.
-    /// Called when the playback loop detects consecutive write failures.
+    /// Called by PulseAudio when the context state changes.
     /// </summary>
-    /// <returns>True if reconnection succeeded, false otherwise.</returns>
-    private bool TryReconnect()
+    private void OnContextStateChanged(IntPtr context, IntPtr userdata)
     {
-        if (_currentFormat == null)
+        var state = ContextGetState(context);
+        _logger.LogDebug("PulseAudio context state: {State}", state);
+
+        if (state == ContextState.Ready)
         {
-            _logger.LogError("Cannot reconnect - no format configured");
-            return false;
+            _contextReady = true;
+            ThreadedMainloopSignal(_mainloop, 0);
+        }
+        else if (state == ContextState.Failed || state == ContextState.Terminated)
+        {
+            _contextReady = false;
+            ThreadedMainloopSignal(_mainloop, 0);
+            _logger.LogWarning("PulseAudio context disconnected: {State}", state);
+        }
+    }
+
+    /// <summary>
+    /// Called by PulseAudio when the stream state changes.
+    /// </summary>
+    private void OnStreamStateChanged(IntPtr stream, IntPtr userdata)
+    {
+        var state = StreamGetState(stream);
+        _logger.LogDebug("PulseAudio stream state: {State}", state);
+
+        if (state == StreamState.Ready)
+        {
+            _streamReady = true;
+            ThreadedMainloopSignal(_mainloop, 0);
+        }
+        else if (state == StreamState.Failed || state == StreamState.Terminated)
+        {
+            _streamReady = false;
+            ThreadedMainloopSignal(_mainloop, 0);
+
+            // Get actual error from PulseAudio context
+            var errorMsg = _context != IntPtr.Zero ? GetContextError(_context) : "Unknown";
+            _logger.LogWarning("PulseAudio stream disconnected: {State}. Error: {Error}. Sink: {Sink}",
+                state, errorMsg, _sinkName ?? "default");
+        }
+    }
+
+    /// <summary>
+    /// Called by PulseAudio when it needs more audio data.
+    /// </summary>
+    /// <remarks>
+    /// THREADING: This callback runs on PulseAudio's internal mainloop thread, which already
+    /// holds the mainloop lock. Do NOT call ThreadedMainloopLock() here - it would deadlock.
+    /// All shared state accessed here must be volatile or otherwise thread-safe.
+    ///
+    /// PERFORMANCE: This callback must complete quickly. Blocking or slow operations will
+    /// cause audio underflows. The sample source Read() should be fast and non-blocking.
+    ///
+    /// LATENCY: We query pa_stream_get_latency() here to get accurate real-time latency
+    /// measurements. This is the key benefit of using pa_stream over pa_simple.
+    /// </remarks>
+    private void OnWriteCallback(IntPtr stream, UIntPtr nbytes, IntPtr userdata)
+    {
+        // Track callback for diagnostics
+        _callbackCount++;
+
+        // Early exit if not in playing state. Stream starts corked, so this handles
+        // callbacks that might occur during initialization before Play() is called.
+        if (!_isPlaying || _isPaused || _disposed)
+        {
+            WriteSilence(stream, nbytes);
+            _silenceWriteCount++;
+            return;
         }
 
-        _logger.LogWarning("PulseAudio connection lost - attempting to reconnect...");
-
-        // Close the dead handle if it exists
-        lock (_lock)
+        // Query real-time latency from PulseAudio.
+        // Returns 0 on success, negative on error (e.g., PA_ERR_NODATA if timing not ready).
+        // The 'negative' out param indicates if latency is negative (stream ahead of playback).
+        // With INTERPOLATE_TIMING + AUTO_TIMING_UPDATE flags, this gives accurate values
+        // interpolated between the ~100ms server updates.
+        if (StreamGetLatency(stream, out var latencyUs, out var negative) == 0 && negative == 0)
         {
-            if (_paHandle != IntPtr.Zero)
+            _lastMeasuredLatencyUs = latencyUs;
+            var newLatencyMs = (int)(latencyUs / 1000);
+
+            // Hysteresis: Only update if change exceeds 5ms to avoid jitter in reported latency
+            if (Math.Abs(newLatencyMs - OutputLatencyMs) > 5)
             {
+                OutputLatencyMs = newLatencyMs;
+                _logger.LogDebug("Measured latency: {Latency}ms", newLatencyMs);
+            }
+        }
+
+        // Read volatile fields into locals for consistent access within this callback.
+        // The volatile keyword ensures we see the latest values written by other threads.
+        var source = _sampleSource;
+        var sampleBuffer = _sampleBuffer;
+        var byteBuffer = _byteBuffer;
+
+        if (source == null || sampleBuffer == null || byteBuffer == null)
+        {
+            // Sample source not set yet - write silence to keep stream happy
+            WriteSilence(stream, nbytes);
+            _silenceWriteCount++;
+
+            // Log periodically during startup when source isn't ready
+            if (_callbackCount % DiagnosticLogInterval == 0)
+            {
+                _logger.LogDebug(
+                    "Waiting for sample source: callbacks={Callbacks}, silence={Silence}",
+                    _callbackCount, _silenceWriteCount);
+            }
+            return;
+        }
+
+        var bytesRequested = (int)(ulong)nbytes;
+        var bytesPerSample = sizeof(float);
+        var samplesRequested = bytesRequested / bytesPerSample;
+
+        // Cap request to our pre-allocated buffer size
+        if (samplesRequested > sampleBuffer.Length)
+        {
+            samplesRequested = sampleBuffer.Length;
+        }
+
+        // Read from the sample source (BufferedAudioSampleSource).
+        // This may return 0 if the SDK's scheduled start time hasn't been reached yet,
+        // or if the buffer is empty. In either case, we write silence.
+        var samplesRead = source.Read(sampleBuffer, 0, samplesRequested);
+
+        if (samplesRead == 0)
+        {
+            WriteSilence(stream, nbytes);
+            _silenceWriteCount++;
+            _zeroReadCount++;
+
+            // Log periodically when Read() returns 0 - indicates SDK hasn't started releasing samples
+            if (_callbackCount % DiagnosticLogInterval == 0)
+            {
+                var elapsed = (DateTime.UtcNow - _playbackStartTime).TotalMilliseconds;
+                _logger.LogDebug(
+                    "Read returned 0: elapsed={Elapsed:F0}ms, callbacks={Callbacks}, zeroReads={ZeroReads}, latency={Latency}ms",
+                    elapsed, _callbackCount, _zeroReadCount, OutputLatencyMs);
+            }
+            return;
+        }
+
+        // Log first successful audio read - important milestone for debugging startup
+        if (!_hasLoggedFirstAudio)
+        {
+            _hasLoggedFirstAudio = true;
+            var elapsed = (DateTime.UtcNow - _playbackStartTime).TotalMilliseconds;
+            _logger.LogInformation(
+                "First audio samples received: elapsed={Elapsed:F0}ms, callbacks={Callbacks}, " +
+                "silenceWrites={Silence}, zeroReads={ZeroReads}, latency={Latency}ms",
+                elapsed, _callbackCount, _silenceWriteCount, _zeroReadCount, OutputLatencyMs);
+        }
+
+        // Apply software volume and mute
+        var vol = IsMuted ? 0f : Volume;
+        for (int i = 0; i < samplesRead; i++)
+        {
+            sampleBuffer[i] *= vol;
+        }
+
+        // Convert float samples to bytes for pa_stream_write
+        Buffer.BlockCopy(sampleBuffer, 0, byteBuffer, 0, samplesRead * bytesPerSample);
+
+        // Write audio data to PulseAudio stream.
+        // SeekMode.Relative: append to current write position (normal streaming mode).
+        // freeCallback=null: we manage our own buffer, PA should not free it.
+        unsafe
+        {
+            fixed (byte* ptr = byteBuffer)
+            {
+                var result = StreamWrite(
+                    stream,
+                    (IntPtr)ptr,
+                    (UIntPtr)(samplesRead * bytesPerSample),
+                    IntPtr.Zero,  // freeCallback - null, we manage buffer
+                    0,            // offset - 0 for relative seek
+                    SeekMode.Relative);
+
+                if (result < 0)
+                {
+                    _logger.LogDebug("PulseAudio stream write failed");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Called when an underflow occurs (buffer ran out of data).
+    /// </summary>
+    private void OnUnderflow(IntPtr stream, IntPtr userdata)
+    {
+        _underflowCount++;
+
+        // First few underflows at startup are expected while SDK buffers fill
+        if (_underflowCount == 1)
+        {
+            var elapsed = (DateTime.UtcNow - _playbackStartTime).TotalMilliseconds;
+            _logger.LogDebug(
+                "First underflow at {Elapsed:F0}ms after play. callbacks={Callbacks}, zeroReads={ZeroReads}",
+                elapsed, _callbackCount, _zeroReadCount);
+        }
+        else if (_underflowCount == UnderflowWarningThreshold)
+        {
+            var elapsed = (DateTime.UtcNow - _playbackStartTime).TotalMilliseconds;
+            _logger.LogWarning(
+                "Audio underflow detected ({Count} times at {Elapsed:F0}ms). " +
+                "callbacks={Callbacks}, zeroReads={ZeroReads}, latency={Latency}ms",
+                _underflowCount, elapsed, _callbackCount, _zeroReadCount, OutputLatencyMs);
+        }
+        else if (_underflowCount % 100 == 0)
+        {
+            _logger.LogDebug("Underflow count: {Count}", _underflowCount);
+        }
+    }
+
+    /// <summary>
+    /// Write silence to the stream.
+    /// Uses pre-allocated buffer to avoid GC pressure in the audio callback.
+    /// </summary>
+    private void WriteSilence(IntPtr stream, UIntPtr nbytes)
+    {
+        var bytesRequested = (int)(ulong)nbytes;
+
+        // Resize silence buffer if needed (rare - only if PA requests more than expected)
+        if (_silenceBuffer.Length < bytesRequested)
+        {
+            _silenceBuffer = new byte[bytesRequested];
+        }
+
+        // Buffer is already zeroed (silence) - just write it
+        unsafe
+        {
+            fixed (byte* ptr = _silenceBuffer)
+            {
+                StreamWrite(stream, (IntPtr)ptr, nbytes, IntPtr.Zero, 0, SeekMode.Relative);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clean up all PulseAudio resources.
+    /// </summary>
+    private void CleanupResources()
+    {
+        _contextReady = false;
+        _streamReady = false;
+
+        if (_stream != IntPtr.Zero)
+        {
+            if (_mainloop != IntPtr.Zero)
+            {
+                ThreadedMainloopLock(_mainloop);
                 try
                 {
-                    SimpleFree(_paHandle);
+                    StreamDisconnect(_stream);
                 }
-                catch
+                finally
                 {
-                    // Ignore errors when freeing dead handle
+                    ThreadedMainloopUnlock(_mainloop);
                 }
-                _paHandle = IntPtr.Zero;
             }
+            StreamUnref(_stream);
+            _stream = IntPtr.Zero;
         }
 
-        for (int attempt = 1; attempt <= MaxReconnectAttempts; attempt++)
+        if (_context != IntPtr.Zero)
         {
-            // Calculate delay with exponential backoff
-            var delay = Math.Min(ReconnectBaseDelayMs * (1 << (attempt - 1)), ReconnectMaxDelayMs);
-
-            _logger.LogInformation(
-                "PulseAudio reconnect attempt {Attempt}/{MaxAttempts} in {Delay}ms...",
-                attempt, MaxReconnectAttempts, delay);
-
-            Thread.Sleep(delay);
-
-            // Check if we should stop trying
-            if (!_isPlaying || _disposed)
+            if (_mainloop != IntPtr.Zero)
             {
-                _logger.LogDebug("Reconnection cancelled - player stopped or disposed");
-                return false;
-            }
-
-            try
-            {
-                // Use configured output sample rate if specified
-                var actualSampleRate = _outputFormat?.SampleRate ?? _currentFormat.SampleRate;
-
-                // Create new connection
-                var sampleSpec = new SampleSpec
+                ThreadedMainloopLock(_mainloop);
+                try
                 {
-                    Format = _paFormat,
-                    Rate = (uint)actualSampleRate,
-                    Channels = (byte)_currentFormat.Channels
-                };
-
-                var targetLatencyBytes = BytesForMs(ref sampleSpec, BufferMs);
-                var bufferAttr = new BufferAttr
-                {
-                    MaxLength = uint.MaxValue,
-                    TLength = targetLatencyBytes,
-                    PreBuf = targetLatencyBytes / 2,
-                    MinReq = uint.MaxValue,
-                    FragSize = uint.MaxValue
-                };
-
-                var newHandle = SimpleNewWithAttr(
-                    server: null,
-                    name: "MultiRoomAudio",
-                    dir: StreamDirection.Playback,
-                    dev: _sinkName,
-                    streamName: "Sendspin Audio",
-                    ss: ref sampleSpec,
-                    map: IntPtr.Zero,
-                    attr: ref bufferAttr,
-                    error: out var error);
-
-                if (newHandle != IntPtr.Zero)
-                {
-                    lock (_lock)
-                    {
-                        _paHandle = newHandle;
-                    }
-
-                    _logger.LogInformation(
-                        "PulseAudio reconnected successfully on attempt {Attempt}",
-                        attempt);
-                    return true;
+                    ContextDisconnect(_context);
                 }
-
-                var errorMsg = GetErrorMessage(error);
-                _logger.LogWarning(
-                    "PulseAudio reconnect attempt {Attempt} failed: {Error}",
-                    attempt, errorMsg);
+                finally
+                {
+                    ThreadedMainloopUnlock(_mainloop);
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "PulseAudio reconnect attempt {Attempt} threw exception",
-                    attempt);
-            }
+            ContextUnref(_context);
+            _context = IntPtr.Zero;
         }
 
-        _logger.LogError(
-            "PulseAudio reconnection failed after {MaxAttempts} attempts",
-            MaxReconnectAttempts);
-        return false;
+        if (_mainloop != IntPtr.Zero)
+        {
+            ThreadedMainloopStop(_mainloop);
+            ThreadedMainloopFree(_mainloop);
+            _mainloop = IntPtr.Zero;
+        }
+
+        // Clear callback references (safe to do after mainloop is stopped)
+        _contextStateCallback = null;
+        _streamStateCallback = null;
+        _writeCallback = null;
+        _underflowCallback = null;
+
+        _sampleBuffer = null;
+        _byteBuffer = null;
     }
 
     private void SetState(AudioPlayerState newState)
@@ -740,25 +830,11 @@ public class PulseAudioPlayer : IAudioPlayer
             _disposed = true;
         }
 
-        // Stop playback (waits for thread)
         Stop();
 
-        IntPtr handleToFree;
         lock (_lock)
         {
-            // Capture the handle and set to zero BEFORE freeing
-            // This ensures the playback thread sees the zero and skips writes
-            handleToFree = _paHandle;
-            _paHandle = IntPtr.Zero;
-
-            _sampleBuffer = null;
-            _byteBuffer = null;
-        }
-
-        // Free the handle outside the lock (safe - playback thread has stopped)
-        if (handleToFree != IntPtr.Zero)
-        {
-            SimpleFree(handleToFree);
+            CleanupResources();
         }
 
         _logger.LogInformation("PulseAudio player disposed");

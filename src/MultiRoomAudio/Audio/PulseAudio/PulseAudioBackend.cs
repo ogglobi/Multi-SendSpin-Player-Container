@@ -68,19 +68,12 @@ public class PulseAudioBackend : IBackend
 
     public IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory)
     {
-        return CreatePlayer(deviceId, loggerFactory, null);
-    }
-
-    public IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory, AudioOutputFormat? outputFormat)
-    {
-        _logger.LogDebug("Creating PulseAudio player for sink: {Sink}, format: {Format}",
-            deviceId ?? "default",
-            outputFormat != null ? $"{outputFormat.SampleRate}Hz/{outputFormat.BitDepth}-bit" : "default");
+        _logger.LogDebug("Creating PulseAudio player for sink: {Sink} (float32 format, PulseAudio handles conversion)",
+            deviceId ?? "default");
 
         return new PulseAudioPlayer(
             loggerFactory.CreateLogger<PulseAudioPlayer>(),
-            deviceId,
-            outputFormat);
+            deviceId);
     }
 
     public async Task<bool> SetVolumeAsync(string? deviceId, int volume, CancellationToken cancellationToken = default)

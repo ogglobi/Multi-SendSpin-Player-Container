@@ -13,7 +13,8 @@ public enum PlayerState
     Playing,
     Paused,
     Stopped,
-    Error
+    Error,
+    Reconnecting
 }
 
 /// <summary>
@@ -34,8 +35,10 @@ public record PlayerResponse(
     string? ErrorMessage,
     bool IsClockSynced,
     PlayerMetrics? Metrics,
-    AudioOutputFormat? OutputFormat = null,
-    DeviceCapabilities? DeviceCapabilities = null
+    DeviceCapabilities? DeviceCapabilities = null,
+    bool IsPendingReconnection = false,
+    int? ReconnectionAttempts = null,
+    DateTime? NextReconnectionAttempt = null
 );
 
 /// <summary>

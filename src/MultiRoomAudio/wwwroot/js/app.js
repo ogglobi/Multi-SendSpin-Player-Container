@@ -188,8 +188,13 @@ async function openEditPlayerModal(playerName) {
 
         // Set device dropdown
         await refreshDevices();
+        const audioDeviceSelect = document.getElementById('audioDevice');
         if (player.device) {
-            document.getElementById('audioDevice').value = player.device;
+            audioDeviceSelect.value = player.device;
+            // Check if the device was actually found in the list
+            if (audioDeviceSelect.value !== player.device) {
+                showAlert(`Warning: Previously configured device "${player.device}" is no longer available. Please select a new device.`, 'warning');
+            }
         }
 
         // Set modal to Edit mode
@@ -220,6 +225,10 @@ async function savePlayer() {
         showAlert('Please enter a player name', 'warning');
         return;
     }
+
+    // Disable submit button to prevent double-click
+    const submitBtn = document.getElementById('playerModalSubmit');
+    submitBtn.disabled = true;
 
     try {
         if (isEditing) {
@@ -296,6 +305,8 @@ async function savePlayer() {
     } catch (error) {
         console.error('Error saving player:', error);
         showAlert(error.message, 'danger');
+    } finally {
+        submitBtn.disabled = false;
     }
 }
 
@@ -323,6 +334,10 @@ async function deletePlayer(name) {
 }
 
 async function stopPlayer(name) {
+    if (!confirm(`Stop player "${name}"? This will disconnect it from the server.`)) {
+        return;
+    }
+
     try {
         const response = await fetch(`./api/players/${encodeURIComponent(name)}/stop`, {
             method: 'POST'
@@ -430,12 +445,38 @@ function adjustDelay(name, delta) {
     setDelay(name, newValue);
 }
 
+// Track delay changes for restart on modal close
+let playerStatsInitialDelay = null;
+let playerStatsCurrentPlayer = null;
+
+async function handlePlayerStatsModalClose() {
+    if (playerStatsCurrentPlayer && playerStatsInitialDelay !== null) {
+        const player = players[playerStatsCurrentPlayer];
+        if (player && player.delayMs !== playerStatsInitialDelay) {
+            // Delay was changed, restart player to apply
+            console.log(`Delay offset changed from ${playerStatsInitialDelay}ms to ${player.delayMs}ms, restarting player`);
+            await restartPlayer(playerStatsCurrentPlayer);
+        }
+    }
+    playerStatsInitialDelay = null;
+    playerStatsCurrentPlayer = null;
+}
+
 async function showPlayerStats(name) {
     const player = players[name];
     if (!player) return;
 
+    // Store initial delay to detect changes
+    playerStatsInitialDelay = player.delayMs;
+    playerStatsCurrentPlayer = name;
+
     const modal = document.getElementById('playerStatsModal');
     const body = document.getElementById('playerStatsBody');
+
+    // Set up modal close handler to restart player if delay changed
+    const modalInstance = bootstrap.Modal.getOrCreateInstance(modal);
+    modal.removeEventListener('hidden.bs.modal', handlePlayerStatsModalClose);
+    modal.addEventListener('hidden.bs.modal', handlePlayerStatsModalClose);
 
     body.innerHTML = `
         <div class="row">
@@ -464,14 +505,12 @@ async function showPlayerStats(name) {
         </div>
         <div class="row mt-3">
             <div class="col-md-6">
-                <h6 class="text-muted text-uppercase small">Output Format</h6>
-                ${player.outputFormat ? `
+                <h6 class="text-muted text-uppercase small">Audio Output</h6>
                 <table class="table table-sm">
-                    <tr><td><strong>Sample Rate</strong></td><td>${formatSampleRate(player.outputFormat.sampleRate)}</td></tr>
-                    <tr><td><strong>Bit Depth</strong></td><td>${player.outputFormat.bitDepth}-bit</td></tr>
-                    <tr><td><strong>Channels</strong></td><td>${player.outputFormat.channels}ch (${player.outputFormat.channels === 2 ? 'Stereo' : player.outputFormat.channels === 1 ? 'Mono' : 'Multi-channel'})</td></tr>
+                    <tr><td><strong>Format</strong></td><td>FLOAT32 (32-bit)</td></tr>
+                    <tr><td><strong>Conversion</strong></td><td>PulseAudio (native)</td></tr>
+                    <tr><td><strong>Latency</strong></td><td>${player.outputLatencyMs}ms</td></tr>
                 </table>
-                ` : '<p class="text-muted small">Using default format</p>'}
             </div>
             <div class="col-md-6">
                 <h6 class="text-muted text-uppercase small">Device Capabilities</h6>
@@ -485,7 +524,13 @@ async function showPlayerStats(name) {
             </div>
         </div>
         <h6 class="text-muted text-uppercase small mt-3">Delay Offset</h6>
-        <div class="delay-control d-flex align-items-center gap-2">
+        <p class="text-muted small mb-2">
+            <i class="fas fa-info-circle me-1"></i>
+            Adjust timing to sync this player with others. Use <strong>positive</strong> values to delay playback
+            (if this speaker plays too early), or <strong>negative</strong> values to advance it (if too late).
+            The player will restart when you close this dialog to apply changes.
+        </p>
+        <div class="delay-control d-flex align-items-center gap-2 flex-wrap">
             <button class="btn btn-outline-secondary btn-sm" onclick="adjustDelay('${escapeHtml(name)}', -10)" title="Decrease by 10ms">
                 <i class="fas fa-minus"></i>
             </button>
@@ -499,16 +544,16 @@ async function showPlayerStats(name) {
             <button class="btn btn-outline-secondary btn-sm" onclick="adjustDelay('${escapeHtml(name)}', 10)" title="Increase by 10ms">
                 <i class="fas fa-plus"></i>
             </button>
-            <small class="text-muted ms-2">Range: -5000 to +5000ms</small>
-            <span id="delaySavedIndicator" class="text-success ms-2 small" style="opacity: 0; transition: opacity 0.3s;"><i class="fas fa-check"></i> Saved</span>
+            <small class="text-muted">Range: -5000 to +5000ms</small>
+            <span id="delaySavedIndicator" class="text-success small" style="opacity: 0; transition: opacity 0.3s;"><i class="fas fa-check"></i> Saved</span>
         </div>
         ${player.metrics ? `
         <h6 class="text-muted text-uppercase small mt-3">Metrics</h6>
         <div class="d-flex flex-wrap">
-            <span class="metric-badge bg-light border"><i class="fas fa-database"></i> Buffer: ${player.metrics.bufferLevel}/${player.metrics.bufferCapacity}ms</span>
-            <span class="metric-badge bg-light border"><i class="fas fa-music"></i> Samples: ${player.metrics.samplesPlayed.toLocaleString()}</span>
-            <span class="metric-badge ${player.metrics.underruns > 0 ? 'bg-warning' : 'bg-light border'}"><i class="fas fa-exclamation-triangle"></i> Underruns: ${player.metrics.underruns}</span>
-            <span class="metric-badge ${player.metrics.overruns > 0 ? 'bg-warning' : 'bg-light border'}"><i class="fas fa-level-up-alt"></i> Overruns: ${player.metrics.overruns}</span>
+            <span class="metric-badge bg-body-secondary border"><i class="fas fa-database"></i> Buffer: ${player.metrics.bufferLevel}/${player.metrics.bufferCapacity}ms</span>
+            <span class="metric-badge bg-body-secondary border"><i class="fas fa-music"></i> Samples: ${player.metrics.samplesPlayed.toLocaleString()}</span>
+            <span class="metric-badge ${player.metrics.underruns > 0 ? 'bg-warning' : 'bg-body-secondary border'}"><i class="fas fa-exclamation-triangle"></i> Underruns: ${player.metrics.underruns}</span>
+            <span class="metric-badge ${player.metrics.overruns > 0 ? 'bg-warning' : 'bg-body-secondary border'}"><i class="fas fa-level-up-alt"></i> Overruns: ${player.metrics.overruns}</span>
         </div>
         ` : ''}
     `;
@@ -583,12 +628,14 @@ function renderPlayers() {
                             </div>
                         </div>
 
-                        ${player.isClockSynced ? `
-                            <small class="text-success"><i class="fas fa-clock me-1"></i>Clock synced</small>
-                        ` : ''}
-                        ${player.errorMessage ? `
-                            <small class="text-danger d-block"><i class="fas fa-exclamation-circle me-1"></i>${escapeHtml(player.errorMessage)}</small>
-                        ` : ''}
+                        <div class="player-status-area">
+                            ${player.isClockSynced ? `
+                                <small class="text-success"><i class="fas fa-clock me-1"></i>Clock synced</small>
+                            ` : ''}
+                            ${player.errorMessage ? `
+                                <small class="text-danger d-block mt-1"><i class="fas fa-exclamation-circle me-1"></i>${escapeHtml(player.errorMessage)}</small>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -723,8 +770,8 @@ function renderStatsPanel(stats) {
                 <span class="stats-value ${getSyncErrorClass(stats.sync.syncErrorMs)}">${formatMs(stats.sync.syncErrorMs)}</span>
             </div>
             <div class="stats-row">
-                <span class="stats-label">Correction Mode</span>
-                <span class="stats-value ${getCorrectionModeClass(stats.sync.correctionMode)}">${escapeHtml(stats.sync.correctionMode)}</span>
+                <span class="stats-label">Status</span>
+                <span class="stats-value ${stats.sync.isWithinTolerance ? 'good' : 'warning'}">${stats.sync.isWithinTolerance ? 'Within tolerance' : 'Correcting'}</span>
             </div>
             <div class="stats-row">
                 <span class="stats-label">Playback Active</span>
@@ -753,16 +800,20 @@ function renderStatsPanel(stats) {
         <div class="stats-section">
             <div class="stats-section-header">Sync Correction</div>
             <div class="stats-row">
-                <span class="stats-label">Playback Rate</span>
-                <span class="stats-value ${getPlaybackRateClass(stats.sync.playbackRate)}">${stats.sync.playbackRate.toFixed(4)}x</span>
+                <span class="stats-label">Mode</span>
+                <span class="stats-value ${getCorrectionModeClass(stats.correction.mode)}">${escapeHtml(stats.correction.mode)}</span>
             </div>
             <div class="stats-row">
-                <span class="stats-label">Dropped (Sync)</span>
-                <span class="stats-value ${stats.throughput.samplesDroppedSync > 0 ? 'warning' : ''}">${formatSampleCount(stats.throughput.samplesDroppedSync)}</span>
+                <span class="stats-label">Threshold</span>
+                <span class="stats-value">${stats.correction.thresholdMs}ms</span>
             </div>
             <div class="stats-row">
-                <span class="stats-label">Inserted (Sync)</span>
-                <span class="stats-value ${stats.throughput.samplesInsertedSync > 0 ? 'warning' : ''}">${formatSampleCount(stats.throughput.samplesInsertedSync)}</span>
+                <span class="stats-label">Frames Dropped</span>
+                <span class="stats-value ${stats.correction.framesDropped > 0 ? 'warning' : ''}">${formatSampleCount(stats.correction.framesDropped)}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Frames Inserted</span>
+                <span class="stats-value ${stats.correction.framesInserted > 0 ? 'warning' : ''}">${formatSampleCount(stats.correction.framesInserted)}</span>
             </div>
             <div class="stats-row">
                 <span class="stats-label">Dropped (Overflow)</span>
@@ -821,20 +872,34 @@ function renderStatsPanel(stats) {
             </div>
         </div>
 
-        <!-- Format Conversion Section -->
+        <!-- Buffer Diagnostics Section -->
         <div class="stats-section">
-            <div class="stats-section-header">Format Conversion</div>
-            <div class="stats-row">
-                <span class="stats-label">Rate</span>
-                <span class="stats-value info">${formatSampleRate(stats.resampler.inputRate)} → ${formatSampleRate(stats.resampler.outputRate)}</span>
+            <div class="stats-section-header">
+                <i class="fas fa-stethoscope me-1"></i>Buffer Diagnostics
             </div>
             <div class="stats-row">
-                <span class="stats-label">Handler</span>
-                <span class="stats-value">${escapeHtml(stats.resampler.quality)}</span>
+                <span class="stats-label">State</span>
+                <span class="stats-value ${getBufferStateClass(stats.diagnostics.state)}">${escapeHtml(stats.diagnostics.state)}</span>
             </div>
             <div class="stats-row">
-                <span class="stats-label">Effective Ratio</span>
-                <span class="stats-value">${stats.resampler.effectiveRatio.toFixed(6)}</span>
+                <span class="stats-label">Fill Level</span>
+                <span class="stats-value">${stats.diagnostics.fillPercent}%</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Pipeline State</span>
+                <span class="stats-value info">${escapeHtml(stats.diagnostics.pipelineState)}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Has Received Data</span>
+                <span class="stats-value ${stats.diagnostics.hasReceivedSamples ? 'good' : 'warning'}">${stats.diagnostics.hasReceivedSamples ? 'Yes' : 'No'}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Dropped (Overflow)</span>
+                <span class="stats-value ${stats.diagnostics.droppedOverflow > 0 ? 'bad' : 'good'}">${formatSampleCount(stats.diagnostics.droppedOverflow)}</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Smoothed Sync Error</span>
+                <span class="stats-value">${formatUs(stats.diagnostics.smoothedSyncErrorUs)}</span>
             </div>
         </div>
     `;
@@ -866,16 +931,995 @@ function getSyncErrorClass(errorMs) {
 
 function getCorrectionModeClass(mode) {
     switch (mode) {
-        case 'None': return '';
-        case 'Resampling': return 'info';
+        case 'None': return 'good';
         case 'Dropping': return 'warning';
         case 'Inserting': return 'warning';
         default: return '';
     }
 }
 
-function getPlaybackRateClass(rate) {
-    if (rate === 1.0) return '';
-    if (rate > 1.0) return 'info';  // speeding up
-    return 'info';  // slowing down
+function getBufferStateClass(state) {
+    if (state === 'Playing') return 'good';
+    if (state === 'Empty') return 'muted';
+    if (state.includes('Waiting') || state.includes('Buffered')) return 'warning';
+    if (state.includes('Stalled') || state.includes('dropping')) return 'bad';
+    return '';
 }
+
+function formatUs(us) {
+    if (Math.abs(us) < 1000) return us.toFixed(0) + 'us';
+    return (us / 1000).toFixed(2) + 'ms';
+}
+
+// ============================================
+// CUSTOM SINKS MANAGEMENT
+// ============================================
+
+// State
+let customSinks = {};
+let customSinksModal = null;
+
+// Open custom sinks modal
+function openCustomSinksModal() {
+    if (!customSinksModal) {
+        customSinksModal = new bootstrap.Modal(document.getElementById('customSinksModal'));
+    }
+    customSinksModal.show();
+    refreshSinks();
+}
+
+// Refresh custom sinks list
+async function refreshSinks() {
+    const container = document.getElementById('customSinksContainer');
+    if (!container) return;
+
+    try {
+        const response = await fetch('./api/sinks');
+        if (!response.ok) throw new Error('Failed to fetch sinks');
+
+        const data = await response.json();
+        customSinks = {};
+        (data.sinks || []).forEach(s => {
+            customSinks[s.name] = s;
+        });
+
+        renderSinks();
+    } catch (error) {
+        console.error('Error refreshing sinks:', error);
+        container.innerHTML = `<div class="text-center py-3 text-danger">
+            <i class="fas fa-exclamation-circle me-2"></i>Failed to load sinks
+        </div>`;
+    }
+}
+
+// Render sink cards
+function renderSinks() {
+    const container = document.getElementById('customSinksContainer');
+    if (!container) return;
+    const sinkNames = Object.keys(customSinks);
+
+    if (sinkNames.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-layer-group fa-3x text-muted mb-3 d-block"></i>
+                <h5>No Custom Sinks</h5>
+                <p class="text-muted mb-0">Create a combine-sink or remap-sink to get started.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = '<div class="row">' + sinkNames.map(name => {
+        const sink = customSinks[name];
+        const typeIcon = sink.type === 'Combine' ? 'fa-layer-group' : 'fa-random';
+        const typeBadgeClass = sink.type === 'Combine' ? 'bg-info' : 'bg-secondary';
+        const stateBadgeClass = getSinkStateBadgeClass(sink.state);
+
+        return `
+            <div class="col-md-6 mb-3">
+                <div class="card sink-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="card-title mb-0">
+                                <i class="fas ${typeIcon} me-2 text-muted"></i>
+                                ${escapeHtml(sink.name)}
+                            </h6>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="reloadSink('${escapeHtml(name)}'); return false;">
+                                        <i class="fas fa-sync me-2"></i>Reload</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteSink('${escapeHtml(name)}'); return false;">
+                                        <i class="fas fa-trash me-2"></i>Delete</a></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <span class="badge ${typeBadgeClass} sink-type-badge me-1">${sink.type}</span>
+                        <span class="badge bg-${stateBadgeClass}">${sink.state}</span>
+
+                        ${sink.description ? `<p class="text-muted mt-2 mb-0 small">${escapeHtml(sink.description)}</p>` : ''}
+
+                        ${sink.slaves ? `
+                            <div class="mt-2">
+                                <small class="text-muted"><i class="fas fa-link me-1"></i>${sink.slaves.length} devices combined</small>
+                            </div>
+                        ` : ''}
+
+                        ${sink.masterSink ? `
+                            <div class="mt-2">
+                                <small class="text-muted"><i class="fas fa-arrow-right me-1"></i>From: ${escapeHtml(sink.masterSink)}</small>
+                            </div>
+                        ` : ''}
+
+                        ${sink.errorMessage ? `
+                            <div class="mt-2">
+                                <small class="text-danger">
+                                    <i class="fas fa-exclamation-circle me-1"></i>${escapeHtml(sink.errorMessage)}
+                                </small>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('') + '</div>';
+}
+
+function getSinkStateBadgeClass(state) {
+    const stateMap = {
+        'Loaded': 'success',
+        'Loading': 'info',
+        'Error': 'danger',
+        'Created': 'secondary',
+        'Unloading': 'warning'
+    };
+    return stateMap[state] || 'secondary';
+}
+
+// Open Combine Sink Modal
+function openCombineSinkModal() {
+    // Hide parent modal to avoid stacking issues
+    if (customSinksModal) {
+        customSinksModal.hide();
+    }
+
+    // Reset form
+    document.getElementById('combineSinkName').value = '';
+    document.getElementById('combineSinkDesc').value = '';
+
+    // Populate device list
+    const deviceList = document.getElementById('combineDeviceList');
+    if (devices.length === 0) {
+        deviceList.innerHTML = '<div class="text-center py-2 text-muted">No devices available</div>';
+    } else {
+        deviceList.innerHTML = devices.map(d => `
+            <div class="form-check device-checkbox-item">
+                <input class="form-check-input" type="checkbox" value="${escapeHtml(d.id)}" id="combine-${escapeHtml(d.id)}">
+                <label class="form-check-label" for="combine-${escapeHtml(d.id)}">
+                    ${escapeHtml(d.name)}
+                    ${d.isDefault ? '<span class="badge bg-primary ms-1">default</span>' : ''}
+                </label>
+            </div>
+        `).join('');
+    }
+
+    const combineModal = new bootstrap.Modal(document.getElementById('combineSinkModal'));
+    // Reopen parent modal when this one closes
+    document.getElementById('combineSinkModal').addEventListener('hidden.bs.modal', function handler() {
+        document.getElementById('combineSinkModal').removeEventListener('hidden.bs.modal', handler);
+        if (customSinksModal) {
+            customSinksModal.show();
+        }
+    });
+    combineModal.show();
+}
+
+// Open Remap Sink Modal
+function openRemapSinkModal() {
+    // Hide parent modal to avoid stacking issues
+    if (customSinksModal) {
+        customSinksModal.hide();
+    }
+
+    // Reset form
+    document.getElementById('remapSinkName').value = '';
+    document.getElementById('remapSinkDesc').value = '';
+
+    // Populate master device dropdown
+    const masterSelect = document.getElementById('remapMasterDevice');
+    masterSelect.innerHTML = '<option value="">Select a device...</option>' +
+        devices.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} (${d.maxChannels}ch)</option>`).join('');
+
+    updateChannelPicker();
+
+    const remapModal = new bootstrap.Modal(document.getElementById('remapSinkModal'));
+    // Reopen parent modal when this one closes
+    document.getElementById('remapSinkModal').addEventListener('hidden.bs.modal', function handler() {
+        document.getElementById('remapSinkModal').removeEventListener('hidden.bs.modal', handler);
+        if (customSinksModal) {
+            customSinksModal.show();
+        }
+    });
+    remapModal.show();
+}
+
+// Update channel picker based on selected master device
+function updateChannelPicker() {
+    const masterSelect = document.getElementById('remapMasterDevice');
+    const leftChannel = document.getElementById('leftChannel');
+    const rightChannel = document.getElementById('rightChannel');
+
+    // Get channel count from selected device
+    const selectedDevice = devices.find(d => d.id === masterSelect.value);
+    const channelCount = selectedDevice ? selectedDevice.maxChannels : 2;
+
+    // Build channel options based on channel count
+    let channelOptions = [];
+    if (channelCount >= 8) {
+        channelOptions = [
+            { value: 'front-left', label: 'Front Left' },
+            { value: 'front-right', label: 'Front Right' },
+            { value: 'front-center', label: 'Front Center' },
+            { value: 'lfe', label: 'LFE (Subwoofer)' },
+            { value: 'rear-left', label: 'Rear Left' },
+            { value: 'rear-right', label: 'Rear Right' },
+            { value: 'side-left', label: 'Side Left' },
+            { value: 'side-right', label: 'Side Right' }
+        ];
+    } else if (channelCount >= 6) {
+        channelOptions = [
+            { value: 'front-left', label: 'Front Left' },
+            { value: 'front-right', label: 'Front Right' },
+            { value: 'front-center', label: 'Front Center' },
+            { value: 'lfe', label: 'LFE (Subwoofer)' },
+            { value: 'rear-left', label: 'Rear Left' },
+            { value: 'rear-right', label: 'Rear Right' }
+        ];
+    } else {
+        channelOptions = [
+            { value: 'front-left', label: 'Front Left' },
+            { value: 'front-right', label: 'Front Right' }
+        ];
+    }
+
+    const optionsHtml = channelOptions.map(ch =>
+        `<option value="${ch.value}">${ch.label}</option>`
+    ).join('');
+
+    leftChannel.innerHTML = optionsHtml;
+    rightChannel.innerHTML = optionsHtml;
+
+    // Set defaults
+    leftChannel.value = 'front-left';
+    rightChannel.value = 'front-right';
+}
+
+// Create combine sink
+async function createCombineSink() {
+    const name = document.getElementById('combineSinkName').value.trim();
+    const description = document.getElementById('combineSinkDesc').value.trim();
+    const checkboxes = document.querySelectorAll('#combineDeviceList input:checked');
+    const slaves = Array.from(checkboxes).map(cb => cb.value);
+
+    if (!name) {
+        showAlert('Please enter a sink name', 'warning');
+        return;
+    }
+
+    if (slaves.length < 2) {
+        showAlert('Select at least 2 devices to combine', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('./api/sinks/combine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description: description || null, slaves })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to create sink');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('combineSinkModal')).hide();
+        await refreshSinks();
+        await refreshDevices(); // Custom sink should now appear in device list
+        showAlert(`Combine sink "${name}" created successfully`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Create remap sink
+async function createRemapSink() {
+    const name = document.getElementById('remapSinkName').value.trim();
+    const description = document.getElementById('remapSinkDesc').value.trim();
+    const masterSink = document.getElementById('remapMasterDevice').value;
+    const leftChannel = document.getElementById('leftChannel').value;
+    const rightChannel = document.getElementById('rightChannel').value;
+
+    if (!name) {
+        showAlert('Please enter a sink name', 'warning');
+        return;
+    }
+
+    if (!masterSink) {
+        showAlert('Please select a master device', 'warning');
+        return;
+    }
+
+    const channelMappings = [
+        { outputChannel: 'front-left', masterChannel: leftChannel },
+        { outputChannel: 'front-right', masterChannel: rightChannel }
+    ];
+
+    try {
+        const response = await fetch('./api/sinks/remap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                description: description || null,
+                masterSink,
+                channels: 2,
+                channelMappings,
+                remix: false
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to create sink');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('remapSinkModal')).hide();
+        await refreshSinks();
+        await refreshDevices(); // Custom sink should now appear in device list
+        showAlert(`Remap sink "${name}" created successfully`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Delete sink
+async function deleteSink(name) {
+    if (!confirm(`Delete custom sink "${name}"?`)) return;
+
+    try {
+        const response = await fetch(`./api/sinks/${encodeURIComponent(name)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to delete sink');
+        }
+
+        await refreshSinks();
+        await refreshDevices();
+        showAlert(`Sink "${name}" deleted`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Reload sink
+async function reloadSink(name) {
+    try {
+        const response = await fetch(`./api/sinks/${encodeURIComponent(name)}/reload`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to reload sink');
+        }
+
+        await refreshSinks();
+        showAlert(`Sink "${name}" reloaded`, 'success');
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Open import modal
+async function openImportModal() {
+    const list = document.getElementById('importSinksList');
+    const empty = document.getElementById('importEmpty');
+    const unavailable = document.getElementById('importUnavailable');
+    const importBtn = document.getElementById('importBtn');
+
+    // Reset state
+    list.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Scanning...</div>';
+    list.classList.remove('d-none');
+    empty.classList.add('d-none');
+    unavailable.classList.add('d-none');
+    importBtn.disabled = false;
+
+    const modal = new bootstrap.Modal(document.getElementById('importSinksModal'));
+    modal.show();
+
+    try {
+        const response = await fetch('./api/sinks/import/scan');
+        const data = await response.json();
+
+        if (data.found === 0) {
+            list.classList.add('d-none');
+            empty.classList.remove('d-none');
+            importBtn.disabled = true;
+            return;
+        }
+
+        list.innerHTML = data.sinks.map(sink => `
+            <div class="form-check border-bottom py-2">
+                <input class="form-check-input" type="checkbox"
+                       value="${sink.lineNumber}" id="import-${sink.lineNumber}">
+                <label class="form-check-label w-100" for="import-${sink.lineNumber}">
+                    <div class="d-flex justify-content-between">
+                        <strong>${escapeHtml(sink.name)}</strong>
+                        <span class="badge ${sink.type === 'Combine' ? 'bg-info' : 'bg-secondary'}">${sink.type}</span>
+                    </div>
+                    ${sink.description ? `<small class="text-muted">${escapeHtml(sink.description)}</small><br>` : ''}
+                    <code class="small text-muted">${escapeHtml(sink.preview)}</code>
+                </label>
+            </div>
+        `).join('');
+    } catch (error) {
+        list.classList.add('d-none');
+        unavailable.classList.remove('d-none');
+        importBtn.disabled = true;
+    }
+}
+
+// Import selected sinks
+async function importSelectedSinks() {
+    const checkboxes = document.querySelectorAll('#importSinksList input:checked');
+    const lineNumbers = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (lineNumbers.length === 0) {
+        showAlert('Select at least one sink to import', 'warning');
+        return;
+    }
+
+    // Disable button during import to prevent double-click
+    const importBtn = document.getElementById('importBtn');
+    importBtn.disabled = true;
+
+    try {
+        const response = await fetch('./api/sinks/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lineNumbers })
+        });
+
+        const result = await response.json();
+
+        if (result.imported && result.imported.length > 0) {
+            showAlert(`Imported: ${result.imported.join(', ')}`, 'success');
+        }
+        if (result.errors && result.errors.length > 0) {
+            showAlert(`Errors: ${result.errors.join('; ')}`, 'warning');
+        }
+
+        // Refresh before hiding modal to avoid race condition
+        await refreshSinks();
+        await refreshDevices();
+        bootstrap.Modal.getInstance(document.getElementById('importSinksModal')).hide();
+    } catch (error) {
+        showAlert(error.message, 'danger');
+    } finally {
+        importBtn.disabled = false;
+    }
+}
+
+// ============================================
+// SOUND CARDS CONFIGURATION
+// ============================================
+
+let soundCardsModal = null;
+let soundCards = [];
+
+// Open the sound cards configuration modal
+async function openSoundCardsModal() {
+    if (!soundCardsModal) {
+        soundCardsModal = new bootstrap.Modal(document.getElementById('soundCardsModal'));
+    }
+
+    soundCardsModal.show();
+    await loadSoundCards();
+}
+
+// Load sound cards from API
+async function loadSoundCards() {
+    const container = document.getElementById('soundCardsContainer');
+    container.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2 text-muted">Loading sound cards...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch('./api/cards');
+        if (!response.ok) {
+            throw new Error('Failed to load sound cards');
+        }
+
+        const data = await response.json();
+        soundCards = data.cards || [];
+
+        renderSoundCards();
+    } catch (error) {
+        console.error('Error loading sound cards:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Failed to load sound cards: ${escapeHtml(error.message)}
+            </div>
+        `;
+    }
+}
+
+// Render sound cards list
+function renderSoundCards() {
+    const container = document.getElementById('soundCardsContainer');
+
+    if (soundCards.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-4 text-muted">
+                <i class="fas fa-sd-card fa-3x mb-3 opacity-50"></i>
+                <p class="mb-0">No sound cards detected</p>
+            </div>
+        `;
+        return;
+    }
+
+    const cardsHtml = soundCards.map(card => {
+        const availableProfiles = card.profiles.filter(p => p.isAvailable);
+        const hasMultipleProfiles = availableProfiles.length > 1;
+
+        const profileOptions = availableProfiles.map(profile => {
+            const isActive = profile.name === card.activeProfile;
+            let label = profile.description || profile.name;
+            if (profile.sinks > 0 || profile.sources > 0) {
+                const parts = [];
+                if (profile.sinks > 0) parts.push(`${profile.sinks} output${profile.sinks > 1 ? 's' : ''}`);
+                if (profile.sources > 0) parts.push(`${profile.sources} input${profile.sources > 1 ? 's' : ''}`);
+                label += ` (${parts.join(', ')})`;
+            }
+            return `<option value="${escapeHtml(profile.name)}" ${isActive ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+
+        const activeProfile = availableProfiles.find(p => p.name === card.activeProfile);
+        const activeDesc = activeProfile?.description || card.activeProfile;
+
+        return `
+            <div class="card mb-3" id="settings-card-${card.index}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <h6 class="mb-1">
+                                <i class="fas fa-sd-card text-primary me-2"></i>
+                                ${escapeHtml(card.description || card.name)}
+                            </h6>
+                            <small class="text-muted">${escapeHtml(card.driver)}</small>
+                        </div>
+                        <span class="badge bg-secondary" id="settings-card-status-${card.index}">
+                            ${escapeHtml(activeDesc)}
+                        </span>
+                    </div>
+
+                    ${hasMultipleProfiles ? `
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">Audio Profile</label>
+                            <select class="form-select"
+                                    id="settings-profile-select-${card.index}"
+                                    onchange="setSoundCardProfile('${escapeHtml(card.name)}', this.value, ${card.index})">
+                                ${profileOptions}
+                            </select>
+                        </div>
+                        <div id="settings-card-message-${card.index}" class="small"></div>
+                    ` : `
+                        <div class="text-muted small">
+                            <i class="fas fa-check-circle text-success me-1"></i>
+                            Single profile available: ${escapeHtml(activeDesc)}
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = cardsHtml;
+}
+
+// Set a sound card's profile
+async function setSoundCardProfile(cardName, profileName, cardIndex) {
+    const select = document.getElementById(`settings-profile-select-${cardIndex}`);
+    const statusBadge = document.getElementById(`settings-card-status-${cardIndex}`);
+    const messageDiv = document.getElementById(`settings-card-message-${cardIndex}`);
+
+    if (select) select.disabled = true;
+    if (messageDiv) {
+        messageDiv.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Changing profile...';
+        messageDiv.className = 'small text-muted';
+    }
+
+    try {
+        const response = await fetch(`./api/cards/${encodeURIComponent(cardName)}/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile: profileName })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to change profile');
+        }
+
+        // Update local state
+        const card = soundCards.find(c => c.name === cardName);
+        if (card) {
+            card.activeProfile = profileName;
+            const profile = card.profiles.find(p => p.name === profileName);
+            if (statusBadge && profile) {
+                statusBadge.textContent = profile.description || profileName;
+            }
+        }
+
+        if (messageDiv) {
+            messageDiv.innerHTML = '<i class="fas fa-check text-success me-1"></i>Profile changed successfully';
+            messageDiv.className = 'small text-success';
+            setTimeout(() => { messageDiv.innerHTML = ''; }, 3000);
+        }
+
+        // Refresh devices since profile change may affect available outputs
+        await refreshDevices();
+
+    } catch (error) {
+        console.error('Failed to set card profile:', error);
+        if (messageDiv) {
+            messageDiv.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i>${escapeHtml(error.message)}`;
+            messageDiv.className = 'small text-danger';
+        }
+        // Revert select to previous value
+        const card = soundCards.find(c => c.name === cardName);
+        if (select && card) {
+            select.value = card.activeProfile;
+        }
+    } finally {
+        if (select) select.disabled = false;
+    }
+}
+
+// ============================================
+// LOGS VIEWER
+// ============================================
+
+let logsData = [];
+let logsSkip = 0;
+const logsPageSize = 100;
+let logsConnection = null;
+let logsAutoScroll = true;
+let logsLiveStream = true;
+let logSearchTimeout = null;
+
+// Switch to logs view
+function showLogsView() {
+    document.getElementById('playersView').classList.add('d-none');
+    document.getElementById('logsView').classList.remove('d-none');
+
+    // Initialize logs
+    logsData = [];
+    logsSkip = 0;
+    refreshLogs();
+    setupLogsSignalR();
+}
+
+// Switch back to players view
+function showPlayersView() {
+    document.getElementById('logsView').classList.add('d-none');
+    document.getElementById('playersView').classList.remove('d-none');
+
+    // Cleanup SignalR connection
+    if (logsConnection) {
+        logsConnection.stop();
+        logsConnection = null;
+    }
+}
+
+// Setup SignalR for log streaming
+function setupLogsSignalR() {
+    if (typeof signalR === 'undefined' || logsConnection) return;
+
+    logsConnection = new signalR.HubConnectionBuilder()
+        .withUrl('./hubs/logs')
+        .withAutomaticReconnect()
+        .build();
+
+    logsConnection.on('LogEntry', (entry) => {
+        if (!logsLiveStream) return;
+
+        // Check filters
+        const levelFilter = document.getElementById('logLevelFilter').value;
+        const categoryFilter = document.getElementById('logCategoryFilter').value;
+        const searchFilter = document.getElementById('logSearchInput').value.toLowerCase();
+
+        if (levelFilter && entry.level.toLowerCase() !== levelFilter) return;
+        if (categoryFilter && entry.category !== categoryFilter) return;
+        if (searchFilter && !entry.message.toLowerCase().includes(searchFilter)) return;
+
+        // Add to top of list (newest first)
+        logsData.unshift(entry);
+        // Limit array size to prevent memory leak (matches DOM limit of 500)
+        if (logsData.length > 500) {
+            logsData.pop();
+        }
+        prependLogEntry(entry);
+        updateLogsCount();
+
+        // Auto-scroll to top if enabled
+        if (logsAutoScroll) {
+            document.getElementById('logsContainer').scrollTop = 0;
+        }
+    });
+
+    logsConnection.on('InitialLogs', (entries) => {
+        // Initial logs are sent on connection, but we already load via API
+        // This is just for quick population if needed
+    });
+
+    logsConnection.start().catch(err => {
+        console.log('Logs SignalR connection failed:', err);
+    });
+}
+
+// Debounced search
+function debouncedLogSearch() {
+    if (logSearchTimeout) {
+        clearTimeout(logSearchTimeout);
+    }
+    logSearchTimeout = setTimeout(refreshLogs, 300);
+}
+
+// Refresh logs (reset and reload)
+async function refreshLogs() {
+    logsSkip = 0;
+    logsData = [];
+
+    const container = document.getElementById('logsContainer');
+    container.innerHTML = `
+        <div class="text-center py-5 text-muted">
+            <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+            <p>Loading logs...</p>
+        </div>
+    `;
+
+    await loadLogs();
+}
+
+// Load logs from API
+async function loadLogs() {
+    const level = document.getElementById('logLevelFilter').value;
+    const category = document.getElementById('logCategoryFilter').value;
+    const search = document.getElementById('logSearchInput').value;
+
+    const params = new URLSearchParams({
+        skip: logsSkip,
+        take: logsPageSize,
+        newestFirst: true
+    });
+
+    if (level) params.append('level', level);
+    if (category) params.append('category', category);
+    if (search) params.append('search', search);
+
+    try {
+        const response = await fetch(`./api/logs?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch logs');
+
+        const data = await response.json();
+
+        if (logsSkip === 0) {
+            logsData = data.entries;
+            renderLogs();
+        } else {
+            logsData = [...logsData, ...data.entries];
+            appendLogEntries(data.entries);
+        }
+
+        // Show/hide load more button
+        const loadMore = document.getElementById('logsLoadMore');
+        if (logsData.length < data.totalCount) {
+            loadMore.classList.remove('d-none');
+        } else {
+            loadMore.classList.add('d-none');
+        }
+
+        updateLogsCount(data.totalCount);
+
+    } catch (error) {
+        console.error('Error loading logs:', error);
+        const container = document.getElementById('logsContainer');
+        container.innerHTML = `
+            <div class="text-center py-5 text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                <p>Failed to load logs</p>
+            </div>
+        `;
+    }
+}
+
+// Load more logs (pagination)
+function loadMoreLogs() {
+    logsSkip += logsPageSize;
+    loadLogs();
+}
+
+// Render all logs
+function renderLogs() {
+    const container = document.getElementById('logsContainer');
+
+    if (logsData.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-5 text-muted empty-state">
+                <i class="fas fa-scroll fa-3x mb-3 opacity-50"></i>
+                <h5>No logs found</h5>
+                <p>Logs will appear here as the application runs.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = logsData.map(entry => createLogEntryHtml(entry)).join('');
+}
+
+// Create HTML for a single log entry
+function createLogEntryHtml(entry, isNew = false) {
+    const time = new Date(entry.timestamp).toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+
+    const levelClass = entry.level.toLowerCase();
+
+    return `
+        <div class="log-entry${isNew ? ' new' : ''}">
+            <span class="log-timestamp">${escapeHtml(time)}</span>
+            <span class="log-level ${levelClass}">${escapeHtml(entry.level)}</span>
+            <span class="log-category">${escapeHtml(entry.category)}</span>
+            <div class="log-message">
+                ${escapeHtml(entry.message)}
+                ${entry.exception ? `<div class="log-exception">${escapeHtml(entry.exception)}</div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Prepend a single log entry (for live streaming)
+function prependLogEntry(entry) {
+    const container = document.getElementById('logsContainer');
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) {
+        container.innerHTML = '';
+    }
+
+    const html = createLogEntryHtml(entry, true);
+    container.insertAdjacentHTML('afterbegin', html);
+
+    // Limit displayed entries for performance
+    const entries = container.querySelectorAll('.log-entry');
+    if (entries.length > 500) {
+        entries[entries.length - 1].remove();
+    }
+}
+
+// Append log entries (for pagination)
+function appendLogEntries(entries) {
+    const container = document.getElementById('logsContainer');
+    const html = entries.map(e => createLogEntryHtml(e)).join('');
+    container.insertAdjacentHTML('beforeend', html);
+}
+
+// Update the logs count badge
+function updateLogsCount(total) {
+    const countBadge = document.getElementById('logsCount');
+    countBadge.textContent = (total !== undefined ? total : logsData.length).toLocaleString();
+}
+
+// Clear all logs
+async function clearLogs() {
+    if (!confirm('Clear all logs? This cannot be undone.')) return;
+
+    try {
+        const response = await fetch('./api/logs', { method: 'DELETE' });
+        if (!response.ok) throw new Error('Failed to clear logs');
+
+        logsData = [];
+        logsSkip = 0;
+        renderLogs();
+        updateLogsCount(0);
+        showAlert('Logs cleared', 'success');
+    } catch (error) {
+        showAlert('Failed to clear logs', 'danger');
+    }
+}
+
+// Download logs as text file
+function downloadLogs() {
+    const content = logsData.map(e =>
+        `${e.timestamp}|${e.level}|${e.category}|${e.message}${e.exception ? '|' + e.exception : ''}`
+    ).join('\n');
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `multiroom-audio-logs-${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ============================================
+// ONBOARDING WIZARD INTEGRATION
+// ============================================
+
+// Run the setup wizard manually
+function runSetupWizard() {
+    if (typeof OnboardingWizard !== 'undefined') {
+        OnboardingWizard.start();
+    } else {
+        showAlert('Setup wizard is not available', 'warning');
+    }
+}
+
+// Reset first-run state to allow wizard to show again
+async function resetOnboarding() {
+    if (!confirm('Reset first-run state? The setup wizard will appear on the next page load.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('./api/onboarding/reset', {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to reset onboarding state');
+        }
+
+        showAlert('First-run state reset. Refresh the page to see the wizard.', 'success');
+    } catch (error) {
+        console.error('Error resetting onboarding:', error);
+        showAlert(error.message, 'danger');
+    }
+}
+
+// Toggle handlers for switches
+document.addEventListener('DOMContentLoaded', () => {
+    const autoScrollSwitch = document.getElementById('logAutoScroll');
+    const liveStreamSwitch = document.getElementById('logLiveStream');
+
+    if (autoScrollSwitch) {
+        autoScrollSwitch.addEventListener('change', (e) => {
+            logsAutoScroll = e.target.checked;
+        });
+    }
+
+    if (liveStreamSwitch) {
+        liveStreamSwitch.addEventListener('change', (e) => {
+            logsLiveStream = e.target.checked;
+        });
+    }
+});

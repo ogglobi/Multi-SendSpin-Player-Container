@@ -91,18 +91,11 @@ public class BackendFactory
 
     /// <summary>
     /// Creates an audio player for the specified device.
+    /// PulseAudio handles all format conversion natively (always float32 input).
     /// </summary>
     public Sendspin.SDK.Audio.IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory)
     {
         return _backend.CreatePlayer(deviceId, loggerFactory);
-    }
-
-    /// <summary>
-    /// Creates an audio player with a specific output format.
-    /// </summary>
-    public Sendspin.SDK.Audio.IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory, AudioOutputFormat? outputFormat)
-    {
-        return _backend.CreatePlayer(deviceId, loggerFactory, outputFormat);
     }
 
     /// <summary>

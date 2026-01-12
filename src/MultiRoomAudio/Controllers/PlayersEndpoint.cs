@@ -238,7 +238,7 @@ public static class PlayersEndpoint
             ILogger<PlayerManagerService> logger,
             CancellationToken ct) =>
         {
-            logger.LogDebug("API: PUT /api/players/{PlayerName}/volume to {Volume}", name, request.Volume);
+            logger.LogInformation("VOLUME [API] PUT /api/players/{Name}/volume: {Volume}%", name, request.Volume);
             try
             {
                 var success = await manager.SetVolumeAsync(name, request.Volume, ct);
@@ -385,15 +385,31 @@ public static class PlayersEndpoint
                     logger.LogInformation("API: Player renamed from {OldName} to {NewName}", name, request.Name);
                 }
 
-                // Apply live changes
+                // Apply live changes - check return values to detect if player disappeared
                 if (request.Volume.HasValue)
                 {
-                    await manager.SetVolumeAsync(currentName, request.Volume.Value, ct);
+                    var volumeSet = await manager.SetVolumeAsync(currentName, request.Volume.Value, ct);
+                    if (!volumeSet)
+                    {
+                        logger.LogWarning("API: Player '{PlayerName}' disappeared during update (volume)", currentName);
+                        return Results.Problem(
+                            detail: $"Player '{currentName}' was removed during update",
+                            statusCode: 409,
+                            title: "Update conflict");
+                    }
                 }
 
                 if (request.Device != null)
                 {
-                    await manager.SwitchDeviceAsync(currentName, request.Device == "" ? null : request.Device, ct);
+                    var deviceSet = await manager.SwitchDeviceAsync(currentName, request.Device == "" ? null : request.Device, ct);
+                    if (!deviceSet)
+                    {
+                        logger.LogWarning("API: Player '{PlayerName}' disappeared during update (device)", currentName);
+                        return Results.Problem(
+                            detail: $"Player '{currentName}' was removed during update",
+                            statusCode: 409,
+                            title: "Update conflict");
+                    }
                 }
 
                 // Update config for changes that require restart
