@@ -916,7 +916,11 @@ const Wizard = {
                     name,
                     description: description || null,
                     masterSink,
-                    channelMap: `${leftChannel},${rightChannel}`
+                    channels: 2,
+                    channelMappings: [
+                        { outputChannel: 'front-left', masterChannel: leftChannel },
+                        { outputChannel: 'front-right', masterChannel: rightChannel }
+                    ]
                 })
             });
 
