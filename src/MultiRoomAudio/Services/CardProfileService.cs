@@ -1,5 +1,6 @@
 using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Models;
+using MultiRoomAudio.Utilities;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -13,6 +14,7 @@ public class CardProfileService : IHostedService
 {
     private readonly ILogger<CardProfileService> _logger;
     private readonly EnvironmentService _environment;
+    private readonly VolumeCommandRunner _volumeRunner;
     private readonly string _configPath;
     private readonly IDeserializer _deserializer;
     private readonly ISerializer _serializer;
@@ -20,10 +22,12 @@ public class CardProfileService : IHostedService
 
     public CardProfileService(
         ILogger<CardProfileService> logger,
-        EnvironmentService environment)
+        EnvironmentService environment,
+        VolumeCommandRunner volumeRunner)
     {
         _logger = logger;
         _environment = environment;
+        _volumeRunner = volumeRunner;
         _configPath = Path.Combine(environment.ConfigPath, "card-profiles.yaml");
 
         // Configure logger for the enumerator
@@ -188,7 +192,7 @@ public class CardProfileService : IHostedService
     /// <summary>
     /// Sets the active profile for a card and persists the selection.
     /// </summary>
-    public CardProfileResponse SetCardProfile(string cardNameOrIndex, string profileName)
+    public async Task<CardProfileResponse> SetCardProfileAsync(string cardNameOrIndex, string profileName)
     {
         // Get current card state before change
         var card = PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
@@ -220,6 +224,27 @@ public class CardProfileService : IHostedService
             "Changed card '{Card}' profile from '{Previous}' to '{New}'",
             card.Name, previousProfile, profileName);
 
+        // Give PulseAudio a moment to create the new sinks
+        await Task.Delay(500);
+
+        // Unmute all sinks belonging to this card (new sinks may start muted)
+        var sinks = PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+        foreach (var sinkName in sinks)
+        {
+            try
+            {
+                var unmuted = await _volumeRunner.SetMuteAsync(sinkName, false);
+                if (unmuted)
+                {
+                    _logger.LogDebug("Unmuted sink '{Sink}' after profile change", sinkName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to unmute sink '{Sink}' after profile change", sinkName);
+            }
+        }
+
         return new CardProfileResponse(
             Success: true,
             Message: $"Profile changed to '{profileName}'.",
@@ -227,6 +252,15 @@ public class CardProfileService : IHostedService
             ActiveProfile: profileName,
             PreviousProfile: previousProfile
         );
+    }
+
+    /// <summary>
+    /// Sets the active profile for a card and persists the selection.
+    /// Synchronous wrapper for backwards compatibility.
+    /// </summary>
+    public CardProfileResponse SetCardProfile(string cardNameOrIndex, string profileName)
+    {
+        return SetCardProfileAsync(cardNameOrIndex, profileName).GetAwaiter().GetResult();
     }
 
     /// <summary>

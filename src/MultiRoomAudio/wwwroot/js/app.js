@@ -5,6 +5,22 @@ let players = {};
 let devices = [];
 let connection = null;
 
+/**
+ * Get display name for a device ID.
+ * Returns alias if available, otherwise name, otherwise the ID itself.
+ * @param {string} deviceId - The device ID (sink name)
+ * @returns {string} Human-readable device name
+ */
+function getDeviceDisplayName(deviceId) {
+    if (!deviceId) return 'Default';
+
+    const device = devices.find(d => d.id === deviceId);
+    if (device) {
+        return device.alias || device.name || deviceId;
+    }
+    return deviceId;  // Fallback to ID if device not found
+}
+
 // XSS protection
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -143,7 +159,7 @@ async function refreshDevices() {
             devices.forEach(device => {
                 const option = document.createElement('option');
                 option.value = device.id;
-                option.textContent = `${device.name}${device.isDefault ? ' (default)' : ''}`;
+                option.textContent = `${device.alias || device.name}${device.isDefault ? ' (default)' : ''}`;
                 select.appendChild(option);
             });
             if (currentValue) select.value = currentValue;
@@ -261,16 +277,7 @@ async function savePlayer() {
 
             const result = await response.json();
             const finalName = result.playerName || name;
-
-            // If restart is needed, trigger it
-            if (result.needsRestart) {
-                const restartResponse = await fetch(`./api/players/${encodeURIComponent(finalName)}/restart`, {
-                    method: 'POST'
-                });
-                if (!restartResponse.ok) {
-                    console.warn('Restart request failed, player may need manual restart');
-                }
-            }
+            const wasRenamed = name !== editingName;
 
             // Close modal and refresh
             bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
@@ -278,8 +285,26 @@ async function savePlayer() {
             document.getElementById('initialVolumeValue').textContent = '75%';
             await refreshStatus();
 
+            // Show appropriate message based on changes
             if (result.needsRestart) {
-                showAlert(`Player "${finalName}" updated and restarted`, 'success');
+                if (wasRenamed) {
+                    // For renames, offer to restart rather than auto-restart
+                    // The name change is saved locally, but Music Assistant needs a restart to see it
+                    showAlert(
+                        `Player renamed to "${finalName}". Restart the player for the name to appear in Music Assistant.`,
+                        'info',
+                        8000 // Show for longer since it's actionable
+                    );
+                } else {
+                    // For other changes requiring restart (e.g., server URL), auto-restart
+                    const restartResponse = await fetch(`./api/players/${encodeURIComponent(finalName)}/restart`, {
+                        method: 'POST'
+                    });
+                    if (!restartResponse.ok) {
+                        console.warn('Restart request failed, player may need manual restart');
+                    }
+                    showAlert(`Player "${finalName}" updated and restarted`, 'success');
+                }
             } else {
                 showAlert(`Player "${finalName}" updated successfully`, 'success');
             }
@@ -492,7 +517,7 @@ async function showPlayerStats(name) {
                 <h6 class="text-muted text-uppercase small">Configuration</h6>
                 <table class="table table-sm">
                     <tr><td><strong>Name</strong></td><td>${escapeHtml(player.name)}</td></tr>
-                    <tr><td><strong>Device</strong></td><td>${escapeHtml(player.device || 'default')}</td></tr>
+                    <tr><td><strong>Device</strong></td><td>${escapeHtml(getDeviceDisplayName(player.device))}</td></tr>
                     <tr><td><strong>Client ID</strong></td><td><code>${escapeHtml(player.clientId)}</code></td></tr>
                     <tr><td><strong>Server</strong></td><td>${escapeHtml(player.serverUrl || 'Auto-discovered')}</td></tr>
                     <tr><td><strong>Volume</strong></td><td>${player.volume}%</td></tr>
@@ -623,7 +648,7 @@ function renderPlayers() {
                         <div class="status-container mb-3">
                             <span class="status-indicator ${stateClass}"></span>
                             <span class="badge bg-${stateBadgeClass}">${player.state}</span>
-                            <small class="text-muted ms-2">${escapeHtml(player.device || 'default')}</small>
+                            <small class="text-muted ms-2">${escapeHtml(getDeviceDisplayName(player.device))}</small>
                         </div>
 
                         <div class="volume-control">
@@ -679,7 +704,7 @@ function getStateBadgeClass(state) {
 }
 
 // Alert helpers
-function showAlert(message, type = 'info') {
+function showAlert(message, type = 'info', duration = 5000) {
     const container = document.getElementById('alert-container');
     const alert = document.createElement('div');
     alert.className = `alert alert-${type} alert-dismissible fade show`;
@@ -689,11 +714,11 @@ function showAlert(message, type = 'info') {
     `;
     container.appendChild(alert);
 
-    // Auto-dismiss after 5 seconds
+    // Auto-dismiss after specified duration
     setTimeout(() => {
         alert.classList.remove('show');
         setTimeout(() => alert.remove(), 150);
-    }, 5000);
+    }, duration);
 }
 
 // ========== Stats for Nerds ==========
@@ -1148,7 +1173,7 @@ function openCombineSinkModal(editData = null) {
                 <input class="form-check-input" type="checkbox" value="${escapeHtml(d.id)}" id="combine-${escapeHtml(d.id)}"
                     ${selectedSlaves.includes(d.id) ? 'checked' : ''}>
                 <label class="form-check-label" for="combine-${escapeHtml(d.id)}">
-                    ${escapeHtml(d.name)}
+                    ${escapeHtml(d.alias || d.name)}
                     ${d.isDefault ? '<span class="badge bg-primary ms-1">default</span>' : ''}
                 </label>
             </div>
@@ -1201,7 +1226,7 @@ function openRemapSinkModal(editData = null) {
     // Populate master device dropdown
     const masterSelect = document.getElementById('remapMasterDevice');
     masterSelect.innerHTML = '<option value="">Select a device...</option>' +
-        devices.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} (${d.maxChannels}ch)</option>`).join('');
+        devices.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.alias || d.name)} (${d.maxChannels}ch)</option>`).join('');
 
     // Set master device if editing
     if (editData?.masterSink) {

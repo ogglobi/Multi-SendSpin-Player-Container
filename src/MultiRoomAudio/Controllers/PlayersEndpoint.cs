@@ -376,12 +376,15 @@ public static class PlayersEndpoint
                 var currentName = name;
 
                 // Handle rename first (affects subsequent operations)
+                // Note: Rename requires restart for the name to appear in Music Assistant
+                // because the SDK's ClientName is set at player creation time
                 if (!string.IsNullOrEmpty(request.Name) && request.Name != name)
                 {
                     var renamed = manager.RenamePlayer(name, request.Name);
                     if (!renamed)
                         return Results.Conflict(new ErrorResponse(false, $"Player '{request.Name}' already exists"));
                     currentName = request.Name;
+                    needsRestart = true; // Name change requires restart for MA sync
                     logger.LogInformation("API: Player renamed from {OldName} to {NewName}", name, request.Name);
                 }
 
@@ -473,7 +476,17 @@ public static class PlayersEndpoint
                     return PlayerNotFoundResult(name, logger, "rename");
 
                 logger.LogInformation("API: Player {PlayerName} renamed to {NewName}", name, request.NewName);
-                return Results.Ok(new SuccessResponse(true, $"Player renamed to '{request.NewName}'"));
+
+                // Return response with restart hint - the name change is saved locally
+                // but the SDK's ClientName is set at creation time, so Music Assistant
+                // will still see the old name until the player is restarted
+                return Results.Ok(new PlayerRenameResponse(
+                    Success: true,
+                    Message: $"Player renamed to '{request.NewName}'",
+                    NewName: request.NewName,
+                    RestartRequired: true,
+                    RestartHint: "Restart the player for the name change to appear in Music Assistant."
+                ));
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
             {
@@ -495,6 +508,6 @@ public static class PlayersEndpoint
             }
         })
         .WithName("RenamePlayer")
-        .WithDescription("Rename a player to a new name");
+        .WithDescription("Rename a player to a new name. Note: Restart the player for the name change to appear in Music Assistant.");
     }
 }

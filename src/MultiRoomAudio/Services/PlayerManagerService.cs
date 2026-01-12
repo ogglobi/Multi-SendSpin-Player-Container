@@ -1482,6 +1482,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         context.Pipeline.ErrorOccurred += context.PipelineErrorHandler;
         context.Player.ErrorOccurred += context.PlayerErrorHandler;
         context.Client.GroupStateChanged += context.GroupStateHandler;
+
+        // Note: Issue #33 (players showing "Playing" after stream ends) should be handled by
+        // the PipelineStateHandler above when the pipeline transitions to Idle state.
+        // The SDK doesn't expose a StreamEnded event directly.
     }
 
     /// <summary>

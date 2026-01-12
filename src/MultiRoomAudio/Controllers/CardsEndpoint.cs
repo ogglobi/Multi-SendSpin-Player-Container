@@ -86,7 +86,7 @@ public static class CardsEndpoint
         .WithDescription("Get details of a specific sound card including available profiles");
 
         // PUT /api/cards/{nameOrIndex}/profile - Set active profile
-        group.MapPut("/{nameOrIndex}/profile", (
+        group.MapPut("/{nameOrIndex}/profile", async (
             string nameOrIndex,
             SetCardProfileRequest request,
             CardProfileService service,
@@ -98,7 +98,7 @@ public static class CardsEndpoint
 
             try
             {
-                var result = service.SetCardProfile(nameOrIndex, request.Profile);
+                var result = await service.SetCardProfileAsync(nameOrIndex, request.Profile);
 
                 if (!result.Success)
                 {

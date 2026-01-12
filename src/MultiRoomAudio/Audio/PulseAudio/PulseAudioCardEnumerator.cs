@@ -264,6 +264,59 @@ public static partial class PulseAudioCardEnumerator
     }
 
     /// <summary>
+    /// Gets all sink names belonging to a specific card.
+    /// </summary>
+    /// <param name="cardIndex">The card index to find sinks for.</param>
+    /// <returns>List of sink names belonging to the card.</returns>
+    public static List<string> GetSinksByCard(int cardIndex)
+    {
+        var sinks = new List<string>();
+
+        try
+        {
+            var output = RunPactl("list sinks");
+            if (string.IsNullOrEmpty(output))
+                return sinks;
+
+            // Parse sink blocks to find ones with matching Card index
+            string? currentSinkName = null;
+
+            foreach (var line in output.Split('\n'))
+            {
+                var trimmed = line.Trim();
+
+                // Check for sink name
+                if (trimmed.StartsWith("Name:"))
+                {
+                    currentSinkName = trimmed.Substring(5).Trim();
+                }
+                // Check for card association
+                else if (trimmed.StartsWith("Card:") && currentSinkName != null)
+                {
+                    var cardStr = trimmed.Substring(5).Trim();
+                    // Card field may include "#" prefix (e.g., "Card: #0" or "Card: 0")
+                    cardStr = cardStr.TrimStart('#');
+
+                    if (int.TryParse(cardStr, out var sinkCard) && sinkCard == cardIndex)
+                    {
+                        sinks.Add(currentSinkName);
+                        _logger?.LogDebug("Found sink '{Sink}' belonging to card {Card}", currentSinkName, cardIndex);
+                    }
+                    currentSinkName = null; // Reset for next sink block
+                }
+            }
+
+            _logger?.LogDebug("Found {Count} sinks for card {Card}", sinks.Count, cardIndex);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to enumerate sinks for card {Card}", cardIndex);
+        }
+
+        return sinks;
+    }
+
+    /// <summary>
     /// Maximum retries for pactl commands when PulseAudio is temporarily unavailable.
     /// </summary>
     private const int MaxPactlRetries = 3;
