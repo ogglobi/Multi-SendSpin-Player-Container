@@ -78,17 +78,16 @@ public partial class PaModuleRunner
         if (string.IsNullOrWhiteSpace(description))
             return description;
 
-        // Sanitize for PulseAudio property values (quoted strings)
+        // Sanitize for PulseAudio property values (single-quoted strings)
+        // Escape single quotes: ' -> '\'' (end quote, escaped quote, start quote)
         return description
-            .Replace("\\", "")      // Remove backslashes (escape char)
-            .Replace("\"", "'")     // Replace double quotes with single (preserve intent)
+            .Replace("\\", "")      // Remove backslashes
+            .Replace("'", @"'\''")  // Escape single quotes for shell-style quoting
+            .Replace("\"", "")      // Remove double quotes
             .Replace("\n", " ")     // Replace newlines with spaces
             .Replace("\r", "")      // Remove carriage returns
             .Replace("\0", "")      // Remove null chars
             .Trim();
-
-        // Note: Spaces and & are allowed - PulseAudio handles them correctly
-        // when the value is quoted in sink_properties=device.description="value"
     }
 
     /// <summary>
@@ -140,7 +139,7 @@ public partial class PaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            args.Add($"sink_properties=device.description=\"{safeDesc}\"");
+            args.Add($"sink_properties=device.description='{safeDesc}'");
         }
 
         _logger.LogInformation("Loading combine-sink '{SinkName}' with {SlaveCount} slaves", sinkName, slaveList.Count);
@@ -235,7 +234,7 @@ public partial class PaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            args.Add($"sink_properties=device.description=\"{safeDesc}\"");
+            args.Add($"sink_properties=device.description='{safeDesc}'");
         }
 
         _logger.LogInformation("Loading remap-sink '{SinkName}' from master '{Master}' with {Channels} channels",
