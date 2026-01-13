@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-28196e5
+## Development Build: sha-7f08b90
 
 **Current Dev Build Changes** (recent)
 
+- Make hardware volume slider always visible on player cards
 - Add controller and metadata roles to player registration
 - Update .gitignore
 - Persist hardware volume limit and use custom sink names for display
@@ -14,7 +15,6 @@
 - Fix Sprint 1 issues: wizard filtering, modal stacking, validation
 - Proper Sink Error handling + sink edit screen
 - Fix Auto-Naming Problems
-- load things in the right order.
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
