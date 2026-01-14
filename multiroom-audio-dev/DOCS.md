@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-901c9dd
+## Development Build: sha-d75fd61
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #63 from scyto/dev
+- Update docker-publish.yml to ignore changes in .githhub
+- Update image names to use repository owner
+- Merge pull request #1 from scyto/codex/display-short-sha-version-on-main-page
+- Display build version on main page
 - Fix sink descriptions with spaces and special characters
 - Make hardware volume slider always visible on player cards
 - Add controller and metadata roles to player registration
 - Update .gitignore
 - Persist hardware volume limit and use custom sink names for display
-- docs: Update wiki documentation for 4.0.0 release
-- Sprint 3: Per-player hardware volume and sink card UI improvements
-- Sprint 2: Player rename hint, card profile unmute, consistent device names
-- Fix Sprint 1 issues: wizard filtering, modal stacking, validation
-- Proper Sink Error handling + sink edit screen
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
