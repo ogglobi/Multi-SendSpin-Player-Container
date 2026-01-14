@@ -47,7 +47,7 @@ public class CardProfileService : IHostedService
     /// <summary>
     /// Restore saved card profiles on startup.
     /// </summary>
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("CardProfileService starting...");
 
@@ -79,7 +79,7 @@ public class CardProfileService : IHostedService
         if (savedProfiles.Count == 0)
         {
             _logger.LogInformation("No saved card profiles to restore");
-            return Task.CompletedTask;
+            return;
         }
         var restoredCount = 0;
         var failedCount = 0;
@@ -163,7 +163,7 @@ public class CardProfileService : IHostedService
             "CardProfileService started: {Restored} profiles restored, {Failed} failed",
             restoredCount, failedCount);
 
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 
     /// <summary>
