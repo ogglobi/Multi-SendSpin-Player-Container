@@ -2060,6 +2060,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         try
         {
+            // Check if player exists and remove it first (cleanup failed state)
+            if (_players.ContainsKey(name))
+            {
+                _logger.LogDebug("Removing existing failed player '{Name}' before reconnection attempt", name);
+                await RemoveAndDisposePlayerAsync(name);
+            }
+
             var request = new PlayerCreateRequest
             {
                 Name = state.Config.Name,
