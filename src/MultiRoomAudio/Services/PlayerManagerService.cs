@@ -316,6 +316,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         public PlayerState State { get; set; } = PlayerState.Created;
         public string? ErrorMessage { get; set; }
         public DateTime? ConnectedAt { get; set; }
+        public int InitialVolume { get; init; } // Store initial volume to detect resets
         public long SamplesPlayed { get; set; }
 
         // Event handler references for proper cleanup (prevents memory leaks)
@@ -690,7 +691,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 client, connection, pipeline, player, clockSync, clientCapabilities, config,
                 DateTime.UtcNow, cts, deviceCapabilities)
             {
-                State = PlayerState.Created
+                State = PlayerState.Created,
+                InitialVolume = request.Volume // Store initial volume to detect resets
             };
 
             // 9. Wire up events
@@ -1548,12 +1550,40 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Update volume if changed
             if (serverVolume != context.Config.Volume)
             {
+                // Detect and ignore spurious resets to initial volume during track transitions
+                // MA resets to player's initial volume (from InitialVolume capability) when starting new tracks
+                // We want to preserve the user's chosen volume instead
+                var isPlaying = context.State == PlayerState.Playing || context.State == PlayerState.Buffering;
+                var isResetToInitial = serverVolume == context.InitialVolume; // Initial volume from player creation
+
+                if (!isPlaying && isResetToInitial)
+                {
+                    _logger.LogDebug("VOLUME [Ignored] Player '{Name}': {OldVol}% -> {NewVol}% (reset to initial during transition)",
+                        name, context.Config.Volume, serverVolume);
+                    return;
+                }
+
                 _logger.LogInformation("VOLUME [ServerSync] Player '{Name}': {OldVol}% -> {NewVol}%",
                     name, context.Config.Volume, serverVolume);
 
-                // Just update our config to reflect server state - no hardware adjustment
-                // Server (Music Assistant) controls actual volume level
+                // Update our config to reflect server state
                 context.Config.Volume = serverVolume;
+
+                // Persist the volume change so it survives restarts and track changes
+                if (_config.Players.TryGetValue(name, out var persistedConfig))
+                {
+                    persistedConfig.Volume = serverVolume;
+                    try
+                    {
+                        _config.Save();
+                        _logger.LogDebug("VOLUME [Persist] Player '{Name}': saved {Volume}% to config",
+                            name, serverVolume);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to persist volume change for player '{Name}'", name);
+                    }
+                }
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
