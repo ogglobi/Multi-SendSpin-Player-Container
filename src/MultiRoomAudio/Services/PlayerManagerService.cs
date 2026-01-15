@@ -482,6 +482,29 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogInformation("No players configured for autostart");
         }
 
+        // Check for any players that failed to connect and queue them for reconnection
+        // Wait for all mDNS discovery attempts to complete (6s timeout + 2s buffer)
+        if (autostartPlayers.Count > 0)
+        {
+            _logger.LogDebug("Waiting for connection attempts to complete...");
+            await Task.Delay(8000, cancellationToken);
+
+            foreach (var playerConfig in autostartPlayers)
+            {
+                if (_players.TryGetValue(playerConfig.Name, out var context))
+                {
+                    // Queue for reconnection if player is in error state and never connected
+                    if (context.State == PlayerState.Error && context.ConnectedAt == null)
+                    {
+                        _logger.LogWarning(
+                            "Player '{PlayerName}' failed to connect during autostart (mDNS discovery failed), queuing for reconnection",
+                            playerConfig.Name);
+                        QueueForReconnection(playerConfig, isInitialFailure: true);
+                    }
+                }
+            }
+        }
+
         // Start the background reconnection task
         _reconnectionCts = new CancellationTokenSource();
         _reconnectionTask = ProcessReconnectionsAsync(_reconnectionCts.Token);
