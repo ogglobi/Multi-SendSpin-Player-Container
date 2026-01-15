@@ -488,6 +488,31 @@ async function setVolume(name, volume) {
  * Set the hardware volume limit for a player's audio device.
  * This controls the PulseAudio sink volume (physical output level).
  */
+async function setStartupVolume(name, volume) {
+    try {
+        const response = await fetch(`./api/players/${encodeURIComponent(name)}/startup-volume`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ volume: parseInt(volume) })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to set startup volume');
+        }
+
+        // Update local state
+        if (players[name]) {
+            players[name].startupVolume = parseInt(volume);
+        }
+
+        showAlert(`Startup volume set to ${volume}% (takes effect on next restart)`, 'success', 2000);
+    } catch (error) {
+        console.error('Error setting startup volume:', error);
+        showAlert(error.message, 'danger');
+    }
+}
+
 async function setHardwareVolumeLimit(name, maxVolume) {
     try {
         const response = await fetch(`./api/players/${encodeURIComponent(name)}/hardware-volume`, {
@@ -733,9 +758,13 @@ function renderPlayers() {
                             <small class="text-muted ms-2">${escapeHtml(getDeviceDisplayName(player.device))}</small>
                         </div>
 
-                        <div class="volume-control">
+                        <div class="volume-control mb-3">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="fas fa-volume-up me-1"></i>
+                                <span class="small fw-semibold">Runtime Volume</span>
+                                <i class="fas fa-info-circle ms-1 text-muted small" title="Current volume (synced with Music Assistant)"></i>
+                            </div>
                             <div class="d-flex align-items-center">
-                                <i class="fas fa-volume-down me-2"></i>
                                 <input type="range" class="form-range flex-grow-1" min="0" max="100" value="${player.volume}"
                                     onchange="setVolume('${escapeHtml(name)}', this.value)"
                                     oninput="this.nextElementSibling.textContent = this.value + '%'">
@@ -743,7 +772,22 @@ function renderPlayers() {
                             </div>
                         </div>
 
-                        <div class="hardware-volume-section mt-3 pt-2 border-top">
+                        <div class="startup-volume-section mb-3 pt-2 border-top">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="fas fa-power-off me-1 text-muted small"></i>
+                                <span class="small text-muted">Startup Volume</span>
+                                <i class="fas fa-info-circle ms-1 text-muted small" title="Initial volume announced on connection (container restart, player restart)"></i>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <input type="range" class="form-range form-range-sm flex-grow-1" min="0" max="100"
+                                       value="${player.startupVolume || player.volume}"
+                                       onchange="setStartupVolume('${escapeHtml(name)}', this.value)"
+                                       oninput="this.nextElementSibling.textContent = this.value + '%'">
+                                <span class="volume-display ms-2 small">${player.startupVolume || player.volume}%</span>
+                            </div>
+                        </div>
+
+                        <div class="hardware-volume-section pt-2 border-top">
                             <div class="d-flex align-items-center mb-1">
                                 <i class="fas fa-cog me-1 text-muted small"></i>
                                 <span class="small text-muted">Hardware Volume</span>

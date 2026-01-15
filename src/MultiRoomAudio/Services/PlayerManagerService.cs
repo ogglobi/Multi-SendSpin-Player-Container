@@ -822,13 +822,15 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     : "Player not running. Device may be unavailable or misconfigured.";
 
                 // Return a placeholder response so user can edit/reconfigure it
+                var volume = config.Volume ?? 100;
                 responses.Add(new PlayerResponse(
                     Name: name,
                     State: state,
                     Device: config.Device,
                     ClientId: ClientIdGenerator.Generate(name),
                     ServerUrl: config.Server,
-                    Volume: config.Volume ?? 100,
+                    Volume: volume,
+                    StartupVolume: volume, // For non-running players, startup volume = config volume
                     HardwareVolumeLimit: 80, // Default for non-running players
                     IsMuted: false,
                     DelayMs: config.DelayMs,
@@ -1550,38 +1552,14 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Update volume if changed
             if (serverVolume != context.Config.Volume)
             {
-                // Check if this is a spurious reset during track transition
-                // MA sometimes resets volume when starting new tracks - ignore these
-                // Only persist when player is in a stable state (Playing or Connected, not transitioning)
-                var isStable = context.State == PlayerState.Playing || context.State == PlayerState.Connected;
+                _logger.LogInformation("VOLUME [ServerSync] Player '{Name}': {OldVol}% -> {NewVol}%",
+                    name, context.Config.Volume, serverVolume);
 
-                _logger.LogInformation("VOLUME [ServerSync] Player '{Name}': {OldVol}% -> {NewVol}% (state={State}, persist={Persist})",
-                    name, context.Config.Volume, serverVolume, context.State, isStable);
-
-                // Always update runtime config (affects current playback)
+                // Update runtime config only (affects current playback)
+                // DO NOT persist to config file - MA has its own volume database
+                // If we persist, we create a fight between our config and MA's database
+                // The config file volume is only the INITIAL volume sent on connection
                 context.Config.Volume = serverVolume;
-
-                // Only persist when player is in a stable state (not transitioning between tracks)
-                // This prevents MA's spurious resets during track changes from being saved
-                if (isStable && _config.Players.TryGetValue(name, out var persistedConfig))
-                {
-                    persistedConfig.Volume = serverVolume;
-                    try
-                    {
-                        _config.Save();
-                        _logger.LogDebug("VOLUME [Persist] Player '{Name}': saved {Volume}% to config",
-                            name, serverVolume);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to persist volume change for player '{Name}'", name);
-                    }
-                }
-                else if (!isStable)
-                {
-                    _logger.LogDebug("VOLUME [Skip Persist] Player '{Name}': skipped save during state={State}",
-                        name, context.State);
-                }
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
@@ -1645,13 +1623,19 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Check if player is pending reconnection
         var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
 
+        // Get startup volume from persisted config (not runtime config which changes with MA)
+        var startupVolume = _config.Players.TryGetValue(name, out var persistedConfig)
+            ? persistedConfig.Volume ?? 100
+            : context.Config.Volume;
+
         return new PlayerResponse(
             Name: name,
             State: context.State,
             Device: context.Config.DeviceId,
             ClientId: context.Capabilities.ClientId,
             ServerUrl: context.Config.ServerUrl,
-            Volume: context.Config.Volume,
+            Volume: context.Config.Volume, // Runtime volume (synced with MA)
+            StartupVolume: startupVolume,   // Startup volume (from persisted config)
             HardwareVolumeLimit: context.Config.HardwareVolumeLimit,
             IsMuted: context.Player.IsMuted,
             DelayMs: context.Config.DelayMs,
