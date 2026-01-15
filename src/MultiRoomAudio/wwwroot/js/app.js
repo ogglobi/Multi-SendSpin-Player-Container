@@ -1843,7 +1843,7 @@ function renderSoundCards() {
 
                     <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
                         <div class="d-flex align-items-center gap-2">
-                            <button class="btn btn-link p-0 card-mute-toggle"
+                            <button class="btn card-mute-toggle"
                                     title="${escapeHtml(muteState.label)}"
                                     aria-label="${escapeHtml(muteState.label)}"
                                     onclick="setSoundCardMute('${escapeHtml(card.name)}', ${!muteState.isMuted}, ${card.index})">
