@@ -1,14 +1,20 @@
 # Multi-Room Audio Controller
 
+<!-- markdownlint-disable MD033 -->
 <p align="center">
   <img src="multiroom.jpg" alt="Multi-Room Audio Controller" width="400">
 </p>
+<!-- markdownlint-enable MD033 -->
 
 ## The Core Concept
 
 **One server. Multiple audio outputs. Whole-home audio with Music Assistant.**
 
 This project enables you to run a single centralized server (like a NAS, Raspberry Pi, or any Docker host) with multiple USB DACs or audio devices connected, creating independent audio zones throughout your home. Instead of buying expensive multi-room audio hardware, connect affordable USB DACs to a central machine and stream synchronized audio to every room.
+
+<!-- markdownlint-disable MD033 -->
+<div align="center">
+<!-- markdownlint-enable MD033 -->
 
 ```text
 ┌────────────────────────────────────────────────────────────────┐
@@ -32,6 +38,8 @@ This project enables you to run a single centralized server (like a NAS, Raspber
        │Speakers │   │Speakers │   │Speakers │
        └─────────┘   └─────────┘   └─────────┘
 ```
+
+</div>
 
 ![Multi-Room Audio Controller](https://img.shields.io/badge/Multi--Room-Audio%20Controller-blue?style=for-the-badge&logo=music)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker)
@@ -71,7 +79,7 @@ This project enables you to run a single centralized server (like a NAS, Raspber
 
 ## Docker Hub Images
 
-**Ready-to-deploy images available at**: https://hub.docker.com/r/chrisuthe/squeezelitemultiroom
+**Ready-to-deploy images available at**: `https://hub.docker.com/r/chrisuthe/squeezelitemultiroom`
 
 | Tag         | Description             | Use Case               |
 | ----------- | ----------------------- | ---------------------- |
@@ -292,7 +300,7 @@ For detailed license information, see [LICENSES.md](LICENSES.md).
 ## Support and Community
 
 - **Issues**: Report bugs and request features via [GitHub Issues](https://github.com/chrisuthe/squeezelite-docker/issues)
-- **Docker Hub**: Pre-built images at https://hub.docker.com/r/chrisuthe/squeezelitemultiroom
+- **Docker Hub**: Pre-built images at `https://hub.docker.com/r/chrisuthe/squeezelitemultiroom`
 - **Documentation**: [Wiki](https://github.com/chrisuthe/squeezelite-docker/wiki)
 
 ## About This Project
@@ -300,7 +308,8 @@ For detailed license information, see [LICENSES.md](LICENSES.md).
 This project was developed with the assistance of AI (Claude by Anthropic) via [Claude Code](https://claude.ai/code). A human provided direction, reviewed outputs, and made decisions, but the implementation was AI-assisted.
 
 ---
-
+<!-- markdownlint-disable MD036 -->
+<!-- markdownlint-disable MD033 -->
 <div align="center">
 
 **Transform your space into a connected audio experience**
@@ -311,3 +320,5 @@ This project was developed with the assistance of AI (Claude by Anthropic) via [
 [![GitHub](https://img.shields.io/badge/GitHub-Source%20Code-black?style=flat-square&logo=github)](https://github.com/chrisuthe/squeezelite-docker)
 
 </div>
+<!-- markdownlint-enable MD036 -->
+<!-- markdownlint-enable MD033 -->
