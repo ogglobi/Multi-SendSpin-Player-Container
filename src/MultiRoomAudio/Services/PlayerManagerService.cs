@@ -1420,6 +1420,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 _ => context.State
             };
 
+            // Push initial volume to server when connected
+            // This ensures MA shows the correct startup volume immediately
+            if (args.NewState == ConnectionState.Connected)
+            {
+                _ = PushVolumeToServerAsync(name, context);
+            }
+
             // Handle disconnection - queue for reconnection if appropriate
             if (args.NewState == ConnectionState.Disconnected &&
                 previousState != PlayerState.Stopped &&  // Not user-stopped
