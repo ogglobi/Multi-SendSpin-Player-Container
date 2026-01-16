@@ -2028,7 +2028,7 @@ async function setDeviceMaxVolume(cardName, maxVolume, cardIndex) {
 
     try {
         const volumeValue = parseInt(maxVolume);
-        const response = await fetch(`./api/devices/${encodeURIComponent(cardName)}/max-volume`, {
+        const response = await fetch(`./api/cards/${encodeURIComponent(cardName)}/max-volume`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ maxVolume: volumeValue })

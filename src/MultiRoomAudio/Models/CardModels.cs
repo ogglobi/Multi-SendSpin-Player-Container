@@ -42,7 +42,9 @@ public record PulseAudioCard(
     /// <summary>Boot mute preference if configured.</summary>
     bool? BootMuted = null,
     /// <summary>Whether the current mute state matches the boot preference.</summary>
-    bool BootMuteMatchesCurrent = false
+    bool BootMuteMatchesCurrent = false,
+    /// <summary>Maximum volume limit for the card's sinks (0-100), or null if no limit.</summary>
+    int? MaxVolume = null
 );
 
 /// <summary>
@@ -141,4 +143,25 @@ public record CardBootMuteResponse(
     string Message,
     string? CardName = null,
     bool? BootMuted = null
+);
+
+/// <summary>
+/// Request to set a card's maximum volume limit.
+/// </summary>
+public class SetCardMaxVolumeRequest
+{
+    /// <summary>
+    /// Maximum volume limit (0-100), or null to clear the limit.
+    /// </summary>
+    public int? MaxVolume { get; set; }
+}
+
+/// <summary>
+/// Response for card max volume operations.
+/// </summary>
+public record CardMaxVolumeResponse(
+    bool Success,
+    string Message,
+    string? CardName = null,
+    int? MaxVolume = null
 );

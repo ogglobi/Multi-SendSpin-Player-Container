@@ -193,6 +193,35 @@ public static class CardsEndpoint
         .WithName("SetCardMute")
         .WithDescription("Mute or unmute a sound card in real-time without changing boot preference");
 
+        // PUT /api/cards/{nameOrIndex}/max-volume - Set maximum volume limit
+        group.MapPut("/{nameOrIndex}/max-volume", async (
+            string nameOrIndex,
+            SetCardMaxVolumeRequest request,
+            CardProfileService service,
+            ILoggerFactory lf) =>
+        {
+            var logger = lf.CreateLogger("CardsEndpoint");
+            logger.LogDebug("API: PUT /api/cards/{CardId}/max-volume to {MaxVolume}", nameOrIndex, request.MaxVolume);
+
+            var result = await service.SetCardMaxVolumeAsync(nameOrIndex, request.MaxVolume);
+            if (!result.Success)
+            {
+                if (result.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.NotFound(new ErrorResponse(false, result.Message));
+                }
+
+                return Results.Problem(
+                    detail: result.Message,
+                    statusCode: 500,
+                    title: "Failed to set max volume");
+            }
+
+            return Results.Ok(result);
+        })
+        .WithName("SetCardMaxVolume")
+        .WithDescription("Set the maximum volume limit for a sound card's sinks");
+
         // DELETE /api/cards/{nameOrIndex}/saved - Remove saved profile for a card
         group.MapDelete("/{nameOrIndex}/saved", (
             string nameOrIndex,
