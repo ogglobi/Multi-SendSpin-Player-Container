@@ -4,6 +4,7 @@
 let players = {};
 let devices = [];
 let connection = null;
+let currentBuildVersion = null; // Stored build version for comparison
 
 function formatBuildVersion(apiInfo) {
     const version = apiInfo?.version;
@@ -32,12 +33,48 @@ async function refreshBuildInfo() {
         if (!response.ok) throw new Error('Failed to fetch build info');
 
         const data = await response.json();
-        buildVersion.textContent = formatBuildVersion(data);
+        const formattedVersion = formatBuildVersion(data);
+        buildVersion.textContent = formattedVersion;
         buildVersion.title = data?.build ? `Full build: ${data.build}` : '';
+
+        // Store the full build string for version comparison
+        if (currentBuildVersion === null) {
+            // First load - store the version
+            currentBuildVersion = data?.build || formattedVersion;
+            console.log('Initial build version:', currentBuildVersion);
+        }
     } catch (error) {
         console.error('Error fetching build info:', error);
         buildVersion.textContent = 'unknown';
         buildVersion.title = '';
+    }
+}
+
+/**
+ * Checks if the backend version has changed and reloads the page if needed.
+ * Called on SignalR reconnect and periodically as a fallback.
+ */
+async function checkVersionAndReload() {
+    try {
+        const response = await fetch('./api');
+        if (!response.ok) return; // Silently fail - backend might be starting
+
+        const data = await response.json();
+        const serverVersion = data?.build || formatBuildVersion(data);
+
+        // If we have a stored version and it differs from server, reload
+        if (currentBuildVersion !== null && currentBuildVersion !== serverVersion) {
+            console.log(`Version changed: ${currentBuildVersion} → ${serverVersion}. Reloading page...`);
+            showAlert('Backend updated - reloading page...', 'info', 2000);
+
+            // Wait 2 seconds to show the alert, then reload
+            setTimeout(() => {
+                window.location.reload(true); // Hard reload (bypass cache)
+            }, 2000);
+        }
+    } catch (error) {
+        // Silently fail - backend might be restarting
+        console.debug('Version check failed (backend might be restarting):', error);
     }
 }
 
@@ -119,6 +156,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Poll for status updates as fallback
     setInterval(refreshStatus, 5000);
+
+    // Periodic version check (every 30 seconds) as fallback
+    setInterval(checkVersionAndReload, 30000);
 });
 
 // SignalR setup
@@ -158,6 +198,9 @@ function setupSignalR() {
     connection.onreconnected(() => {
         statusBadge.textContent = 'Connected';
         statusBadge.className = 'badge bg-success me-2';
+
+        // Check if backend version changed after reconnection
+        checkVersionAndReload();
     });
 
     connection.onclose(() => {
