@@ -125,6 +125,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<CustomSinksService
 builder.Services.AddSingleton<PlayerManagerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PlayerManagerService>());
 
+// 4. TriggerService - 12V relay trigger control (depends on sinks for mapping)
+builder.Services.AddSingleton<TriggerService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TriggerService>());
+
 // Static files are served via UseStaticFiles() middleware below
 
 // Configure Kestrel to listen on port 8096 (or PORT env var)
@@ -217,6 +221,7 @@ app.MapSinksEndpoints();
 app.MapOnboardingEndpoints();
 app.MapCardsEndpoints();
 app.MapLogsEndpoints();
+app.MapTriggersEndpoints();
 
 // Root endpoint redirects to index.html or shows API info
 app.MapGet("/api", () => Results.Ok(new
@@ -234,6 +239,7 @@ app.MapGet("/api", () => Results.Ok(new
         sinks = "/api/sinks",
         cards = "/api/cards",
         logs = "/api/logs",
+        triggers = "/api/triggers",
         swagger = "/docs"
     }
 }))

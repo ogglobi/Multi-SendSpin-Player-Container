@@ -2588,3 +2588,340 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ============================================
+// 12V TRIGGERS CONFIGURATION
+// ============================================
+
+let triggersModal = null;
+let triggersData = null;
+let customSinksList = [];
+
+// Open the triggers configuration modal
+async function openTriggersModal() {
+    if (!triggersModal) {
+        triggersModal = new bootstrap.Modal(document.getElementById('triggersModal'));
+    }
+
+    triggersModal.show();
+    await loadTriggers();
+}
+
+// Load triggers status and custom sinks from API
+async function loadTriggers() {
+    const container = document.getElementById('triggersContainer');
+    container.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2 text-muted">Loading triggers...</p>
+        </div>
+    `;
+
+    try {
+        // Load triggers and custom sinks in parallel
+        const [triggersResponse, sinksResponse] = await Promise.all([
+            fetch('./api/triggers'),
+            fetch('./api/sinks')
+        ]);
+
+        if (!triggersResponse.ok) {
+            throw new Error('Failed to load triggers');
+        }
+        if (!sinksResponse.ok) {
+            throw new Error('Failed to load custom sinks');
+        }
+
+        triggersData = await triggersResponse.json();
+        const sinksData = await sinksResponse.json();
+        customSinksList = sinksData.sinks || [];
+
+        renderTriggers();
+    } catch (error) {
+        console.error('Error loading triggers:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Failed to load triggers: ${escapeHtml(error.message)}
+            </div>
+        `;
+    }
+}
+
+// Render triggers list
+function renderTriggers() {
+    const container = document.getElementById('triggersContainer');
+    const enabledCheckbox = document.getElementById('triggersEnabled');
+    const statusBadge = document.getElementById('triggersStatus');
+    const deviceInfo = document.getElementById('triggersDeviceInfo');
+    const deviceText = document.getElementById('triggersDeviceText');
+    const errorDiv = document.getElementById('triggersError');
+    const errorText = document.getElementById('triggersErrorText');
+
+    if (!triggersData) {
+        container.innerHTML = '<div class="text-center py-4 text-muted">No trigger data available</div>';
+        return;
+    }
+
+    // Update header state
+    enabledCheckbox.checked = triggersData.enabled;
+
+    // Update status badge
+    const stateColors = {
+        'Disabled': 'bg-secondary',
+        'Disconnected': 'bg-warning',
+        'Connected': 'bg-success',
+        'Error': 'bg-danger'
+    };
+    statusBadge.className = `badge ${stateColors[triggersData.state] || 'bg-secondary'}`;
+    statusBadge.textContent = triggersData.state;
+
+    // Show/hide device info
+    if (triggersData.enabled) {
+        deviceInfo.classList.remove('d-none');
+        if (triggersData.state === 'Connected') {
+            deviceText.textContent = triggersData.ftdiSerialNumber
+                ? `Connected (SN: ${triggersData.ftdiSerialNumber})`
+                : 'Connected';
+        } else {
+            deviceText.textContent = 'Not connected';
+        }
+    } else {
+        deviceInfo.classList.add('d-none');
+    }
+
+    // Show/hide error
+    if (triggersData.errorMessage) {
+        errorDiv.classList.remove('d-none');
+        errorText.textContent = triggersData.errorMessage;
+    } else {
+        errorDiv.classList.add('d-none');
+    }
+
+    // Build sink options
+    const sinkOptions = customSinksList.map(sink =>
+        `<option value="${escapeHtml(sink.name)}">${escapeHtml(sink.description || sink.name)}</option>`
+    ).join('');
+
+    // Render trigger channels
+    const triggersHtml = triggersData.triggers.map(trigger => {
+        const relayStateIcon = trigger.relayState === 'On'
+            ? '<i class="fas fa-circle text-success" title="Relay ON"></i>'
+            : trigger.relayState === 'Off'
+                ? '<i class="fas fa-circle text-secondary" title="Relay OFF"></i>'
+                : '<i class="fas fa-circle text-muted" title="Unknown"></i>';
+
+        const isActive = trigger.isActive
+            ? '<span class="badge bg-success ms-2">Active</span>'
+            : '';
+
+        const selectedSink = trigger.customSinkName || '';
+
+        return `
+            <div class="card mb-2" id="trigger-card-${trigger.channel}">
+                <div class="card-body py-2">
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <span class="badge bg-primary">CH ${trigger.channel}</span>
+                            ${relayStateIcon}
+                            ${isActive}
+                        </div>
+                        <div class="col">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-5">
+                                    <select class="form-select form-select-sm"
+                                            id="trigger-sink-${trigger.channel}"
+                                            onchange="updateTriggerSink(${trigger.channel}, this.value)"
+                                            ${!triggersData.enabled ? 'disabled' : ''}>
+                                        <option value="">Not assigned</option>
+                                        ${sinkOptions}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">Off delay</span>
+                                        <input type="number" class="form-control"
+                                               id="trigger-delay-${trigger.channel}"
+                                               value="${trigger.offDelaySeconds}"
+                                               min="0" max="3600" step="1"
+                                               onchange="updateTriggerDelay(${trigger.channel}, this.value)"
+                                               ${!triggersData.enabled ? 'disabled' : ''}>
+                                        <span class="input-group-text">s</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="testTrigger(${trigger.channel}, true)"
+                                            title="Test relay ON"
+                                            ${!triggersData.enabled || triggersData.state !== 'Connected' ? 'disabled' : ''}>
+                                        <i class="fas fa-power-off"></i> On
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            onclick="testTrigger(${trigger.channel}, false)"
+                                            title="Test relay OFF"
+                                            ${!triggersData.enabled || triggersData.state !== 'Connected' ? 'disabled' : ''}>
+                                        <i class="fas fa-power-off"></i> Off
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = triggersHtml;
+
+    // Set selected values for sink dropdowns
+    triggersData.triggers.forEach(trigger => {
+        const select = document.getElementById(`trigger-sink-${trigger.channel}`);
+        if (select && trigger.customSinkName) {
+            select.value = trigger.customSinkName;
+        }
+    });
+}
+
+// Toggle triggers enabled
+async function toggleTriggersEnabled(enabled) {
+    try {
+        const response = await fetch('./api/triggers/enabled', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update triggers');
+        }
+
+        triggersData = await response.json();
+        renderTriggers();
+        showAlert(`12V triggers ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    } catch (error) {
+        console.error('Error toggling triggers:', error);
+        showAlert(`Failed to ${enabled ? 'enable' : 'disable'} triggers: ${error.message}`, 'danger');
+        // Revert checkbox
+        document.getElementById('triggersEnabled').checked = !enabled;
+    }
+}
+
+// Update trigger sink assignment
+async function updateTriggerSink(channel, sinkName) {
+    const delayInput = document.getElementById(`trigger-delay-${channel}`);
+    const delay = delayInput ? parseInt(delayInput.value, 10) : 60;
+
+    try {
+        const response = await fetch(`./api/triggers/${channel}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel,
+                customSinkName: sinkName || null,
+                offDelaySeconds: delay
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update trigger');
+        }
+
+        // Update local data
+        const trigger = triggersData.triggers.find(t => t.channel === channel);
+        if (trigger) {
+            trigger.customSinkName = sinkName || null;
+        }
+
+        showAlert(`Trigger ${channel} updated`, 'success', 2000);
+    } catch (error) {
+        console.error('Error updating trigger:', error);
+        showAlert(`Failed to update trigger: ${error.message}`, 'danger');
+    }
+}
+
+// Update trigger off delay
+async function updateTriggerDelay(channel, delay) {
+    const sinkSelect = document.getElementById(`trigger-sink-${channel}`);
+    const sinkName = sinkSelect ? sinkSelect.value : null;
+
+    try {
+        const response = await fetch(`./api/triggers/${channel}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel,
+                customSinkName: sinkName || null,
+                offDelaySeconds: parseInt(delay, 10)
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update trigger');
+        }
+
+        // Update local data
+        const trigger = triggersData.triggers.find(t => t.channel === channel);
+        if (trigger) {
+            trigger.offDelaySeconds = parseInt(delay, 10);
+        }
+
+        showAlert(`Trigger ${channel} delay updated`, 'success', 2000);
+    } catch (error) {
+        console.error('Error updating trigger delay:', error);
+        showAlert(`Failed to update trigger: ${error.message}`, 'danger');
+    }
+}
+
+// Test a trigger relay
+async function testTrigger(channel, on) {
+    try {
+        const response = await fetch(`./api/triggers/${channel}/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel, on })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to test relay');
+        }
+
+        showAlert(`Relay ${channel} turned ${on ? 'ON' : 'OFF'}`, 'success', 2000);
+
+        // Refresh to show updated state
+        await loadTriggers();
+    } catch (error) {
+        console.error('Error testing trigger:', error);
+        showAlert(`Failed to test relay: ${error.message}`, 'danger');
+    }
+}
+
+// Reconnect to trigger board
+async function reconnectTriggerBoard() {
+    try {
+        const response = await fetch('./api/triggers/reconnect', {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to reconnect');
+        }
+
+        triggersData = await response.json();
+        renderTriggers();
+
+        if (triggersData.state === 'Connected') {
+            showAlert('Reconnected to relay board', 'success');
+        } else {
+            showAlert('Reconnection failed: ' + (triggersData.errorMessage || 'Unknown error'), 'warning');
+        }
+    } catch (error) {
+        console.error('Error reconnecting:', error);
+        showAlert(`Failed to reconnect: ${error.message}`, 'danger');
+    }
+}

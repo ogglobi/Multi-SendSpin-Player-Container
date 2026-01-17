@@ -52,6 +52,9 @@
                             <li><a class="dropdown-item" href="#" onclick="openCustomSinksModal(); return false;">
                                 <i class="fas fa-layer-group me-2"></i>Custom Sinks
                             </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="openTriggersModal(); return false;">
+                                <i class="fas fa-bolt me-2"></i>12V Triggers
+                            </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" onclick="runSetupWizard(); return false;">
                                 <i class="fas fa-magic me-2"></i>Run Setup Wizard
@@ -478,6 +481,60 @@
                                 <span class="visually-hidden">Loading...</span>
                             </div>
                             <p class="mt-2 text-muted">Loading sinks...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 12V Triggers Modal -->
+    <div class="modal fade" id="triggersModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-bolt me-2"></i>12V Trigger Control</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">
+                        Control 12V trigger outputs to automatically power on amplifier zones when audio plays.
+                        Each trigger can be mapped to a custom sink.
+                    </p>
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="triggersEnabled"
+                                           onchange="toggleTriggersEnabled(this.checked)">
+                                    <label class="form-check-label fw-bold" for="triggersEnabled">
+                                        Enable Custom Sink Relay Control
+                                    </label>
+                                </div>
+                                <span id="triggersStatus" class="badge bg-secondary">Disabled</span>
+                            </div>
+                            <div id="triggersDeviceInfo" class="small text-muted d-none">
+                                <i class="fas fa-usb me-1"></i>
+                                <span id="triggersDeviceText">Not connected</span>
+                                <button class="btn btn-link btn-sm p-0 ms-2" onclick="reconnectTriggerBoard()">
+                                    <i class="fas fa-sync-alt"></i> Reconnect
+                                </button>
+                            </div>
+                            <div id="triggersError" class="alert alert-warning mt-2 mb-0 d-none">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <span id="triggersErrorText"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="triggersContainer">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading triggers...</p>
                         </div>
                     </div>
                 </div>
