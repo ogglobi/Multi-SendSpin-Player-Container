@@ -2597,15 +2597,46 @@ let triggersModal = null;
 let triggersData = null;
 let customSinksList = [];
 let ftdiDevicesData = null;
+let triggersRefreshInterval = null;
 
 // Open the triggers configuration modal
 async function openTriggersModal() {
     if (!triggersModal) {
         triggersModal = new bootstrap.Modal(document.getElementById('triggersModal'));
+
+        // Set up auto-refresh when modal is shown/hidden
+        document.getElementById('triggersModal').addEventListener('shown.bs.modal', () => {
+            // Start polling every 2 seconds while modal is open
+            triggersRefreshInterval = setInterval(refreshTriggersState, 2000);
+        });
+        document.getElementById('triggersModal').addEventListener('hidden.bs.modal', () => {
+            // Stop polling when modal is closed
+            if (triggersRefreshInterval) {
+                clearInterval(triggersRefreshInterval);
+                triggersRefreshInterval = null;
+            }
+        });
     }
 
     triggersModal.show();
     await loadTriggers();
+}
+
+// Refresh only the trigger states (lightweight update without full reload)
+async function refreshTriggersState() {
+    try {
+        const response = await fetch('./api/triggers');
+        if (response.ok) {
+            const newData = await response.json();
+            // Only update if data changed to avoid unnecessary DOM updates
+            if (JSON.stringify(newData.triggers) !== JSON.stringify(triggersData?.triggers)) {
+                triggersData = newData;
+                renderTriggers();
+            }
+        }
+    } catch (error) {
+        console.debug('Error refreshing triggers state:', error);
+    }
 }
 
 // Load triggers status and custom sinks from API
@@ -2747,74 +2778,123 @@ function renderTriggers() {
     const controlsDisabled = noHardware || !triggersData.enabled;
     const testButtonsDisabled = noHardware || !triggersData.enabled || triggersData.state !== 'Connected';
 
-    // Render trigger channels
-    const triggersHtml = triggersData.triggers.map(trigger => {
-        const relayStateIcon = trigger.relayState === 'On'
-            ? '<i class="fas fa-circle text-success" title="Relay ON"></i>'
-            : trigger.relayState === 'Off'
-                ? '<i class="fas fa-circle text-secondary" title="Relay OFF"></i>'
-                : '<i class="fas fa-circle text-muted" title="Unknown"></i>';
+    // Use a table for proper column alignment
+    const rowClass = noHardware ? 'opacity-50' : '';
 
-        const isActive = trigger.isActive
-            ? '<span class="badge bg-success ms-2">Active</span>'
-            : '';
+    const triggersHtml = `
+        <style>
+            .triggers-table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0 0.5rem;
+            }
+            .triggers-table th {
+                font-weight: 600;
+                font-size: 0.875rem;
+                color: var(--bs-secondary-color);
+                padding: 0 0.75rem 0.5rem 0.75rem;
+                border-bottom: 1px solid var(--bs-border-color);
+                white-space: nowrap;
+            }
+            .triggers-table td {
+                padding: 0.5rem 0.75rem;
+                vertical-align: middle;
+            }
+            .triggers-table tbody tr {
+                background: var(--bs-tertiary-bg);
+                border-radius: 0.375rem;
+            }
+            .triggers-table tbody tr td:first-child {
+                border-radius: 0.375rem 0 0 0.375rem;
+            }
+            .triggers-table tbody tr td:last-child {
+                border-radius: 0 0.375rem 0.375rem 0;
+            }
+            @media (max-width: 768px) {
+                .triggers-table thead { display: none; }
+                .triggers-table, .triggers-table tbody, .triggers-table tr, .triggers-table td {
+                    display: block;
+                    width: 100%;
+                }
+                .triggers-table tr {
+                    margin-bottom: 0.5rem;
+                    padding: 0.5rem;
+                    border-radius: 0.375rem;
+                }
+                .triggers-table td {
+                    padding: 0.25rem 0;
+                    border-radius: 0 !important;
+                }
+                .triggers-table td:last-child { text-align: left !important; }
+            }
+        </style>
+        <table class="triggers-table">
+            <thead>
+                <tr>
+                    <th>Relay Channel</th>
+                    <th>Sink</th>
+                    <th>Off Delay (s)</th>
+                    <th class="text-end">Manual Control</th>
+                </tr>
+            </thead>
+            <tbody class="${rowClass}">
+                ${triggersData.triggers.map(trigger => {
+                    // Both the status badge and buttons should reflect the actual relay state
+                    const isOn = trigger.relayState === 'On';
+                    const activeStatus = isOn
+                        ? '<span class="badge bg-success ms-1">Active</span>'
+                        : '<span class="badge bg-secondary ms-1">Inactive</span>';
 
-        const selectedSink = trigger.customSinkName || '';
-        const cardClass = noHardware ? 'card mb-2 opacity-50' : 'card mb-2';
+                    // Style the On/Off buttons based on relay state
+                    const onBtnClass = isOn ? 'btn btn-success btn-sm' : 'btn btn-outline-secondary btn-sm';
+                    const offBtnClass = !isOn && trigger.relayState === 'Off' ? 'btn btn-secondary btn-sm' : 'btn btn-outline-secondary btn-sm';
 
-        return `
-            <div class="${cardClass}" id="trigger-card-${trigger.channel}">
-                <div class="card-body py-2">
-                    <div class="row align-items-center">
-                        <div class="col-auto">
-                            <span class="badge bg-primary">CH ${trigger.channel}</span>
-                            ${relayStateIcon}
-                            ${isActive}
-                        </div>
-                        <div class="col">
-                            <div class="row g-2 align-items-center">
-                                <div class="col-md-5">
-                                    <select class="form-select form-select-sm"
-                                            id="trigger-sink-${trigger.channel}"
-                                            onchange="updateTriggerSink(${trigger.channel}, this.value)"
-                                            ${controlsDisabled ? 'disabled' : ''}>
-                                        <option value="">Not assigned</option>
-                                        ${sinkOptions}
-                                    </select>
+                    return `
+                        <tr id="trigger-row-${trigger.channel}">
+                            <td>
+                                <span class="badge bg-primary">CH ${trigger.channel}</span>
+                                ${activeStatus}
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm"
+                                        id="trigger-sink-${trigger.channel}"
+                                        onchange="updateTriggerSink(${trigger.channel}, this.value)"
+                                        ${controlsDisabled ? 'disabled' : ''}>
+                                    <option value="">Not assigned</option>
+                                    ${sinkOptions}
+                                </select>
+                            </td>
+                            <td>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control"
+                                           id="trigger-delay-${trigger.channel}"
+                                           value="${trigger.offDelaySeconds}"
+                                           min="0" max="3600" step="1"
+                                           onchange="updateTriggerDelay(${trigger.channel}, this.value)"
+                                           ${controlsDisabled ? 'disabled' : ''}>
+                                    <span class="input-group-text">s</span>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text">Off delay</span>
-                                        <input type="number" class="form-control"
-                                               id="trigger-delay-${trigger.channel}"
-                                               value="${trigger.offDelaySeconds}"
-                                               min="0" max="3600" step="1"
-                                               onchange="updateTriggerDelay(${trigger.channel}, this.value)"
-                                               ${controlsDisabled ? 'disabled' : ''}>
-                                        <span class="input-group-text">s</span>
-                                    </div>
-                                </div>
-                                <div class="col-md-3 text-end">
-                                    <button class="btn btn-outline-secondary btn-sm"
-                                            onclick="testTrigger(${trigger.channel}, true)"
-                                            title="Test relay ON"
-                                            ${testButtonsDisabled ? 'disabled' : ''}>
-                                        <i class="fas fa-power-off"></i> On
-                                    </button>
-                                    <button class="btn btn-outline-secondary btn-sm"
-                                            onclick="testTrigger(${trigger.channel}, false)"
-                                            title="Test relay OFF"
-                                            ${testButtonsDisabled ? 'disabled' : ''}>
-                                        <i class="fas fa-power-off"></i> Off
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+                            </td>
+                            <td class="text-end">
+                                <button class="${onBtnClass}"
+                                        onclick="testTrigger(${trigger.channel}, true)"
+                                        title="Turn relay ON"
+                                        ${testButtonsDisabled ? 'disabled' : ''}>
+                                    <i class="fas fa-power-off"></i> On
+                                </button>
+                                <button class="${offBtnClass}"
+                                        onclick="testTrigger(${trigger.channel}, false)"
+                                        title="Turn relay OFF"
+                                        ${testButtonsDisabled ? 'disabled' : ''}>
+                                    <i class="fas fa-power-off"></i> Off
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
 
     container.innerHTML = triggersHtml;
 
