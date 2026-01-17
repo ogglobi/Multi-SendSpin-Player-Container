@@ -389,13 +389,18 @@ const Wizard = {
             const activeProfile = availableProfiles.find(p => p.name === card.activeProfile);
             const activeDesc = activeProfile?.description || card.activeProfile;
 
+            // Get bus type icon for the card
+            const busType = getCardBusType(card.name, card.activeProfile);
+            const busIcon = getBusTypeIcon(busType);
+            const busLabel = getBusTypeLabel(busType);
+
             return `
                 <div class="card mb-3" id="card-${card.index}">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
                                 <h6 class="mb-1">
-                                    <i class="fas fa-sd-card text-primary me-2"></i>
+                                    <i class="${busIcon} text-primary me-2" title="${busLabel}"></i>
                                     ${escapeHtml(card.description || card.name)}
                                 </h6>
                                 <small class="text-muted">${escapeHtml(card.driver)}</small>

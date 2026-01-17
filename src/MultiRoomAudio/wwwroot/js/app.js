@@ -127,6 +127,97 @@ function formatChannelName(channel) {
     return map[channel?.toLowerCase()] || channel || 'Unknown';
 }
 
+/**
+ * Determines the connection type of an audio device from its identifiers and ID.
+ * Uses device.bus_path (sysfs path) and device ID for detection:
+ * - HDMI: device ID contains "hdmi" (HDMI audio output)
+ * - USB: bus_path contains "/usb"
+ * - PCI: bus_path contains "/pci" but NOT "/usb" (USB devices are on PCI USB controllers)
+ * - Bluetooth: device ID starts with "bluez_" (no sysfs bus_path)
+ * @param {object} device - Device object with id and identifiers properties
+ * @returns {string} 'hdmi', 'usb', 'pci', 'bluetooth', or 'unknown'
+ */
+function getDeviceBusType(device) {
+    if (!device) return 'unknown';
+
+    const deviceId = device.id || '';
+
+    // Check for HDMI first (HDMI devices are on PCI but should show HDMI icon)
+    if (deviceId.toLowerCase().includes('hdmi')) return 'hdmi';
+
+    // Check for Bluetooth (bluez devices don't have sysfs bus_path)
+    if (deviceId.startsWith('bluez_')) return 'bluetooth';
+
+    // Check bus_path from identifiers (most reliable for USB vs PCI)
+    const busPath = device.identifiers?.busPath;
+    if (busPath) {
+        if (busPath.includes('/usb')) return 'usb';
+        if (busPath.includes('/pci')) return 'pci';
+    }
+
+    // Fallback: Check device ID patterns for USB/PCI
+    if (deviceId.includes('.usb-')) return 'usb';
+    if (deviceId.includes('.pci-')) return 'pci';
+
+    return 'unknown';
+}
+
+/**
+ * Determines the connection type of a sound card from its name and active profile.
+ * Card names follow PulseAudio naming conventions:
+ * - HDMI: active profile contains "hdmi" (HDMI-only cards like GPU audio)
+ * - USB: "alsa_card.usb-..."
+ * - PCI: "alsa_card.pci-..."
+ * - Bluetooth: "bluez_card.XX_XX_XX..."
+ * @param {string} cardName - The card name from PulseAudio
+ * @param {string} [activeProfile] - Optional active profile name for HDMI detection
+ * @returns {string} 'hdmi', 'usb', 'pci', 'bluetooth', or 'unknown'
+ */
+function getCardBusType(cardName, activeProfile) {
+    if (!cardName) return 'unknown';
+    if (cardName.startsWith('bluez_')) return 'bluetooth';
+    if (cardName.includes('.usb-')) return 'usb';
+    if (cardName.includes('.pci-')) {
+        // Check if this is an HDMI-only card (like GPU audio)
+        // by checking if the active profile is HDMI
+        if (activeProfile && activeProfile.toLowerCase().includes('hdmi')) {
+            return 'hdmi';
+        }
+        return 'pci';
+    }
+    return 'unknown';
+}
+
+/**
+ * Gets the appropriate Font Awesome icon class for a connection type.
+ * @param {string} busType - The connection type ('hdmi', 'usb', 'pci', 'bluetooth', or 'unknown')
+ * @returns {string} Font Awesome icon class
+ */
+function getBusTypeIcon(busType) {
+    switch (busType) {
+        case 'bluetooth': return 'fab fa-bluetooth-b';
+        case 'usb': return 'fab fa-usb';
+        case 'hdmi': return 'fas fa-tv';  // TV/monitor icon for HDMI
+        case 'pci': return 'fas fa-microchip';
+        default: return 'fas fa-volume-up';
+    }
+}
+
+/**
+ * Gets a human-readable label for a connection type.
+ * @param {string} busType - The connection type ('hdmi', 'usb', 'pci', 'bluetooth', or 'unknown')
+ * @returns {string} Human-readable connection type label
+ */
+function getBusTypeLabel(busType) {
+    switch (busType) {
+        case 'bluetooth': return 'Bluetooth';
+        case 'usb': return 'USB';
+        case 'hdmi': return 'HDMI';
+        case 'pci': return 'PCI/Internal';
+        default: return 'Audio';
+    }
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
     // Load initial data
@@ -1975,13 +2066,17 @@ function renderSoundCards() {
             ? (card.bootMuted ? 'muted' : 'unmuted')
             : 'unset';
 
+        const busType = getCardBusType(card.name, card.activeProfile);
+        const busIcon = getBusTypeIcon(busType);
+        const busLabel = getBusTypeLabel(busType);
+
         return `
             <div class="card mb-3" id="settings-card-${card.index}">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
                             <h6 class="mb-1">
-                                <i class="fas fa-sd-card text-primary me-2"></i>
+                                <i class="${busIcon} text-primary me-2" title="${busLabel}"></i>
                                 ${escapeHtml(card.description || card.name)}
                             </h6>
                             <small class="text-muted">${escapeHtml(card.driver)}</small>
