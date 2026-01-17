@@ -132,6 +132,7 @@ public static class SinksEndpoint
         group.MapDelete("/{name}", async (
             string name,
             CustomSinksService service,
+            TriggerService triggerService,
             ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
@@ -140,6 +141,9 @@ public static class SinksEndpoint
             var deleted = await service.DeleteSinkAsync(name, ct);
             if (!deleted)
                 return SinkNotFoundResult(name, logger, "delete");
+
+            // Notify trigger service to unassign any triggers using this sink
+            triggerService.OnSinkDeleted(name);
 
             logger.LogInformation("API: Sink {SinkName} deleted successfully", name);
             return Results.Ok(new SuccessResponse(true, $"Sink '{name}' deleted"));

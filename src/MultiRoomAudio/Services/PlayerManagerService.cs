@@ -28,6 +28,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private readonly IHubContext<PlayerStatusHub> _hubContext;
     private readonly VolumeCommandRunner _volumeRunner;
     private readonly BackendFactory _backendFactory;
+    private readonly TriggerService _triggerService;
     private readonly ConcurrentDictionary<string, PlayerContext> _players = new();
     private readonly MdnsServerDiscovery _serverDiscovery;
     private bool _disposed;
@@ -350,7 +351,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         EnvironmentService environment,
         IHubContext<PlayerStatusHub> hubContext,
         VolumeCommandRunner volumeRunner,
-        BackendFactory backendFactory)
+        BackendFactory backendFactory,
+        TriggerService triggerService)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -359,6 +361,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         _hubContext = hubContext;
         _volumeRunner = volumeRunner;
         _backendFactory = backendFactory;
+        _triggerService = triggerService;
         _serverDiscovery = new MdnsServerDiscovery(
             loggerFactory.CreateLogger<MdnsServerDiscovery>());
     }
@@ -1583,6 +1586,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         {
             _logger.LogDebug("Player '{Name}' pipeline state: {State}", name, state);
 
+            var previousState = context.State;
+
             if (state == AudioPipelineState.Playing)
                 context.State = PlayerState.Playing;
             else if (state == AudioPipelineState.Buffering)
@@ -1600,6 +1605,18 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             if (state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering)
             {
                 _ = PushVolumeToServerAsync(name, context);
+            }
+
+            // Notify trigger service of playback state changes
+            if (state == AudioPipelineState.Playing && previousState != PlayerState.Playing)
+            {
+                // Player started playing - activate trigger
+                _triggerService.OnPlayerStarted(name, context.Config.DeviceId);
+            }
+            else if (state == AudioPipelineState.Idle && previousState == PlayerState.Playing)
+            {
+                // Player stopped playing - deactivate trigger (with delay)
+                _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
             }
 
             // Broadcast status update on pipeline state change
@@ -1999,6 +2016,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
 
         _logger.LogInformation("Internal stop for player '{Name}': {Reason}", name, reason);
+
+        // Notify trigger service that player stopped
+        _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
 
         try
         {
