@@ -1608,14 +1608,21 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
 
             // Notify trigger service of playback state changes
-            if (state == AudioPipelineState.Playing && previousState != PlayerState.Playing)
+            // Activate when transitioning TO an active state (Playing/Buffering) from inactive
+            // Deactivate when transitioning TO a stopped state (Idle/Stopping) from active
+            var stateStr = state.ToString();
+            var isActiveState = state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering;
+            var wasInactiveState = previousState != PlayerState.Playing && previousState != PlayerState.Buffering;
+            var isStoppedState = state == AudioPipelineState.Idle ||
+                                 stateStr.Equals("Stopping", StringComparison.OrdinalIgnoreCase);
+            var wasActiveState = previousState == PlayerState.Playing || previousState == PlayerState.Buffering;
+
+            if (isActiveState && wasInactiveState)
             {
-                // Player started playing - activate trigger
                 _triggerService.OnPlayerStarted(name, context.Config.DeviceId);
             }
-            else if (state == AudioPipelineState.Idle && previousState == PlayerState.Playing)
+            else if (isStoppedState && wasActiveState)
             {
-                // Player stopped playing - deactivate trigger (with delay)
                 _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
             }
 
