@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-2b1f17d
+## Development Build: sha-a3cdc18
 
 **Current Dev Build Changes** (recent)
 
+- Add XML documentation to endpoint extensions and validation attributes
+- Improve thread safety with ReaderWriterLockSlim and disposal patterns
+- Add AppArmor profile and improve HAOS security rating
+- Add structured error handling and audio system documentation
 - Refactor controllers: move batch logic to service, standardize patterns
 - Extract StartupDiagnosticsService and add UpdateDeviceProperty helper
 - Update all user-facing references from "Initial Volume" to "Startup Volume"
 - Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into feature/rename-initial-volume-to-startup-volume
 - Use FireAndForget helper for async player connection and broadcast
 - Add thread safety to DefaultPaParser with file locking
-- Add YamlFileService and PactlCommandRunner utilities to reduce code duplication
-- Add ApiExceptionHandler utility to reduce duplicated exception handling
-- Rename "Initial Volume" to "Startup Volume" in player edit dialog
-- Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
