@@ -133,6 +133,7 @@ public static class MockCardEnumerator
                 ?? "output:analog-stereo";
 
             var isMuted = _muteStates.GetValueOrDefault(config.Index, false);
+            var maxVolume = _maxVolumes.TryGetValue(config.Index, out var vol) ? vol : (int?)null;
 
             return new PulseAudioCard(
                 Index: config.Index,
@@ -144,7 +145,7 @@ public static class MockCardEnumerator
                 IsMuted: isMuted,
                 BootMuted: null,
                 BootMuteMatchesCurrent: false,
-                MaxVolume: null
+                MaxVolume: maxVolume
             );
         }).ToList();
     }
@@ -183,7 +184,7 @@ public static class MockCardEnumerator
         if (profile == null)
         {
             var availableProfiles = string.Join(", ", card.Profiles.Select(p => p.Name));
-            errorMessage = $"Profile '{profileName}' not found. Available: {availableProfiles}";
+            errorMessage = $"Invalid profile '{profileName}'. Available profiles: {availableProfiles}";
             return false;
         }
 
@@ -234,4 +235,106 @@ public static class MockCardEnumerator
         _logger?.LogDebug("Mock card {Index} mute set to {Muted}", cardIndex, muted);
         return true;
     }
+
+    /// <summary>
+    /// Sets mute state for a sink by name.
+    /// </summary>
+    public static bool SetMuteBySink(string sinkName, bool muted)
+    {
+        // Find the card that owns this sink
+        // Sink names from GetSinksByCard are like "mock_pci-0000_00_1f.3"
+        // Card names are like "alsa_card.pci-0000_00_1f.3"
+        foreach (var config in MockCardConfigs)
+        {
+            var mockSinkId = config.Name.Replace("alsa_card.", "mock_");
+            var cardSuffix = config.Name.Replace("alsa_card.", "");
+
+            if (mockSinkId.Equals(sinkName, StringComparison.OrdinalIgnoreCase) ||
+                sinkName.Contains(cardSuffix, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.LogDebug("Mock: Setting mute for card {Index} (sink '{Sink}') to {Muted}",
+                    config.Index, sinkName, muted);
+                return SetMute(config.Index, muted);
+            }
+        }
+
+        _logger?.LogWarning("Mock: Sink '{Sink}' not found for mute operation", sinkName);
+        return false;
+    }
+
+    #region Max Volume Tracking
+
+    private static readonly Dictionary<int, int> _maxVolumes = new();
+
+    /// <summary>
+    /// Gets the max volume for a card, if configured.
+    /// </summary>
+    public static int? GetMaxVolume(int cardIndex)
+    {
+        return _maxVolumes.TryGetValue(cardIndex, out var vol) ? vol : null;
+    }
+
+    /// <summary>
+    /// Sets the max volume for a card.
+    /// </summary>
+    public static bool SetMaxVolume(int cardIndex, int? maxVolume)
+    {
+        if (!MockCardConfigs.Any(c => c.Index == cardIndex))
+            return false;
+
+        if (maxVolume.HasValue)
+        {
+            _maxVolumes[cardIndex] = Math.Clamp(maxVolume.Value, 0, 100);
+            _logger?.LogDebug("Mock card {Index} max volume set to {MaxVolume}%", cardIndex, maxVolume.Value);
+        }
+        else
+        {
+            _maxVolumes.Remove(cardIndex);
+            _logger?.LogDebug("Mock card {Index} max volume cleared", cardIndex);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Sets max volume for a sink by name.
+    /// </summary>
+    public static bool SetMaxVolumeBySink(string sinkName, int? maxVolume)
+    {
+        // Find the card that owns this sink
+        // Sink names from GetSinksByCard are like "mock_pci-0000_00_1f.3"
+        // Card names are like "alsa_card.pci-0000_00_1f.3"
+        foreach (var config in MockCardConfigs)
+        {
+            var mockSinkId = config.Name.Replace("alsa_card.", "mock_");
+            var cardSuffix = config.Name.Replace("alsa_card.", "");
+
+            if (mockSinkId.Equals(sinkName, StringComparison.OrdinalIgnoreCase) ||
+                sinkName.Contains(cardSuffix, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.LogDebug("Mock: Setting max volume for card {Index} (sink '{Sink}') to {MaxVolume}",
+                    config.Index, sinkName, maxVolume?.ToString() ?? "null");
+                return SetMaxVolume(config.Index, maxVolume);
+            }
+        }
+
+        _logger?.LogWarning("Mock: Sink '{Sink}' not found for max volume operation", sinkName);
+        return false;
+    }
+
+    #endregion
+
+    #region Test Support
+
+    /// <summary>
+    /// Resets all mock state. Call this between tests to ensure isolation.
+    /// </summary>
+    public static void ResetState()
+    {
+        _activeProfiles.Clear();
+        _muteStates.Clear();
+        _maxVolumes.Clear();
+        _logger?.LogDebug("Mock card state reset");
+    }
+
+    #endregion
 }

@@ -212,6 +212,12 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
     {
         ValidateSinkName(request.Name);
 
+        // Validate master sink exists
+        if (!await _moduleRunner.SinkExistsAsync(request.MasterSink, cancellationToken))
+        {
+            throw new ArgumentException($"Master sink '{request.MasterSink}' not found. Use /api/devices to list available sinks.");
+        }
+
         // Check if sink name already exists in PulseAudio before we try to add locally
         if (await _moduleRunner.SinkExistsAsync(request.Name, cancellationToken))
         {

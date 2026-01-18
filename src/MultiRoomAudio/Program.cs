@@ -295,3 +295,6 @@ logger.LogInformation("API documentation available at /docs");
 logger.LogInformation("========================================");
 
 app.Run();
+
+// Make Program class accessible for WebApplicationFactory in tests
+public partial class Program { }

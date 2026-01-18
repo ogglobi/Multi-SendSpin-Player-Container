@@ -79,13 +79,13 @@ public static class DevicesEndpoint
         .WithDescription("Get the default audio output device");
 
         // GET /api/devices/{id} - Get specific device
-        group.MapGet("/{id}", (string id, BackendFactory backendFactory, ILoggerFactory loggerFactory) =>
+        group.MapGet("/{id}", (string id, DeviceMatchingService matchingService, ILoggerFactory loggerFactory) =>
         {
             var logger = loggerFactory.CreateLogger("DevicesEndpoint");
             logger.LogDebug("API: GET /api/devices/{DeviceId}", id);
             return ApiExceptionHandler.Execute(() =>
             {
-                var device = backendFactory.GetDevice(id);
+                var device = matchingService.GetEnrichedDevice(id);
                 if (device == null)
                 {
                     logger.LogDebug("Device {DeviceId} not found", id);

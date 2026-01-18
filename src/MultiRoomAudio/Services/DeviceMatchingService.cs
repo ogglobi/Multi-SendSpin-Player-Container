@@ -271,6 +271,52 @@ public class DeviceMatchingService
     }
 
     /// <summary>
+    /// Get a single device by ID, enriched with alias and hidden status.
+    /// Returns null if the device is not found.
+    /// </summary>
+    public AudioDevice? GetEnrichedDevice(string deviceId)
+    {
+        var device = _backend.GetDevice(deviceId);
+        if (device != null)
+        {
+            return EnrichWithConfig(device);
+        }
+
+        // Check if it's a custom sink
+        var customSink = _customSinks.GetSink(deviceId);
+        if (customSink != null)
+        {
+            var customDevice = new AudioDevice(
+                Index: 1000,
+                Id: customSink.Name,
+                Name: customSink.Description ?? customSink.Name,
+                MaxChannels: customSink.Channels ?? 2,
+                DefaultSampleRate: 48000,
+                DefaultLowLatencyMs: 20,
+                DefaultHighLatencyMs: 100,
+                IsDefault: false,
+                Capabilities: new DeviceCapabilities(
+                    SupportedSampleRates: new[] { 44100, 48000, 96000, 192000 },
+                    SupportedBitDepths: new[] { 16, 24, 32 },
+                    MaxChannels: customSink.Channels ?? 2,
+                    PreferredSampleRate: 48000,
+                    PreferredBitDepth: 24
+                ),
+                Identifiers: new DeviceIdentifiers(
+                    Serial: null,
+                    BusPath: null,
+                    VendorId: null,
+                    ProductId: null,
+                    AlsaLongCardName: $"Custom {customSink.Type} Sink"
+                )
+            );
+            return EnrichWithConfig(customDevice);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Get all output devices enriched with their aliases and hidden status.
     /// </summary>
     public IEnumerable<AudioDevice> GetEnrichedDevices()

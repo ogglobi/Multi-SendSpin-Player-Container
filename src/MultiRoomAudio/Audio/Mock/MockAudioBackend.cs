@@ -19,7 +19,7 @@ public class MockAudioBackend : IBackend
     /// IDs match PulseAudio sink naming conventions.
     /// BusPath values use Linux sysfs format matching real PulseAudio device.bus_path property.
     /// </summary>
-    private static readonly List<MockDeviceConfig> MockDeviceConfigs = new()
+    public static readonly List<MockDeviceConfig> MockDeviceConfigs = new()
     {
         // Intel HDA onboard audio (PCI device)
         new(
@@ -92,7 +92,7 @@ public class MockAudioBackend : IBackend
             Index: 6, IsDefault: false),
     };
 
-    private record MockDeviceConfig(
+    public record MockDeviceConfig(
         string Id,
         string Name,
         string Description,
@@ -168,10 +168,9 @@ public class MockAudioBackend : IBackend
             return devices.FirstOrDefault(d => d.Index == index);
         }
 
-        // Try by ID
+        // Try by exact ID match only (no partial name matching)
         return devices.FirstOrDefault(d =>
-            d.Id.Equals(deviceId, StringComparison.OrdinalIgnoreCase) ||
-            d.Name.Contains(deviceId, StringComparison.OrdinalIgnoreCase));
+            d.Id.Equals(deviceId, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <inheritdoc />

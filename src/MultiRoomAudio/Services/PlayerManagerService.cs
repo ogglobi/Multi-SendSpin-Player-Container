@@ -154,10 +154,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     /// <summary>
     /// Pattern for valid player names.
-    /// Allows alphanumeric characters, spaces, hyphens, underscores, and apostrophes.
+    /// Allows alphanumeric characters, spaces, hyphens, underscores, apostrophes, and ampersands.
     /// </summary>
     private static readonly Regex ValidPlayerNamePattern = new(
-        @"^[a-zA-Z0-9\s\-_']+$",
+        @"^[a-zA-Z0-9\s\-_'&]+$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -600,7 +600,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Validate against allowed character pattern
         if (!ValidPlayerNamePattern.IsMatch(name))
         {
-            errorMessage = "Player name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and apostrophes are allowed.";
+            errorMessage = "Player name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, apostrophes, and ampersands are allowed.";
             return false;
         }
 

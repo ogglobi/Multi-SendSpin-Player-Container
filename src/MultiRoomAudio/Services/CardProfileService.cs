@@ -344,7 +344,16 @@ public class CardProfileService : IHostedService
         {
             try
             {
-                var success = await _volumeRunner.SetMuteAsync(sinkName, muted);
+                bool success;
+                if (_environment.IsMockHardware)
+                {
+                    // Use mock implementation
+                    success = MockCardEnumerator.SetMuteBySink(sinkName, muted);
+                }
+                else
+                {
+                    success = await _volumeRunner.SetMuteAsync(sinkName, muted);
+                }
                 if (!success)
                 {
                     failed.Add(sinkName);
@@ -449,7 +458,12 @@ public class CardProfileService : IHostedService
         {
             try
             {
-                if (maxVolume.HasValue)
+                if (_environment.IsMockHardware)
+                {
+                    // Use mock implementation
+                    MockCardEnumerator.SetMaxVolumeBySink(sinkName, maxVolume);
+                }
+                else if (maxVolume.HasValue)
                 {
                     await _volumeRunner.SetVolumeAsync(sinkName, maxVolume.Value);
                 }
