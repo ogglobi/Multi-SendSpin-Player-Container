@@ -1,19 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-bd5f2b5
+## Development Build: sha-2b1f17d
 
 **Current Dev Build Changes** (recent)
 
-- Merge branch 'main' into dev
-- Merge pull request #69 from scyto/feature/preserve-volume-across-tracks
-- Fix hardware volume init to always apply volume, not skip
-- Fix UI slider interaction and tooltip issues
-- Add volume grace period to resolve startup volume sync battle
-- Fix tooltip persistence issues by properly disposing old instances
-- Add automatic page reload on backend version change
-- Fix: Restore volume sync and implement proper tooltips
-- UI improvements for player volume controls
+- Refactor controllers: move batch logic to service, standardize patterns
+- Extract StartupDiagnosticsService and add UpdateDeviceProperty helper
+- Update all user-facing references from "Initial Volume" to "Startup Volume"
+- Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into feature/rename-initial-volume-to-startup-volume
+- Use FireAndForget helper for async player connection and broadcast
+- Add thread safety to DefaultPaParser with file locking
+- Add YamlFileService and PactlCommandRunner utilities to reduce code duplication
+- Add ApiExceptionHandler utility to reduce duplicated exception handling
+- Rename "Initial Volume" to "Startup Volume" in player edit dialog
+- Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
