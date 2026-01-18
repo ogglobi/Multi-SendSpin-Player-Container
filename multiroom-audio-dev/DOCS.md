@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-ee58e2b
+## Development Build: sha-4e48e80
 
 **Current Dev Build Changes** (recent)
 
+- Use FireAndForget helper for async player connection and broadcast
 - Add thread safety to DefaultPaParser with file locking
 - Add YamlFileService and PactlCommandRunner utilities to reduce code duplication
 - Add ApiExceptionHandler utility to reduce duplicated exception handling
@@ -13,7 +14,6 @@
 - Merge branch 'main' into dev
 - Merge pull request #69 from scyto/feature/preserve-volume-across-tracks
 - Fix hardware volume init to always apply volume, not skip
-- Fix UI slider interaction and tooltip issues
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
