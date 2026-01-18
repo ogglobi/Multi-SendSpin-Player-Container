@@ -1,5 +1,6 @@
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Services;
+using MultiRoomAudio.Utilities;
 
 namespace MultiRoomAudio.Controllers;
 
@@ -20,22 +21,12 @@ public static class CardsEndpoint
         {
             var logger = lf.CreateLogger("CardsEndpoint");
             logger.LogDebug("API: GET /api/cards");
-
-            try
+            return ApiExceptionHandler.Execute(() =>
             {
                 var cards = service.GetCards().ToList();
                 logger.LogDebug("API: Found {CardCount} sound cards", cards.Count);
-
                 return Results.Ok(new CardsListResponse(cards, cards.Count));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "API: Failed to enumerate sound cards");
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to enumerate sound cards");
-            }
+            }, logger, "enumerate sound cards");
         })
         .WithName("ListCards")
         .WithDescription("List all PulseAudio sound cards with their available profiles");
@@ -61,8 +52,7 @@ public static class CardsEndpoint
         {
             var logger = lf.CreateLogger("CardsEndpoint");
             logger.LogDebug("API: GET /api/cards/{CardId}", nameOrIndex);
-
-            try
+            return ApiExceptionHandler.Execute(() =>
             {
                 var card = service.GetCard(nameOrIndex);
                 if (card == null)
@@ -70,17 +60,8 @@ public static class CardsEndpoint
                     logger.LogDebug("API: Card {CardId} not found", nameOrIndex);
                     return Results.NotFound(new ErrorResponse(false, $"Card '{nameOrIndex}' not found"));
                 }
-
                 return Results.Ok(card);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "API: Failed to get card {CardId}", nameOrIndex);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to get card");
-            }
+            }, logger, "get card", nameOrIndex);
         })
         .WithName("GetCard")
         .WithDescription("Get details of a specific sound card including available profiles");

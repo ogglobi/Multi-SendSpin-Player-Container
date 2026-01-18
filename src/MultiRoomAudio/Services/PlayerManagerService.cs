@@ -789,10 +789,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // 14. Start connection in background with proper error handling
             // Use the player's own cancellation token, not the request token,
             // so the connection persists after the HTTP response is sent
-            _ = ConnectPlayerWithErrorHandlingAsync(request.Name, context, context.Cts.Token);
+            FireAndForget(
+                ConnectPlayerWithErrorHandlingAsync(request.Name, context, context.Cts.Token),
+                $"Connection setup for player '{request.Name}'");
 
             // 15. Broadcast status update to all clients
-            _ = BroadcastStatusAsync();
+            FireAndForget(BroadcastStatusAsync(), $"Status broadcast after creating player '{request.Name}'");
 
             return CreateResponse(request.Name, context);
         }

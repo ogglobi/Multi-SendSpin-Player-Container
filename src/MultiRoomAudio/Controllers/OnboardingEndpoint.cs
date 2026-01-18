@@ -1,6 +1,7 @@
 using MultiRoomAudio.Audio;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Services;
+using MultiRoomAudio.Utilities;
 
 namespace MultiRoomAudio.Controllers;
 
@@ -94,15 +95,12 @@ public static class OnboardingEndpoint
         {
             var logger = loggerFactory.CreateLogger("OnboardingEndpoint");
             logger.LogDebug("API: POST /api/devices/{DeviceId}/test-tone", id);
-
-            try
+            return await ApiExceptionHandler.ExecuteAsync(async () =>
             {
                 // Find the device
                 var device = backendFactory.GetDevice(id);
                 if (device == null)
-                {
                     return Results.NotFound(new ErrorResponse(false, $"Device '{id}' not found"));
-                }
 
                 // Play test tone
                 await toneGenerator.PlayTestToneAsync(
@@ -120,27 +118,7 @@ public static class OnboardingEndpoint
                     frequencyHz = request?.FrequencyHz ?? 1000,
                     durationMs = request?.DurationMs ?? 1500
                 });
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("already playing"))
-            {
-                return Results.Conflict(new ErrorResponse(false, ex.Message));
-            }
-            catch (TimeoutException ex)
-            {
-                logger.LogWarning(ex, "Test tone playback timed out for device {DeviceId}", id);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 504,
-                    title: "Test tone playback timed out");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to play test tone on device {DeviceId}", id);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to play test tone");
-            }
+            }, logger, "play test tone", id);
         })
         .WithTags("Devices", "Onboarding")
         .WithName("PlayTestTone")

@@ -78,30 +78,12 @@ public static class SinksEndpoint
         {
             var logger = lf.CreateLogger("SinksEndpoint");
             logger.LogDebug("API: POST /api/sinks/combine - Creating {SinkName}", request.Name);
-            try
+            return await ApiExceptionHandler.ExecuteAsync(async () =>
             {
                 var sink = await service.CreateCombineSinkAsync(request, ct);
                 logger.LogInformation("API: Combine-sink {SinkName} created successfully", sink.Name);
                 return Results.Created($"/api/sinks/{sink.Name}", sink);
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
-            {
-                logger.LogWarning("API: Sink creation conflict - {Message}", ex.Message);
-                return Results.Conflict(new ErrorResponse(false, ex.Message));
-            }
-            catch (ArgumentException ex)
-            {
-                logger.LogWarning("API: Sink creation bad request - {Message}", ex.Message);
-                return Results.BadRequest(new ErrorResponse(false, ex.Message));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "API: Failed to create combine-sink {SinkName}", request.Name);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to create combine-sink");
-            }
+            }, logger, "create combine-sink", request.Name);
         })
         .WithName("CreateCombineSink")
         .WithDescription("Create a combine-sink to merge multiple audio outputs");
@@ -115,30 +97,12 @@ public static class SinksEndpoint
         {
             var logger = lf.CreateLogger("SinksEndpoint");
             logger.LogDebug("API: POST /api/sinks/remap - Creating {SinkName}", request.Name);
-            try
+            return await ApiExceptionHandler.ExecuteAsync(async () =>
             {
                 var sink = await service.CreateRemapSinkAsync(request, ct);
                 logger.LogInformation("API: Remap-sink {SinkName} created successfully", sink.Name);
                 return Results.Created($"/api/sinks/{sink.Name}", sink);
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
-            {
-                logger.LogWarning("API: Sink creation conflict - {Message}", ex.Message);
-                return Results.Conflict(new ErrorResponse(false, ex.Message));
-            }
-            catch (ArgumentException ex)
-            {
-                logger.LogWarning("API: Sink creation bad request - {Message}", ex.Message);
-                return Results.BadRequest(new ErrorResponse(false, ex.Message));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "API: Failed to create remap-sink {SinkName}", request.Name);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to create remap-sink");
-            }
+            }, logger, "create remap-sink", request.Name);
         })
         .WithName("CreateRemapSink")
         .WithDescription("Create a remap-sink to extract channels from a multi-channel device");
@@ -217,25 +181,24 @@ public static class SinksEndpoint
         {
             var logger = lf.CreateLogger("SinksEndpoint");
             logger.LogDebug("API: POST /api/sinks/{SinkName}/test-tone", name);
-
-            var sink = service.GetSink(name);
-            if (sink == null)
-                return SinkNotFoundResult(name, logger, "test-tone");
-
-            if (sink.State != CustomSinkState.Loaded)
+            return await ApiExceptionHandler.ExecuteAsync(async () =>
             {
-                logger.LogWarning("API: Cannot play test tone - sink {SinkName} is not loaded (state: {State})", name, sink.State);
-                return Results.BadRequest(new ErrorResponse(false, $"Sink '{name}' is not loaded (state: {sink.State})"));
-            }
+                var sink = service.GetSink(name);
+                if (sink == null)
+                    return SinkNotFoundResult(name, logger, "test-tone");
 
-            if (string.IsNullOrEmpty(sink.PulseAudioSinkName))
-            {
-                logger.LogWarning("API: Cannot play test tone - sink {SinkName} has no PulseAudio sink name", name);
-                return Results.BadRequest(new ErrorResponse(false, $"Sink '{name}' has no PulseAudio sink name"));
-            }
+                if (sink.State != CustomSinkState.Loaded)
+                {
+                    logger.LogWarning("API: Cannot play test tone - sink {SinkName} is not loaded (state: {State})", name, sink.State);
+                    return Results.BadRequest(new ErrorResponse(false, $"Sink '{name}' is not loaded (state: {sink.State})"));
+                }
 
-            try
-            {
+                if (string.IsNullOrEmpty(sink.PulseAudioSinkName))
+                {
+                    logger.LogWarning("API: Cannot play test tone - sink {SinkName} has no PulseAudio sink name", name);
+                    return Results.BadRequest(new ErrorResponse(false, $"Sink '{name}' has no PulseAudio sink name"));
+                }
+
                 await toneGenerator.PlayTestToneAsync(
                     sink.PulseAudioSinkName,
                     frequencyHz: request?.FrequencyHz ?? 1000,
@@ -251,27 +214,7 @@ public static class SinksEndpoint
                     frequencyHz = request?.FrequencyHz ?? 1000,
                     durationMs = request?.DurationMs ?? 1500
                 });
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("already playing"))
-            {
-                return Results.Conflict(new ErrorResponse(false, ex.Message));
-            }
-            catch (TimeoutException ex)
-            {
-                logger.LogWarning(ex, "Test tone playback timed out for sink {SinkName}", name);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 504,
-                    title: "Test tone playback timed out");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to play test tone on sink {SinkName}", name);
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: 500,
-                    title: "Failed to play test tone");
-            }
+            }, logger, "play test tone", name);
         })
         .WithName("PlaySinkTestTone")
         .WithDescription("Play a test tone through a custom sink for identification");
