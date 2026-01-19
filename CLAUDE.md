@@ -180,7 +180,6 @@ squeezelite-docker/
 │   ├── config.yaml              # Add-on config
 │   ├── CHANGELOG.md
 │   └── DOCS.md
-├── nextgen.md                   # Implementation plan
 ├── CLAUDE.md                    # This file
 └── squeezelite-docker.sln       # Solution file
 ```
@@ -241,6 +240,5 @@ The `EnvironmentService` automatically detects the runtime environment:
 
 ## Quick Links
 
-- [Implementation Plan](nextgen.md) - Original development roadmap
 - [Home Assistant Add-on Docs](https://developers.home-assistant.io/docs/add-ons/configuration/)
 - [API Documentation](http://localhost:8096/docs) (when running)
