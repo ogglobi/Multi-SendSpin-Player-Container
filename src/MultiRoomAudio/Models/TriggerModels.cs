@@ -31,6 +31,21 @@ public enum RelayState
 }
 
 /// <summary>
+/// Type of relay board hardware.
+/// </summary>
+public enum RelayBoardType
+{
+    /// <summary>Unknown board type.</summary>
+    Unknown,
+    /// <summary>FTDI-based relay board (Denkovi, etc.) - uses serial protocol.</summary>
+    Ftdi,
+    /// <summary>USB HID relay board (DCT Tech, ucreatefun, etc.) - uses HID protocol.</summary>
+    UsbHid,
+    /// <summary>Mock board for testing.</summary>
+    Mock
+}
+
+/// <summary>
 /// Valid channel count options for relay boards.
 /// </summary>
 public static class ValidChannelCounts
@@ -88,7 +103,8 @@ public class TriggerBoardConfiguration
 {
     /// <summary>
     /// Unique identifier for this board.
-    /// Typically the FTDI serial number, or "USB:{path}" for boards without serials.
+    /// For FTDI: serial number or "USB:{path}".
+    /// For HID: "HID:{serial}" or "HID:{path-hash}".
     /// </summary>
     [Required]
     public string BoardId { get; set; } = string.Empty;
@@ -100,8 +116,13 @@ public class TriggerBoardConfiguration
     public string? DisplayName { get; set; }
 
     /// <summary>
+    /// Type of relay board hardware.
+    /// </summary>
+    public RelayBoardType BoardType { get; set; } = RelayBoardType.Unknown;
+
+    /// <summary>
     /// Number of relay channels on the board (1, 2, 4, 8, or 16).
-    /// Default is 8 for standard Denkovi boards.
+    /// For HID boards, this is auto-detected and may be updated on connection.
     /// </summary>
     public int ChannelCount { get; set; } = 8;
 
@@ -221,6 +242,7 @@ public record TriggerResponse(
 public record TriggerBoardResponse(
     string BoardId,
     string? DisplayName,
+    RelayBoardType BoardType,
     bool IsConnected,
     TriggerFeatureState State,
     int ChannelCount,
@@ -258,7 +280,9 @@ public class TriggerFeatureEnableRequest
 public class AddBoardRequest
 {
     /// <summary>
-    /// Board identifier (FTDI serial number or will be auto-generated from USB path).
+    /// Board identifier.
+    /// For FTDI: serial number or "USB:{path}".
+    /// For HID: "HID:{serial}" (auto-generated from device enumeration).
     /// </summary>
     [Required]
     public string BoardId { get; set; } = string.Empty;
@@ -270,7 +294,13 @@ public class AddBoardRequest
     public string? DisplayName { get; set; }
 
     /// <summary>
+    /// Type of relay board (Ftdi or UsbHid). If not specified, inferred from BoardId.
+    /// </summary>
+    public RelayBoardType BoardType { get; set; } = RelayBoardType.Unknown;
+
+    /// <summary>
     /// Number of relay channels on the board (1, 2, 4, 8, or 16).
+    /// For HID boards with detectable channel count, this may be auto-updated.
     /// </summary>
     public int ChannelCount { get; set; } = 8;
 }
@@ -384,4 +414,42 @@ public record FtdiDeviceInfo(
     /// Whether this device is identified by USB port path (less stable).
     /// </summary>
     public bool IsPortBased => string.IsNullOrWhiteSpace(SerialNumber);
+};
+
+/// <summary>
+/// Unified information about a detected relay board device (FTDI or HID).
+/// Used for device discovery/enumeration in the UI.
+/// </summary>
+public record RelayDeviceInfo(
+    /// <summary>Board identifier to use when adding this device.</summary>
+    string BoardId,
+    /// <summary>Type of relay board.</summary>
+    RelayBoardType BoardType,
+    /// <summary>Serial number if available.</summary>
+    string? SerialNumber,
+    /// <summary>Product/device description.</summary>
+    string? Description,
+    /// <summary>Number of channels (auto-detected for HID boards).</summary>
+    int ChannelCount,
+    /// <summary>Whether the device is currently open/in use.</summary>
+    bool IsInUse,
+    /// <summary>USB path if available.</summary>
+    string? UsbPath,
+    /// <summary>Whether this device is identified by path (less stable).</summary>
+    bool IsPathBased
+)
+{
+    /// <summary>
+    /// Create from an FTDI device info.
+    /// </summary>
+    public static RelayDeviceInfo FromFtdi(FtdiDeviceInfo ftdi) => new(
+        BoardId: ftdi.GetBoardId(),
+        BoardType: RelayBoardType.Ftdi,
+        SerialNumber: ftdi.SerialNumber,
+        Description: ftdi.Description ?? "FTDI Relay Board",
+        ChannelCount: 8, // FTDI boards need manual channel count config
+        IsInUse: ftdi.IsOpen,
+        UsbPath: ftdi.UsbPath,
+        IsPathBased: ftdi.IsPortBased
+    );
 };

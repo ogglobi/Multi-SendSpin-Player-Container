@@ -202,6 +202,7 @@ public class TriggerService : IHostedService, IAsyncDisposable
         return new TriggerBoardResponse(
             BoardId: boardId,
             DisplayName: boardConfig.DisplayName,
+            BoardType: boardConfig.BoardType,
             IsConnected: isConnected,
             State: state,
             ChannelCount: boardConfig.ChannelCount,
@@ -262,13 +263,19 @@ public class TriggerService : IHostedService, IAsyncDisposable
     /// <summary>
     /// Add a new relay board.
     /// </summary>
-    public bool AddBoard(string boardId, string? displayName, int channelCount)
+    public bool AddBoard(string boardId, string? displayName, int channelCount, RelayBoardType boardType = RelayBoardType.Unknown)
     {
         if (string.IsNullOrWhiteSpace(boardId))
             throw new ArgumentException("Board ID is required", nameof(boardId));
 
         if (!ValidChannelCounts.IsValid(channelCount))
             channelCount = ValidChannelCounts.Clamp(channelCount);
+
+        // Infer board type from ID if not specified
+        if (boardType == RelayBoardType.Unknown)
+        {
+            boardType = boardId.StartsWith("HID:") ? RelayBoardType.UsbHid : RelayBoardType.Ftdi;
+        }
 
         lock (_configLock)
         {
@@ -283,6 +290,7 @@ public class TriggerService : IHostedService, IAsyncDisposable
             {
                 BoardId = boardId,
                 DisplayName = displayName,
+                BoardType = boardType,
                 ChannelCount = channelCount,
                 UsbPath = boardId.StartsWith("USB:") ? boardId.Substring(4) : null
             };
@@ -302,8 +310,8 @@ public class TriggerService : IHostedService, IAsyncDisposable
             }
 
             SaveConfiguration();
-            _logger.LogInformation("Added board '{BoardId}' ({DisplayName}) with {Channels} channels",
-                boardId, displayName ?? boardId, channelCount);
+            _logger.LogInformation("Added {BoardType} board '{BoardId}' ({DisplayName}) with {Channels} channels",
+                boardType, boardId, displayName ?? boardId, channelCount);
 
             return true;
         }
@@ -516,7 +524,7 @@ public class TriggerService : IHostedService, IAsyncDisposable
     #region Public API - Device Discovery
 
     /// <summary>
-    /// Get list of available FTDI devices.
+    /// Get list of available FTDI devices (legacy API for backward compatibility).
     /// </summary>
     public List<FtdiDeviceInfo> GetAvailableDevices()
     {
@@ -528,19 +536,19 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 new FtdiDeviceInfo(
                     Index: 0,
                     SerialNumber: "MOCK001",
-                    Description: "Mock 8-Channel Relay Board A",
+                    Description: "Mock 8-Channel FTDI Relay Board",
                     IsOpen: _relayBoards.ContainsKey("MOCK001")
                 ),
                 new FtdiDeviceInfo(
                     Index: 1,
                     SerialNumber: "MOCK002",
-                    Description: "Mock 8-Channel Relay Board B",
+                    Description: "Mock 8-Channel FTDI Relay Board",
                     IsOpen: _relayBoards.ContainsKey("MOCK002")
                 ),
                 new FtdiDeviceInfo(
                     Index: 2,
                     SerialNumber: null,
-                    Description: "Mock Board (No Serial)",
+                    Description: "Mock FTDI Board (No Serial)",
                     IsOpen: false,
                     UsbPath: "1-2.3"
                 )
@@ -553,6 +561,76 @@ public class TriggerService : IHostedService, IAsyncDisposable
         }
 
         return FtdiRelayBoard.EnumerateDevices();
+    }
+
+    /// <summary>
+    /// Get unified list of all available relay devices (FTDI and HID).
+    /// </summary>
+    public List<RelayDeviceInfo> GetAllAvailableDevices()
+    {
+        var result = new List<RelayDeviceInfo>();
+
+        // Return mock devices in mock hardware mode
+        if (_environment.IsMockHardware)
+        {
+            result.Add(new RelayDeviceInfo(
+                BoardId: "MOCK001",
+                BoardType: RelayBoardType.Ftdi,
+                SerialNumber: "MOCK001",
+                Description: "Mock 8-Channel FTDI Relay Board",
+                ChannelCount: 8,
+                IsInUse: _relayBoards.ContainsKey("MOCK001"),
+                UsbPath: null,
+                IsPathBased: false
+            ));
+            result.Add(new RelayDeviceInfo(
+                BoardId: "MOCK002",
+                BoardType: RelayBoardType.Ftdi,
+                SerialNumber: "MOCK002",
+                Description: "Mock 8-Channel FTDI Relay Board",
+                ChannelCount: 8,
+                IsInUse: _relayBoards.ContainsKey("MOCK002"),
+                UsbPath: null,
+                IsPathBased: false
+            ));
+            result.Add(new RelayDeviceInfo(
+                BoardId: "HID:MOCKHID",
+                BoardType: RelayBoardType.UsbHid,
+                SerialNumber: "MOCKHID",
+                Description: "Mock 4-Channel USB HID Relay Board",
+                ChannelCount: 4,
+                IsInUse: _relayBoards.ContainsKey("HID:MOCKHID"),
+                UsbPath: null,
+                IsPathBased: false
+            ));
+            return result;
+        }
+
+        // Enumerate FTDI devices
+        if (FtdiRelayBoard.IsLibraryAvailable())
+        {
+            foreach (var ftdi in FtdiRelayBoard.EnumerateDevices())
+            {
+                result.Add(RelayDeviceInfo.FromFtdi(ftdi));
+            }
+        }
+
+        // Enumerate USB HID relay devices
+        foreach (var hid in HidRelayBoard.EnumerateDevices(_logger))
+        {
+            result.Add(new RelayDeviceInfo(
+                BoardId: hid.GetBoardId(),
+                BoardType: RelayBoardType.UsbHid,
+                SerialNumber: hid.SerialNumber,
+                Description: hid.ProductName ?? "USB HID Relay Board",
+                ChannelCount: hid.ChannelCount,
+                IsInUse: _relayBoards.ContainsKey(hid.GetBoardId()),
+                UsbPath: hid.DevicePath,
+                IsPathBased: hid.IsPathBased
+            ));
+        }
+
+        return result;
     }
 
     #endregion
@@ -688,46 +766,112 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 return true;
             }
 
-            if (!FtdiRelayBoard.IsLibraryAvailable())
+            // Determine board type and connect accordingly
+            if (boardId.StartsWith("HID:") || boardConfig.BoardType == RelayBoardType.UsbHid)
             {
-                _boardStates[boardId] = TriggerFeatureState.Error;
-                _boardErrors[boardId] = "FTDI library (libftd2xx) not available. Install the FTDI D2XX driver.";
-                _logger.LogWarning("FTDI library not available for board '{BoardId}'", boardId);
-                return false;
-            }
-
-            var newBoard = new FtdiRelayBoard(_loggerFactory.CreateLogger<FtdiRelayBoard>());
-
-            bool connected;
-            if (boardId.StartsWith("USB:"))
-            {
-                // Port-based board - need to find by USB path
-                // For now, just try to open the first available device
-                // TODO: Implement USB path-based device matching
-                connected = newBoard.Open();
+                return ConnectHidBoard(boardId, boardConfig);
             }
             else
             {
-                // Serial-based board
-                connected = newBoard.OpenBySerial(boardId);
+                return ConnectFtdiBoard(boardId, boardConfig);
+            }
+        }
+    }
+
+    private bool ConnectHidBoard(string boardId, TriggerBoardConfiguration boardConfig)
+    {
+        var hidBoard = new HidRelayBoard(_loggerFactory.CreateLogger<HidRelayBoard>());
+
+        // Extract serial from board ID (format: "HID:SERIAL" or "HID:XXXXXXXX" for path-based)
+        var serial = boardId.StartsWith("HID:") ? boardId.Substring(4) : boardId;
+
+        bool connected = hidBoard.OpenBySerial(serial);
+
+        if (connected)
+        {
+            _relayBoards[boardId] = hidBoard;
+            _boardStates[boardId] = TriggerFeatureState.Connected;
+            _boardErrors[boardId] = null;
+
+            // Update channel count if it was auto-detected and different from config
+            if (hidBoard.ChannelCount != boardConfig.ChannelCount)
+            {
+                _logger.LogInformation("HID board '{BoardId}' reports {Detected} channels, config had {Config}",
+                    boardId, hidBoard.ChannelCount, boardConfig.ChannelCount);
+                boardConfig.ChannelCount = hidBoard.ChannelCount;
+                SaveConfiguration();
             }
 
-            if (connected)
+            // Ensure board type is set
+            if (boardConfig.BoardType != RelayBoardType.UsbHid)
             {
-                _relayBoards[boardId] = newBoard;
-                _boardStates[boardId] = TriggerFeatureState.Connected;
-                _boardErrors[boardId] = null;
-                _logger.LogInformation("Connected to FTDI relay board '{BoardId}'", boardId);
-                return true;
+                boardConfig.BoardType = RelayBoardType.UsbHid;
+                SaveConfiguration();
             }
-            else
+
+            _logger.LogInformation("Connected to USB HID relay board '{BoardId}' (Serial: {Serial}, {Channels} channels)",
+                boardId, hidBoard.SerialNumber, hidBoard.ChannelCount);
+            return true;
+        }
+        else
+        {
+            _boardStates[boardId] = TriggerFeatureState.Disconnected;
+            _boardErrors[boardId] = "Failed to connect to USB HID relay board. Check USB connection.";
+            hidBoard.Dispose();
+            _logger.LogWarning("Failed to connect to USB HID relay board '{BoardId}'", boardId);
+            return false;
+        }
+    }
+
+    private bool ConnectFtdiBoard(string boardId, TriggerBoardConfiguration boardConfig)
+    {
+        if (!FtdiRelayBoard.IsLibraryAvailable())
+        {
+            _boardStates[boardId] = TriggerFeatureState.Error;
+            _boardErrors[boardId] = "FTDI library (libftd2xx) not available. Install the FTDI D2XX driver.";
+            _logger.LogWarning("FTDI library not available for board '{BoardId}'", boardId);
+            return false;
+        }
+
+        var ftdiBoard = new FtdiRelayBoard(_loggerFactory.CreateLogger<FtdiRelayBoard>());
+
+        bool connected;
+        if (boardId.StartsWith("USB:"))
+        {
+            // Port-based board - need to find by USB path
+            // For now, just try to open the first available device
+            // TODO: Implement USB path-based device matching
+            connected = ftdiBoard.Open();
+        }
+        else
+        {
+            // Serial-based board
+            connected = ftdiBoard.OpenBySerial(boardId);
+        }
+
+        if (connected)
+        {
+            _relayBoards[boardId] = ftdiBoard;
+            _boardStates[boardId] = TriggerFeatureState.Connected;
+            _boardErrors[boardId] = null;
+
+            // Ensure board type is set
+            if (boardConfig.BoardType != RelayBoardType.Ftdi)
             {
-                _boardStates[boardId] = TriggerFeatureState.Disconnected;
-                _boardErrors[boardId] = "Failed to connect to FTDI relay board. Check USB connection.";
-                newBoard.Dispose();
-                _logger.LogWarning("Failed to connect to FTDI relay board '{BoardId}'", boardId);
-                return false;
+                boardConfig.BoardType = RelayBoardType.Ftdi;
+                SaveConfiguration();
             }
+
+            _logger.LogInformation("Connected to FTDI relay board '{BoardId}'", boardId);
+            return true;
+        }
+        else
+        {
+            _boardStates[boardId] = TriggerFeatureState.Disconnected;
+            _boardErrors[boardId] = "Failed to connect to FTDI relay board. Check USB connection.";
+            ftdiBoard.Dispose();
+            _logger.LogWarning("Failed to connect to FTDI relay board '{BoardId}'", boardId);
+            return false;
         }
     }
 

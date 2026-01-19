@@ -52,7 +52,7 @@ public static class TriggersEndpoint
         .WithName("SetTriggerEnabled")
         .WithDescription("Enable or disable the 12V trigger feature for all boards");
 
-        // GET /api/triggers/devices - List available FTDI devices
+        // GET /api/triggers/devices - List available FTDI devices (legacy)
         group.MapGet("/devices", (TriggerService service, ILoggerFactory lf) =>
         {
             var logger = lf.CreateLogger("TriggersEndpoint");
@@ -67,7 +67,25 @@ public static class TriggersEndpoint
             });
         })
         .WithName("ListFtdiDevices")
-        .WithDescription("List available FTDI devices for relay board connection");
+        .WithDescription("List available FTDI devices for relay board connection (legacy - use /devices/all for both FTDI and HID)");
+
+        // GET /api/triggers/devices/all - List all available relay devices (FTDI and HID)
+        group.MapGet("/devices/all", (TriggerService service, ILoggerFactory lf) =>
+        {
+            var logger = lf.CreateLogger("TriggersEndpoint");
+            logger.LogDebug("API: GET /api/triggers/devices/all");
+
+            var devices = service.GetAllAvailableDevices();
+            return Results.Ok(new
+            {
+                devices,
+                count = devices.Count,
+                ftdiCount = devices.Count(d => d.BoardType == RelayBoardType.Ftdi),
+                hidCount = devices.Count(d => d.BoardType == RelayBoardType.UsbHid)
+            });
+        })
+        .WithName("ListAllRelayDevices")
+        .WithDescription("List all available relay devices (both FTDI and USB HID)");
 
         // ============================================
         // Board Management Endpoints
@@ -109,7 +127,7 @@ public static class TriggersEndpoint
                     $"Channel count must be one of: {string.Join(", ", ValidChannelCounts.Values)}"));
             }
 
-            var success = service.AddBoard(request.BoardId, request.DisplayName, request.ChannelCount);
+            var success = service.AddBoard(request.BoardId, request.DisplayName, request.ChannelCount, request.BoardType);
             if (success)
             {
                 var boardStatus = service.GetBoardStatus(request.BoardId);
