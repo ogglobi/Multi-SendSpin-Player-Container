@@ -165,12 +165,14 @@ public sealed class HidRelayBoard : IRelayBoard
             _stream.SetFeature(report);
 
             // Update local state tracking
+            var oldState = _currentState;
             if (on)
                 _currentState |= (1 << (channel - 1));
             else
                 _currentState &= ~(1 << (channel - 1));
 
-            _logger?.LogDebug("Relay {Channel} set to {State}", channel, on ? "ON" : "OFF");
+            _logger?.LogInformation("HID SetRelay({Channel}, {On}): sent SetFeature, local state 0x{Old:X2}->0x{New:X2}",
+                channel, on ? "ON" : "OFF", oldState, _currentState);
             return true;
         }
         catch (Exception ex)
@@ -190,8 +192,8 @@ public sealed class HidRelayBoard : IRelayBoard
 
         var isOn = (_currentState & (1 << (channel - 1))) != 0;
         var result = isOn ? RelayState.On : RelayState.Off;
-        _logger?.LogDebug("GetRelay({Channel}): currentState=0x{State:X2}, bit={Bit}, mask=0x{Mask:X2}, result={Result}",
-            channel, _currentState, channel - 1, 1 << (channel - 1), result);
+        _logger?.LogInformation("HID GetRelay({Channel}): state=0x{State:X2}, mask=0x{Mask:X2}, result={Result}",
+            channel, _currentState, 1 << (channel - 1), result);
         return result;
     }
 
@@ -221,7 +223,7 @@ public sealed class HidRelayBoard : IRelayBoard
             _stream.GetFeature(report);
             var oldState = _currentState;
             _currentState = report[7];
-            _logger?.LogDebug("RefreshState: read report bytes [{Bytes}], state byte[7]={StateByte:X2}, currentState changed {Old:X2}->{New:X2}",
+            _logger?.LogInformation("HID RefreshState: report=[{Bytes}], byte[7]=0x{StateByte:X2}, state: 0x{Old:X2}->0x{New:X2}",
                 string.Join(",", report.Select(b => $"0x{b:X2}")),
                 report[7], oldState, _currentState);
         }
