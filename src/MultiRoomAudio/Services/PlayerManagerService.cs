@@ -5,6 +5,7 @@ using MultiRoomAudio.Audio;
 using MultiRoomAudio.Hubs;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Utilities;
+using static MultiRoomAudio.Utilities.BackgroundTaskExecutor;
 using Sendspin.SDK.Audio;
 using Sendspin.SDK.Client;
 using Sendspin.SDK.Connection;
@@ -878,10 +879,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Start connection in background with proper error handling
         FireAndForget(
             ConnectPlayerWithErrorHandlingAsync(name, context, context.Cts.Token),
-            $"Connection setup for player '{name}'");
+            $"Connection setup for player '{name}'", _logger);
 
         // Broadcast status update to all clients
-        FireAndForget(BroadcastStatusAsync(), $"Status broadcast after creating player '{name}'");
+        FireAndForget(BroadcastStatusAsync(), $"Status broadcast after creating player '{name}'", _logger);
     }
 
     /// <summary>
@@ -1685,7 +1686,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     // Remove the disconnected player and queue for reconnection
                     await RemoveAndDisposePlayerAsync(name);
                     QueueForReconnection(persistedConfig);
-                }, $"Reconnection setup for '{name}'");
+                }, $"Reconnection setup for '{name}'", _logger);
             }
 
             // Broadcast status update on connection state change
@@ -1745,7 +1746,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogWarning("Auto-stopping player '{Name}' due to pipeline error", name);
             FireAndForget(
                 StopPlayerInternalAsync(name, "Pipeline error: " + error.Message),
-                $"StopPlayerInternalAsync for '{name}' (pipeline error)");
+                $"StopPlayerInternalAsync for '{name}' (pipeline error)", _logger);
         };
     }
 
@@ -1766,7 +1767,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             _logger.LogWarning("Auto-stopping player '{Name}' due to audio error", name);
             FireAndForget(
                 StopPlayerInternalAsync(name, "Audio error: " + error.Message),
-                $"StopPlayerInternalAsync for '{name}' (audio error)");
+                $"StopPlayerInternalAsync for '{name}' (audio error)", _logger);
         };
     }
 
@@ -1810,7 +1811,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                         {
                             _logger.LogWarning(ex, "Failed to push startup volume for '{Name}'", name);
                         }
-                    }, $"Grace period volume push for '{name}'");
+                    }, $"Grace period volume push for '{name}'", _logger);
 
                     return; // Don't update local volume or broadcast
                 }
@@ -1839,7 +1840,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     {
                         _logger.LogWarning(ex, "Failed to echo player state for '{Name}'", name);
                     }
-                }, $"Player state echo for '{name}'");
+                }, $"Player state echo for '{name}'", _logger);
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
@@ -2049,34 +2050,6 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         {
             _logger.LogWarning(ex, "Failed to broadcast player status update");
         }
-    }
-
-    /// <summary>
-    /// Safely executes a fire-and-forget task, ensuring any exceptions are logged.
-    /// Use this when discarding a Task to prevent unobserved exceptions.
-    /// </summary>
-    /// <param name="task">The task to execute.</param>
-    /// <param name="context">Description of what the task is doing (for logging).</param>
-    private void FireAndForget(Task task, string context)
-    {
-        task.ContinueWith(
-            t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    _logger.LogError(t.Exception.InnerException ?? t.Exception,
-                        "Unhandled exception in fire-and-forget task: {Context}", context);
-                }
-            },
-            TaskScheduler.Default);
-    }
-
-    /// <summary>
-    /// Fire-and-forget overload that accepts an async lambda.
-    /// </summary>
-    private void FireAndForget(Func<Task> taskFactory, string context)
-    {
-        FireAndForget(Task.Run(taskFactory), context);
     }
 
     #region Reconnection Methods
