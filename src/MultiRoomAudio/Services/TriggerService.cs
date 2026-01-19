@@ -593,15 +593,29 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 UsbPath: null,
                 IsPathBased: false
             ));
+            // HID board with detectable channel count (product name "USBRelay4")
             result.Add(new RelayDeviceInfo(
-                BoardId: "HID:MOCKHID",
+                BoardId: "HID:QAAMZ",
                 BoardType: RelayBoardType.UsbHid,
-                SerialNumber: "MOCKHID",
-                Description: "Mock 4-Channel USB HID Relay Board",
+                SerialNumber: "QAAMZ",
+                Description: "USBRelay4",  // Channel count detectable from name
                 ChannelCount: 4,
-                IsInUse: _relayBoards.ContainsKey("HID:MOCKHID"),
+                IsInUse: _relayBoards.ContainsKey("HID:QAAMZ"),
                 UsbPath: null,
-                IsPathBased: false
+                IsPathBased: false,
+                ChannelCountDetected: true  // Auto-detected - don't allow editing
+            ));
+            // HID board without detectable channel count (generic product name)
+            result.Add(new RelayDeviceInfo(
+                BoardId: "HID:ABCDE",
+                BoardType: RelayBoardType.UsbHid,
+                SerialNumber: "ABCDE",
+                Description: "Generic HID Relay",  // Can't detect channel count from name
+                ChannelCount: 8,  // Default guess
+                IsInUse: _relayBoards.ContainsKey("HID:ABCDE"),
+                UsbPath: null,
+                IsPathBased: false,
+                ChannelCountDetected: false  // User must configure
             ));
             return result;
         }
@@ -626,7 +640,8 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 ChannelCount: hid.ChannelCount,
                 IsInUse: _relayBoards.ContainsKey(hid.GetBoardId()),
                 UsbPath: hid.DevicePath,
-                IsPathBased: hid.IsPathBased
+                IsPathBased: hid.IsPathBased,
+                ChannelCountDetected: hid.ChannelCountDetected
             ));
         }
 

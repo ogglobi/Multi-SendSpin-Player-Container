@@ -436,7 +436,9 @@ public record RelayDeviceInfo(
     /// <summary>USB path if available.</summary>
     string? UsbPath,
     /// <summary>Whether this device is identified by path (less stable).</summary>
-    bool IsPathBased
+    bool IsPathBased,
+    /// <summary>Whether the channel count was auto-detected (true) or needs manual config (false).</summary>
+    bool ChannelCountDetected = false
 )
 {
     /// <summary>
@@ -450,6 +452,7 @@ public record RelayDeviceInfo(
         ChannelCount: 8, // FTDI boards need manual channel count config
         IsInUse: ftdi.IsOpen,
         UsbPath: ftdi.UsbPath,
-        IsPathBased: ftdi.IsPortBased
+        IsPathBased: ftdi.IsPortBased,
+        ChannelCountDetected: false // FTDI boards always need manual config
     );
 };

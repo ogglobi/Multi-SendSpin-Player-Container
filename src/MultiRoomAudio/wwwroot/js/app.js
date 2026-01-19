@@ -2790,7 +2790,7 @@ async function loadTriggers() {
         const [triggersResponse, sinksResponse, devicesResponse] = await Promise.all([
             fetch('./api/triggers'),
             fetch('./api/sinks'),
-            fetch('./api/triggers/devices')
+            fetch('./api/triggers/devices/all')
         ]);
 
         if (!triggersResponse.ok) throw new Error('Failed to load triggers');
@@ -2801,9 +2801,14 @@ async function loadTriggers() {
         customSinksList = sinksData.sinks || [];
 
         if (devicesResponse.ok) {
+            // Store unified device data (includes both FTDI and HID)
             ftdiDevicesData = await devicesResponse.json();
+            // Ensure backwards compatibility - treat count > 0 as library available
+            if (ftdiDevicesData.count > 0) {
+                ftdiDevicesData.libraryAvailable = true;
+            }
         } else {
-            ftdiDevicesData = { devices: [], count: 0, libraryAvailable: false };
+            ftdiDevicesData = { devices: [], count: 0, ftdiCount: 0, hidCount: 0 };
         }
 
         renderTriggers();
@@ -2849,6 +2854,8 @@ function renderTriggers() {
     // Update status badge
     let statusText = triggersData.enabled ? 'Enabled' : 'Disabled';
     let statusClass = 'bg-secondary';
+    const detectedDeviceCount = ftdiDevicesData?.count || 0;
+
     if (noHardware) {
         statusText = 'No Hardware';
     } else if (triggersData.enabled) {
@@ -2863,20 +2870,24 @@ function renderTriggers() {
             statusText = 'Disconnected';
             statusClass = 'bg-danger';
         } else {
-            statusText = 'No Boards';
-            statusClass = 'bg-secondary';
+            // No boards configured - show detected device count
+            statusText = detectedDeviceCount > 0
+                ? `${detectedDeviceCount} Device${detectedDeviceCount !== 1 ? 's' : ''} Found`
+                : 'No Boards';
+            statusClass = detectedDeviceCount > 0 ? 'bg-info' : 'bg-secondary';
         }
+    } else if (triggersData.boards.length === 0 && detectedDeviceCount > 0) {
+        // Feature disabled but devices detected
+        statusText = `${detectedDeviceCount} Device${detectedDeviceCount !== 1 ? 's' : ''} Found`;
+        statusClass = 'bg-info';
     }
     statusBadge.className = `badge ${statusClass}`;
     statusBadge.textContent = statusText;
 
-    // Show/hide error
+    // Show/hide error - only show when truly no hardware support
     if (noHardware) {
         errorDiv.classList.remove('d-none');
-        errorText.textContent = 'No FT245RL detected. Install libftdi1 and connect a Denkovi USB relay board.';
-    } else if (noDevicesDetected && !triggersData.enabled && triggersData.boards.length === 0) {
-        errorDiv.classList.remove('d-none');
-        errorText.textContent = 'No FT245RL device detected. Connect a Denkovi USB relay board to enable triggers.';
+        errorText.textContent = 'No relay board hardware support detected. Install libftdi1 for FTDI boards or ensure USB HID support is available.';
     } else {
         errorDiv.classList.add('d-none');
     }
@@ -3063,42 +3074,66 @@ async function showAddBoardDialog() {
     select.innerHTML = '<option value="">Loading devices...</option>';
 
     try {
-        const response = await fetch('./api/triggers/devices');
+        const response = await fetch('./api/triggers/devices/all');
         const data = await response.json();
         ftdiDevicesData = data;
 
-        // Filter out already-configured devices
+        // Filter out already-configured devices by boardId
         const configuredIds = triggersData?.boards?.map(b => b.boardId) || [];
-        const availableDevices = data.devices.filter(d => {
-            const deviceId = d.serialNumber || `USB:${d.usbPath}`;
-            return !configuredIds.includes(deviceId);
-        });
+        const availableDevices = data.devices.filter(d => !configuredIds.includes(d.boardId));
 
         if (availableDevices.length === 0) {
             select.innerHTML = '<option value="">No available devices</option>';
         } else {
             select.innerHTML = '<option value="">Select a device...</option>' +
                 availableDevices.map(d => {
-                    const id = d.serialNumber || `USB:${d.usbPath}`;
-                    const label = d.serialNumber
-                        ? `${d.description || 'FTDI Device'} (SN: ${d.serialNumber})`
-                        : `${d.description || 'FTDI Device'} (Port: ${d.usbPath})`;
-                    return `<option value="${escapeHtml(id)}" data-port-based="${d.isPortBased}">${escapeHtml(label)}</option>`;
+                    // Use boardId as the value (consistent with RelayDeviceInfo)
+                    const id = d.boardId;
+                    // Build label showing type, description and serial/path
+                    const typeLabel = d.boardType === 'UsbHid' ? 'HID' : 'FTDI';
+                    const idPart = d.serialNumber
+                        ? `SN: ${d.serialNumber}`
+                        : (d.usbPath ? `Port: ${d.usbPath}` : '');
+                    const channelPart = d.channelCount ? ` - ${d.channelCount}ch` : '';
+                    const detectedNote = d.channelCountDetected ? ' (auto)' : '';
+                    const label = `[${typeLabel}] ${d.description || 'Relay Board'}${channelPart}${detectedNote}${idPart ? ` (${idPart})` : ''}`;
+                    return `<option value="${escapeHtml(id)}" data-port-based="${d.isPathBased}" data-board-type="${d.boardType}" data-channel-count="${d.channelCount}" data-channel-detected="${d.channelCountDetected}">${escapeHtml(label)}</option>`;
                 }).join('');
         }
     } catch (error) {
         select.innerHTML = '<option value="">Failed to load devices</option>';
     }
 
-    // Update port warning visibility on selection change
+    const channelCountSelect = document.getElementById('addBoardChannelCount');
+    const channelCountGroup = channelCountSelect.closest('.mb-3');
+
+    // Update port warning visibility and channel count on selection change
     select.onchange = function() {
         const option = this.options[this.selectedIndex];
         const isPortBased = option?.dataset?.portBased === 'true';
+        const channelDetected = option?.dataset?.channelDetected === 'true';
+        const channelCount = option?.dataset?.channelCount;
+
         document.getElementById('addBoardPortWarning').classList.toggle('d-none', !isPortBased);
+
+        // Auto-fill channel count from detected value
+        if (channelCount) {
+            channelCountSelect.value = channelCount;
+        }
+
+        // Disable channel count selector if auto-detected
+        channelCountSelect.disabled = channelDetected;
+        if (channelDetected) {
+            channelCountGroup.title = 'Channel count auto-detected from device';
+        } else {
+            channelCountGroup.title = '';
+        }
     };
 
     document.getElementById('addBoardDisplayName').value = '';
-    document.getElementById('addBoardChannelCount').value = '8';
+    channelCountSelect.value = '8';
+    channelCountSelect.disabled = false;
+    channelCountGroup.title = '';
     document.getElementById('addBoardPortWarning').classList.add('d-none');
 
     addBoardModal.show();
@@ -3106,9 +3141,14 @@ async function showAddBoardDialog() {
 
 // Add a new board
 async function addBoard() {
-    const boardId = document.getElementById('addBoardDeviceSelect').value;
+    const select = document.getElementById('addBoardDeviceSelect');
+    const boardId = select.value;
     const displayName = document.getElementById('addBoardDisplayName').value.trim();
     const channelCount = parseInt(document.getElementById('addBoardChannelCount').value, 10);
+
+    // Get board type from selected option
+    const selectedOption = select.options[select.selectedIndex];
+    const boardType = selectedOption?.dataset?.boardType || 'Unknown';
 
     if (!boardId) {
         showAlert('Please select a device', 'danger');
@@ -3119,7 +3159,7 @@ async function addBoard() {
         const response = await fetch('./api/triggers/boards', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ boardId, displayName: displayName || null, channelCount })
+            body: JSON.stringify({ boardId, displayName: displayName || null, channelCount, boardType })
         });
 
         if (!response.ok) {
