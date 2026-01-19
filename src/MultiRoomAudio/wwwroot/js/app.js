@@ -2727,10 +2727,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================
-// 12V TRIGGERS CONFIGURATION
+// 12V TRIGGERS CONFIGURATION (Multi-Board Support)
 // ============================================
 
 let triggersModal = null;
+let addBoardModal = null;
 let triggersData = null;
 let customSinksList = [];
 let ftdiDevicesData = null;
@@ -2743,11 +2744,9 @@ async function openTriggersModal() {
 
         // Set up auto-refresh when modal is shown/hidden
         document.getElementById('triggersModal').addEventListener('shown.bs.modal', () => {
-            // Start polling every 2 seconds while modal is open
             triggersRefreshInterval = setInterval(refreshTriggersState, 2000);
         });
         document.getElementById('triggersModal').addEventListener('hidden.bs.modal', () => {
-            // Stop polling when modal is closed
             if (triggersRefreshInterval) {
                 clearInterval(triggersRefreshInterval);
                 triggersRefreshInterval = null;
@@ -2765,8 +2764,7 @@ async function refreshTriggersState() {
         const response = await fetch('./api/triggers');
         if (response.ok) {
             const newData = await response.json();
-            // Only update if data changed to avoid unnecessary DOM updates
-            if (JSON.stringify(newData.triggers) !== JSON.stringify(triggersData?.triggers)) {
+            if (JSON.stringify(newData.boards) !== JSON.stringify(triggersData?.boards)) {
                 triggersData = newData;
                 renderTriggers();
             }
@@ -2789,25 +2787,19 @@ async function loadTriggers() {
     `;
 
     try {
-        // Load triggers, custom sinks, and devices in parallel
         const [triggersResponse, sinksResponse, devicesResponse] = await Promise.all([
             fetch('./api/triggers'),
             fetch('./api/sinks'),
             fetch('./api/triggers/devices')
         ]);
 
-        if (!triggersResponse.ok) {
-            throw new Error('Failed to load triggers');
-        }
-        if (!sinksResponse.ok) {
-            throw new Error('Failed to load custom sinks');
-        }
+        if (!triggersResponse.ok) throw new Error('Failed to load triggers');
+        if (!sinksResponse.ok) throw new Error('Failed to load custom sinks');
 
         triggersData = await triggersResponse.json();
         const sinksData = await sinksResponse.json();
         customSinksList = sinksData.sinks || [];
 
-        // Get device info (may fail if library not available)
         if (devicesResponse.ok) {
             ftdiDevicesData = await devicesResponse.json();
         } else {
@@ -2826,221 +2818,213 @@ async function loadTriggers() {
     }
 }
 
-// Render triggers list
+// Render triggers list (multi-board accordion)
 function renderTriggers() {
     const container = document.getElementById('triggersContainer');
     const enabledCheckbox = document.getElementById('triggersEnabled');
     const statusBadge = document.getElementById('triggersStatus');
-    const deviceInfo = document.getElementById('triggersDeviceInfo');
-    const deviceText = document.getElementById('triggersDeviceText');
     const errorDiv = document.getElementById('triggersError');
     const errorText = document.getElementById('triggersErrorText');
+    const totalChannelsSpan = document.getElementById('triggersTotalChannels');
 
     if (!triggersData) {
         container.innerHTML = '<div class="text-center py-4 text-muted">No trigger data available</div>';
         return;
     }
 
-    // Check if FTDI hardware is available
     const noHardware = ftdiDevicesData && !ftdiDevicesData.libraryAvailable && ftdiDevicesData.count === 0;
     const noDevicesDetected = ftdiDevicesData && ftdiDevicesData.libraryAvailable && ftdiDevicesData.count === 0;
 
-    // Update header state
+    // Update enabled checkbox
     enabledCheckbox.checked = triggersData.enabled;
     enabledCheckbox.disabled = noHardware;
 
-    // Update channel count selector
-    const channelCountSelect = document.getElementById('triggersChannelCount');
-    if (channelCountSelect) {
-        channelCountSelect.value = triggersData.channelCount || 8;
-        channelCountSelect.disabled = noHardware;
+    // Update total channels
+    if (totalChannelsSpan) {
+        totalChannelsSpan.textContent = triggersData.boards.length > 0
+            ? `${triggersData.totalChannels} channels across ${triggersData.boards.length} board(s)`
+            : '';
     }
 
     // Update status badge
-    let statusText = triggersData.state;
+    let statusText = triggersData.enabled ? 'Enabled' : 'Disabled';
     let statusClass = 'bg-secondary';
-
     if (noHardware) {
         statusText = 'No Hardware';
-        statusClass = 'bg-secondary';
-    } else if (noDevicesDetected && !triggersData.enabled) {
-        statusText = 'No Device';
-        statusClass = 'bg-warning';
-    } else {
-        const stateColors = {
-            'Disabled': 'bg-secondary',
-            'Disconnected': 'bg-warning',
-            'Connected': 'bg-success',
-            'Error': 'bg-danger'
-        };
-        statusClass = stateColors[triggersData.state] || 'bg-secondary';
+    } else if (triggersData.enabled) {
+        const connectedCount = triggersData.boards.filter(b => b.isConnected).length;
+        if (connectedCount === triggersData.boards.length && triggersData.boards.length > 0) {
+            statusText = `${connectedCount} Board(s) Connected`;
+            statusClass = 'bg-success';
+        } else if (connectedCount > 0) {
+            statusText = `${connectedCount}/${triggersData.boards.length} Connected`;
+            statusClass = 'bg-warning';
+        } else if (triggersData.boards.length > 0) {
+            statusText = 'Disconnected';
+            statusClass = 'bg-danger';
+        } else {
+            statusText = 'No Boards';
+            statusClass = 'bg-secondary';
+        }
     }
     statusBadge.className = `badge ${statusClass}`;
     statusBadge.textContent = statusText;
 
-    // Show/hide device info
-    if (triggersData.enabled) {
-        deviceInfo.classList.remove('d-none');
-        if (triggersData.state === 'Connected') {
-            deviceText.textContent = triggersData.ftdiSerialNumber
-                ? `Connected (SN: ${triggersData.ftdiSerialNumber})`
-                : 'Connected';
-        } else {
-            deviceText.textContent = 'Not connected';
-        }
-    } else {
-        deviceInfo.classList.add('d-none');
-    }
-
-    // Show/hide error - also show hardware warnings
+    // Show/hide error
     if (noHardware) {
         errorDiv.classList.remove('d-none');
         errorText.textContent = 'No FT245RL detected. Install libftdi1 and connect a Denkovi USB relay board.';
-    } else if (noDevicesDetected && !triggersData.enabled) {
+    } else if (noDevicesDetected && !triggersData.enabled && triggersData.boards.length === 0) {
         errorDiv.classList.remove('d-none');
         errorText.textContent = 'No FT245RL device detected. Connect a Denkovi USB relay board to enable triggers.';
-    } else if (triggersData.errorMessage) {
-        errorDiv.classList.remove('d-none');
-        errorText.textContent = triggersData.errorMessage;
     } else {
         errorDiv.classList.add('d-none');
     }
 
-    // Build sink options
+    // Build sink options HTML
     const sinkOptions = customSinksList.map(sink =>
         `<option value="${escapeHtml(sink.name)}">${escapeHtml(sink.description || sink.name)}</option>`
     ).join('');
 
-    // Determine if controls should be disabled
-    const controlsDisabled = noHardware || !triggersData.enabled;
-    const testButtonsDisabled = noHardware || !triggersData.enabled || triggersData.state !== 'Connected';
+    // Build accordion for each board
+    if (triggersData.boards.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-4 text-muted">
+                <i class="fas fa-plug fa-2x mb-2"></i>
+                <p>No relay boards configured. Click "Add Relay Board" to get started.</p>
+            </div>
+        `;
+        return;
+    }
 
-    // Use a table for proper column alignment
-    const rowClass = noHardware ? 'opacity-50' : '';
+    const accordionHtml = triggersData.boards.map((board, index) => {
+        const boardId = escapeHtml(board.boardId);
+        const boardIdSafe = board.boardId.replace(/[^a-zA-Z0-9]/g, '_');
+        const isExpanded = index === 0;
+        const controlsDisabled = noHardware || !triggersData.enabled;
+        const testButtonsDisabled = controlsDisabled || !board.isConnected;
 
-    const triggersHtml = `
-        <style>
-            .triggers-table {
-                width: 100%;
-                border-collapse: separate;
-                border-spacing: 0 0.5rem;
-            }
-            .triggers-table th {
-                font-weight: 600;
-                font-size: 0.875rem;
-                color: var(--bs-secondary-color);
-                padding: 0 0.75rem 0.5rem 0.75rem;
-                border-bottom: 1px solid var(--bs-border-color);
-                white-space: nowrap;
-            }
-            .triggers-table td {
-                padding: 0.5rem 0.75rem;
-                vertical-align: middle;
-            }
-            .triggers-table tbody tr {
-                background: var(--bs-tertiary-bg);
-                border-radius: 0.375rem;
-            }
-            .triggers-table tbody tr td:first-child {
-                border-radius: 0.375rem 0 0 0.375rem;
-            }
-            .triggers-table tbody tr td:last-child {
-                border-radius: 0 0.375rem 0.375rem 0;
-            }
-            @media (max-width: 768px) {
-                .triggers-table thead { display: none; }
-                .triggers-table, .triggers-table tbody, .triggers-table tr, .triggers-table td {
-                    display: block;
-                    width: 100%;
-                }
-                .triggers-table tr {
-                    margin-bottom: 0.5rem;
-                    padding: 0.5rem;
-                    border-radius: 0.375rem;
-                }
-                .triggers-table td {
-                    padding: 0.25rem 0;
-                    border-radius: 0 !important;
-                }
-                .triggers-table td:last-child { text-align: left !important; }
-            }
-        </style>
-        <table class="triggers-table">
-            <thead>
+        const boardStatusClass = board.isConnected ? 'text-success' : 'text-danger';
+        const boardStatusText = board.isConnected ? 'Connected' : 'Disconnected';
+        const portWarning = board.isPortBased
+            ? '<span class="badge bg-warning text-dark ms-1" title="Identified by USB port - may change if moved"><i class="fas fa-exclamation-triangle"></i> Port-based</span>'
+            : '';
+
+        const channelsHtml = board.triggers.map(trigger => {
+            const isOn = trigger.relayState === 'On';
+            const activeStatus = isOn
+                ? '<span class="badge bg-success ms-1">On</span>'
+                : '<span class="badge bg-secondary ms-1">Off</span>';
+            const onBtnClass = isOn ? 'btn btn-success btn-sm' : 'btn btn-outline-secondary btn-sm';
+            const offBtnClass = !isOn && trigger.relayState === 'Off' ? 'btn btn-secondary btn-sm' : 'btn btn-outline-secondary btn-sm';
+
+            return `
                 <tr>
-                    <th>Relay Channel</th>
-                    <th>Sink</th>
-                    <th>Off Delay (s)</th>
-                    <th class="text-end">Manual Control</th>
+                    <td>
+                        <span class="badge bg-primary">CH ${trigger.channel}</span>
+                        ${activeStatus}
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm"
+                                id="trigger-sink-${boardIdSafe}-${trigger.channel}"
+                                onchange="updateTriggerSink('${boardId}', ${trigger.channel}, this.value)"
+                                ${controlsDisabled ? 'disabled' : ''}>
+                            <option value="">Not assigned</option>
+                            ${sinkOptions}
+                        </select>
+                    </td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <input type="number" class="form-control"
+                                   id="trigger-delay-${boardIdSafe}-${trigger.channel}"
+                                   value="${trigger.offDelaySeconds}"
+                                   min="0" max="3600" step="1"
+                                   onchange="updateTriggerDelay('${boardId}', ${trigger.channel}, this.value)"
+                                   ${controlsDisabled ? 'disabled' : ''}>
+                            <span class="input-group-text">s</span>
+                        </div>
+                    </td>
+                    <td class="text-end">
+                        <button class="${onBtnClass}"
+                                onclick="testTrigger('${boardId}', ${trigger.channel}, true)"
+                                title="Turn relay ON"
+                                ${testButtonsDisabled ? 'disabled' : ''}>
+                            <i class="fas fa-power-off"></i>
+                        </button>
+                        <button class="${offBtnClass}"
+                                onclick="testTrigger('${boardId}', ${trigger.channel}, false)"
+                                title="Turn relay OFF"
+                                ${testButtonsDisabled ? 'disabled' : ''}>
+                            <i class="fas fa-power-off"></i>
+                        </button>
+                    </td>
                 </tr>
-            </thead>
-            <tbody class="${rowClass}">
-                ${triggersData.triggers.map(trigger => {
-                    // Both the status badge and buttons should reflect the actual relay state
-                    const isOn = trigger.relayState === 'On';
-                    const activeStatus = isOn
-                        ? '<span class="badge bg-success ms-1">Active</span>'
-                        : '<span class="badge bg-secondary ms-1">Inactive</span>';
+            `;
+        }).join('');
 
-                    // Style the On/Off buttons based on relay state
-                    const onBtnClass = isOn ? 'btn btn-success btn-sm' : 'btn btn-outline-secondary btn-sm';
-                    const offBtnClass = !isOn && trigger.relayState === 'Off' ? 'btn btn-secondary btn-sm' : 'btn btn-outline-secondary btn-sm';
-
-                    return `
-                        <tr id="trigger-row-${trigger.channel}">
-                            <td>
-                                <span class="badge bg-primary">CH ${trigger.channel}</span>
-                                ${activeStatus}
-                            </td>
-                            <td>
-                                <select class="form-select form-select-sm"
-                                        id="trigger-sink-${trigger.channel}"
-                                        onchange="updateTriggerSink(${trigger.channel}, this.value)"
-                                        ${controlsDisabled ? 'disabled' : ''}>
-                                    <option value="">Not assigned</option>
-                                    ${sinkOptions}
-                                </select>
-                            </td>
-                            <td>
-                                <div class="input-group input-group-sm">
-                                    <input type="number" class="form-control"
-                                           id="trigger-delay-${trigger.channel}"
-                                           value="${trigger.offDelaySeconds}"
-                                           min="0" max="3600" step="1"
-                                           onchange="updateTriggerDelay(${trigger.channel}, this.value)"
-                                           ${controlsDisabled ? 'disabled' : ''}>
-                                    <span class="input-group-text">s</span>
-                                </div>
-                            </td>
-                            <td class="text-end">
-                                <button class="${onBtnClass}"
-                                        onclick="testTrigger(${trigger.channel}, true)"
-                                        title="Turn relay ON"
-                                        ${testButtonsDisabled ? 'disabled' : ''}>
-                                    <i class="fas fa-power-off"></i> On
+        return `
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button ${isExpanded ? '' : 'collapsed'}" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#board-${boardIdSafe}">
+                        <span class="me-2"><i class="fas fa-microchip"></i></span>
+                        <span class="fw-bold">${escapeHtml(board.displayName || board.boardId)}</span>
+                        <span class="ms-2 small ${boardStatusClass}">${boardStatusText}</span>
+                        ${portWarning}
+                        <span class="ms-auto me-3 small text-muted">${board.channelCount} channels</span>
+                    </button>
+                </h2>
+                <div id="board-${boardIdSafe}" class="accordion-collapse collapse ${isExpanded ? 'show' : ''}"
+                     data-bs-parent="#triggersContainer">
+                    <div class="accordion-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="small text-muted">
+                                <i class="fas fa-fingerprint me-1"></i> ID: ${boardId}
+                                ${board.usbPath ? `<span class="ms-2"><i class="fas fa-usb me-1"></i> Port: ${escapeHtml(board.usbPath)}</span>` : ''}
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-1" onclick="reconnectBoard('${boardId}')" title="Reconnect">
+                                    <i class="fas fa-sync-alt"></i>
                                 </button>
-                                <button class="${offBtnClass}"
-                                        onclick="testTrigger(${trigger.channel}, false)"
-                                        title="Turn relay OFF"
-                                        ${testButtonsDisabled ? 'disabled' : ''}>
-                                    <i class="fas fa-power-off"></i> Off
+                                <button class="btn btn-outline-secondary btn-sm me-1" onclick="editBoard('${boardId}')" title="Edit">
+                                    <i class="fas fa-cog"></i>
                                 </button>
-                            </td>
-                        </tr>
-                    `;
-                }).join('')}
-            </tbody>
-        </table>
-    `;
+                                <button class="btn btn-outline-danger btn-sm" onclick="removeBoard('${boardId}')" title="Remove">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        ${board.errorMessage ? `<div class="alert alert-warning small mb-2"><i class="fas fa-exclamation-triangle me-1"></i>${escapeHtml(board.errorMessage)}</div>` : ''}
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Channel</th>
+                                    <th>Sink</th>
+                                    <th>Off Delay</th>
+                                    <th class="text-end">Test</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${channelsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
 
-    container.innerHTML = triggersHtml;
+    container.innerHTML = accordionHtml;
 
     // Set selected values for sink dropdowns
-    triggersData.triggers.forEach(trigger => {
-        const select = document.getElementById(`trigger-sink-${trigger.channel}`);
-        if (select && trigger.customSinkName) {
-            select.value = trigger.customSinkName;
-        }
+    triggersData.boards.forEach(board => {
+        const boardIdSafe = board.boardId.replace(/[^a-zA-Z0-9]/g, '_');
+        board.triggers.forEach(trigger => {
+            const select = document.getElementById(`trigger-sink-${boardIdSafe}-${trigger.channel}`);
+            if (select && trigger.customSinkName) {
+                select.value = trigger.customSinkName;
+            }
+        });
     });
 }
 
@@ -3064,51 +3048,181 @@ async function toggleTriggersEnabled(enabled) {
     } catch (error) {
         console.error('Error toggling triggers:', error);
         showAlert(`Failed to ${enabled ? 'enable' : 'disable'} triggers: ${error.message}`, 'danger');
-        // Revert checkbox
         document.getElementById('triggersEnabled').checked = !enabled;
     }
 }
 
-// Update channel count
-async function updateChannelCount(count) {
-    const channelCount = parseInt(count, 10);
-    const validCounts = [1, 2, 4, 8, 16];
+// Show add board dialog
+async function showAddBoardDialog() {
+    if (!addBoardModal) {
+        addBoardModal = new bootstrap.Modal(document.getElementById('addBoardModal'));
+    }
 
-    if (!validCounts.includes(channelCount)) {
-        showAlert('Invalid channel count', 'danger');
+    // Populate device selector
+    const select = document.getElementById('addBoardDeviceSelect');
+    select.innerHTML = '<option value="">Loading devices...</option>';
+
+    try {
+        const response = await fetch('./api/triggers/devices');
+        const data = await response.json();
+        ftdiDevicesData = data;
+
+        // Filter out already-configured devices
+        const configuredIds = triggersData?.boards?.map(b => b.boardId) || [];
+        const availableDevices = data.devices.filter(d => {
+            const deviceId = d.serialNumber || `USB:${d.usbPath}`;
+            return !configuredIds.includes(deviceId);
+        });
+
+        if (availableDevices.length === 0) {
+            select.innerHTML = '<option value="">No available devices</option>';
+        } else {
+            select.innerHTML = '<option value="">Select a device...</option>' +
+                availableDevices.map(d => {
+                    const id = d.serialNumber || `USB:${d.usbPath}`;
+                    const label = d.serialNumber
+                        ? `${d.description || 'FTDI Device'} (SN: ${d.serialNumber})`
+                        : `${d.description || 'FTDI Device'} (Port: ${d.usbPath})`;
+                    return `<option value="${escapeHtml(id)}" data-port-based="${d.isPortBased}">${escapeHtml(label)}</option>`;
+                }).join('');
+        }
+    } catch (error) {
+        select.innerHTML = '<option value="">Failed to load devices</option>';
+    }
+
+    // Update port warning visibility on selection change
+    select.onchange = function() {
+        const option = this.options[this.selectedIndex];
+        const isPortBased = option?.dataset?.portBased === 'true';
+        document.getElementById('addBoardPortWarning').classList.toggle('d-none', !isPortBased);
+    };
+
+    document.getElementById('addBoardDisplayName').value = '';
+    document.getElementById('addBoardChannelCount').value = '8';
+    document.getElementById('addBoardPortWarning').classList.add('d-none');
+
+    addBoardModal.show();
+}
+
+// Add a new board
+async function addBoard() {
+    const boardId = document.getElementById('addBoardDeviceSelect').value;
+    const displayName = document.getElementById('addBoardDisplayName').value.trim();
+    const channelCount = parseInt(document.getElementById('addBoardChannelCount').value, 10);
+
+    if (!boardId) {
+        showAlert('Please select a device', 'danger');
         return;
     }
 
     try {
-        const response = await fetch('./api/triggers/channels', {
-            method: 'PUT',
+        const response = await fetch('./api/triggers/boards', {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channelCount })
+            body: JSON.stringify({ boardId, displayName: displayName || null, channelCount })
         });
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.message || 'Failed to update channel count');
+            throw new Error(error.message || 'Failed to add board');
         }
 
-        triggersData = await response.json();
-        renderTriggers();
-        showAlert(`Relay channels set to ${channelCount}`, 'success', 2000);
+        addBoardModal.hide();
+        await loadTriggers();
+        showAlert('Relay board added successfully', 'success');
     } catch (error) {
-        console.error('Error updating channel count:', error);
-        showAlert(`Failed to update channel count: ${error.message}`, 'danger');
-        // Revert selector
-        document.getElementById('triggersChannelCount').value = triggersData.channelCount || 8;
+        console.error('Error adding board:', error);
+        showAlert(`Failed to add board: ${error.message}`, 'danger');
     }
 }
 
-// Update trigger sink assignment
-async function updateTriggerSink(channel, sinkName) {
-    const delayInput = document.getElementById(`trigger-delay-${channel}`);
+// Remove a board
+async function removeBoard(boardId) {
+    if (!confirm(`Remove relay board "${boardId}"? This will delete all trigger configurations for this board.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to remove board');
+        }
+
+        await loadTriggers();
+        showAlert('Relay board removed', 'success');
+    } catch (error) {
+        console.error('Error removing board:', error);
+        showAlert(`Failed to remove board: ${error.message}`, 'danger');
+    }
+}
+
+// Edit board settings (channel count, display name)
+async function editBoard(boardId) {
+    const board = triggersData?.boards?.find(b => b.boardId === boardId);
+    if (!board) return;
+
+    const newName = prompt('Display name:', board.displayName || '');
+    if (newName === null) return;
+
+    const newCount = prompt('Channel count (1, 2, 4, 8, or 16):', board.channelCount);
+    if (newCount === null) return;
+
+    try {
+        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                displayName: newName || null,
+                channelCount: parseInt(newCount, 10) || null
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update board');
+        }
+
+        await loadTriggers();
+        showAlert('Board settings updated', 'success');
+    } catch (error) {
+        console.error('Error updating board:', error);
+        showAlert(`Failed to update board: ${error.message}`, 'danger');
+    }
+}
+
+// Reconnect a specific board
+async function reconnectBoard(boardId) {
+    try {
+        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/reconnect`, {
+            method: 'POST'
+        });
+
+        const boardStatus = await response.json();
+        await loadTriggers();
+
+        if (boardStatus.isConnected) {
+            showAlert(`Board "${boardId}" reconnected`, 'success');
+        } else {
+            showAlert(`Reconnection failed: ${boardStatus.errorMessage || 'Unknown error'}`, 'warning');
+        }
+    } catch (error) {
+        console.error('Error reconnecting board:', error);
+        showAlert(`Failed to reconnect: ${error.message}`, 'danger');
+    }
+}
+
+// Update trigger sink assignment (multi-board)
+async function updateTriggerSink(boardId, channel, sinkName) {
+    const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
+    const delayInput = document.getElementById(`trigger-delay-${boardIdSafe}-${channel}`);
     const delay = delayInput ? parseInt(delayInput.value, 10) : 60;
 
     try {
-        const response = await fetch(`./api/triggers/${channel}`, {
+        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3123,26 +3237,21 @@ async function updateTriggerSink(channel, sinkName) {
             throw new Error(error.message || 'Failed to update trigger');
         }
 
-        // Update local data
-        const trigger = triggersData.triggers.find(t => t.channel === channel);
-        if (trigger) {
-            trigger.customSinkName = sinkName || null;
-        }
-
-        showAlert(`Trigger ${channel} updated`, 'success', 2000);
+        showAlert(`Trigger updated`, 'success', 2000);
     } catch (error) {
         console.error('Error updating trigger:', error);
         showAlert(`Failed to update trigger: ${error.message}`, 'danger');
     }
 }
 
-// Update trigger off delay
-async function updateTriggerDelay(channel, delay) {
-    const sinkSelect = document.getElementById(`trigger-sink-${channel}`);
+// Update trigger off delay (multi-board)
+async function updateTriggerDelay(boardId, channel, delay) {
+    const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
+    const sinkSelect = document.getElementById(`trigger-sink-${boardIdSafe}-${channel}`);
     const sinkName = sinkSelect ? sinkSelect.value : null;
 
     try {
-        const response = await fetch(`./api/triggers/${channel}`, {
+        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3157,23 +3266,17 @@ async function updateTriggerDelay(channel, delay) {
             throw new Error(error.message || 'Failed to update trigger');
         }
 
-        // Update local data
-        const trigger = triggersData.triggers.find(t => t.channel === channel);
-        if (trigger) {
-            trigger.offDelaySeconds = parseInt(delay, 10);
-        }
-
-        showAlert(`Trigger ${channel} delay updated`, 'success', 2000);
+        showAlert(`Delay updated`, 'success', 2000);
     } catch (error) {
         console.error('Error updating trigger delay:', error);
         showAlert(`Failed to update trigger: ${error.message}`, 'danger');
     }
 }
 
-// Test a trigger relay
-async function testTrigger(channel, on) {
+// Test a trigger relay (multi-board)
+async function testTrigger(boardId, channel, on) {
     try {
-        const response = await fetch(`./api/triggers/${channel}/test`, {
+        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ channel, on })
@@ -3185,8 +3288,6 @@ async function testTrigger(channel, on) {
         }
 
         showAlert(`Relay ${channel} turned ${on ? 'ON' : 'OFF'}`, 'success', 2000);
-
-        // Refresh to show updated state
         await loadTriggers();
     } catch (error) {
         console.error('Error testing trigger:', error);
@@ -3194,7 +3295,7 @@ async function testTrigger(channel, on) {
     }
 }
 
-// Reconnect to trigger board
+// Reconnect all boards (legacy function for compatibility)
 async function reconnectTriggerBoard() {
     try {
         const response = await fetch('./api/triggers/reconnect', {
@@ -3209,10 +3310,11 @@ async function reconnectTriggerBoard() {
         triggersData = await response.json();
         renderTriggers();
 
-        if (triggersData.state === 'Connected') {
-            showAlert('Reconnected to relay board', 'success');
+        const connectedCount = triggersData.boards.filter(b => b.isConnected).length;
+        if (connectedCount === triggersData.boards.length) {
+            showAlert('All boards reconnected', 'success');
         } else {
-            showAlert('Reconnection failed: ' + (triggersData.errorMessage || 'Unknown error'), 'warning');
+            showAlert(`Reconnected ${connectedCount}/${triggersData.boards.length} boards`, 'warning');
         }
     } catch (error) {
         console.error('Error reconnecting:', error);

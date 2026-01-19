@@ -82,7 +82,44 @@ public class TriggerConfiguration
 }
 
 /// <summary>
+/// Configuration for a single relay board.
+/// </summary>
+public class TriggerBoardConfiguration
+{
+    /// <summary>
+    /// Unique identifier for this board.
+    /// Typically the FTDI serial number, or "USB:{path}" for boards without serials.
+    /// </summary>
+    [Required]
+    public string BoardId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// User-friendly display name for this board.
+    /// </summary>
+    [StringLength(100)]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Number of relay channels on the board (1, 2, 4, 8, or 16).
+    /// Default is 8 for standard Denkovi boards.
+    /// </summary>
+    public int ChannelCount { get; set; } = 8;
+
+    /// <summary>
+    /// USB port path for boards identified by port (e.g., "1-2.3").
+    /// Only used when board has no unique serial number.
+    /// </summary>
+    public string? UsbPath { get; set; }
+
+    /// <summary>
+    /// Configuration for each trigger channel on this board.
+    /// </summary>
+    public List<TriggerConfiguration> Triggers { get; set; } = new();
+}
+
+/// <summary>
 /// Root configuration for the trigger feature.
+/// Supports multiple relay boards.
 /// </summary>
 public class TriggerFeatureConfiguration
 {
@@ -92,27 +129,75 @@ public class TriggerFeatureConfiguration
     public bool Enabled { get; set; }
 
     /// <summary>
-    /// Number of relay channels on the board (1, 2, 4, 8, or 16).
-    /// Default is 8 for standard Denkovi boards.
+    /// List of configured relay boards.
     /// </summary>
-    public int ChannelCount { get; set; } = 8;
+    public List<TriggerBoardConfiguration> Boards { get; set; } = new();
+
+    // Legacy properties for migration from single-board format
+    // These are only used during config load/migration
 
     /// <summary>
-    /// Serial port device path for the relay board.
-    /// On Linux, typically /dev/ttyUSB0 or similar for FTDI devices.
+    /// Legacy: Number of relay channels (migrated to Boards[0].ChannelCount).
     /// </summary>
+    [Obsolete("Use Boards instead. This property is only for config migration.")]
+    public int? ChannelCount { get; set; }
+
+    /// <summary>
+    /// Legacy: Serial port device path (no longer used).
+    /// </summary>
+    [Obsolete("Use Boards instead. This property is only for config migration.")]
     public string? DevicePath { get; set; }
 
     /// <summary>
-    /// FTDI device serial number for identification.
-    /// Used to find the correct device when multiple FTDI devices are present.
+    /// Legacy: FTDI serial number (migrated to Boards[0].BoardId).
     /// </summary>
+    [Obsolete("Use Boards instead. This property is only for config migration.")]
     public string? FtdiSerialNumber { get; set; }
 
     /// <summary>
-    /// Configuration for each trigger channel.
+    /// Legacy: Trigger configurations (migrated to Boards[0].Triggers).
     /// </summary>
-    public List<TriggerConfiguration> Triggers { get; set; } = new();
+    [Obsolete("Use Boards instead. This property is only for config migration.")]
+    public List<TriggerConfiguration>? Triggers { get; set; }
+
+    /// <summary>
+    /// Check if this config uses the legacy single-board format and needs migration.
+    /// </summary>
+    public bool NeedsMigration
+    {
+        get
+        {
+            #pragma warning disable CS0618 // Obsolete - intentional for migration check
+            return FtdiSerialNumber != null || (Triggers != null && Triggers.Count > 0);
+            #pragma warning restore CS0618
+        }
+    }
+
+    /// <summary>
+    /// Migrate from legacy single-board format to multi-board format.
+    /// </summary>
+    public void MigrateFromLegacy()
+    {
+        if (!NeedsMigration) return;
+
+        #pragma warning disable CS0618 // Obsolete - intentional for migration
+        var legacyBoard = new TriggerBoardConfiguration
+        {
+            BoardId = FtdiSerialNumber ?? "LEGACY",
+            DisplayName = "Relay Board",
+            ChannelCount = ChannelCount ?? 8,
+            Triggers = Triggers ?? new List<TriggerConfiguration>()
+        };
+
+        Boards = new List<TriggerBoardConfiguration> { legacyBoard };
+
+        // Clear legacy properties
+        FtdiSerialNumber = null;
+        DevicePath = null;
+        ChannelCount = null;
+        Triggers = null;
+        #pragma warning restore CS0618
+    }
 }
 
 /// <summary>
@@ -131,17 +216,29 @@ public record TriggerResponse(
 );
 
 /// <summary>
-/// Response for the overall trigger feature status.
+/// Response for a single relay board status.
 /// </summary>
-public record TriggerFeatureResponse(
-    bool Enabled,
+public record TriggerBoardResponse(
+    string BoardId,
+    string? DisplayName,
+    bool IsConnected,
     TriggerFeatureState State,
     int ChannelCount,
-    string? DevicePath,
-    string? FtdiSerialNumber,
+    string? UsbPath,
+    bool IsPortBased,
     string? ErrorMessage,
     List<TriggerResponse> Triggers,
     int CurrentRelayStates
+);
+
+/// <summary>
+/// Response for the overall trigger feature status.
+/// Supports multiple boards.
+/// </summary>
+public record TriggerFeatureResponse(
+    bool Enabled,
+    List<TriggerBoardResponse> Boards,
+    int TotalChannels
 );
 
 /// <summary>
@@ -153,16 +250,44 @@ public class TriggerFeatureEnableRequest
     /// Whether to enable the trigger feature.
     /// </summary>
     public bool Enabled { get; set; }
+}
 
+/// <summary>
+/// Request to add a new relay board.
+/// </summary>
+public class AddBoardRequest
+{
     /// <summary>
-    /// Optional FTDI device serial number.
-    /// If not specified, uses the first available FTDI device.
+    /// Board identifier (FTDI serial number or will be auto-generated from USB path).
     /// </summary>
-    public string? FtdiSerialNumber { get; set; }
+    [Required]
+    public string BoardId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional channel count (1, 2, 4, 8, or 16).
-    /// If not specified, keeps the existing value.
+    /// User-friendly display name for this board.
+    /// </summary>
+    [StringLength(100)]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Number of relay channels on the board (1, 2, 4, 8, or 16).
+    /// </summary>
+    public int ChannelCount { get; set; } = 8;
+}
+
+/// <summary>
+/// Request to update a board's settings.
+/// </summary>
+public class UpdateBoardRequest
+{
+    /// <summary>
+    /// User-friendly display name for this board.
+    /// </summary>
+    [StringLength(100)]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Number of relay channels on the board (1, 2, 4, 8, or 16).
     /// </summary>
     public int? ChannelCount { get; set; }
 }
@@ -236,5 +361,27 @@ public record FtdiDeviceInfo(
     int Index,
     string? SerialNumber,
     string? Description,
-    bool IsOpen
-);
+    bool IsOpen,
+    string? UsbPath = null
+)
+{
+    /// <summary>
+    /// Get the preferred identifier for this device.
+    /// Uses serial number if available, otherwise USB path.
+    /// </summary>
+    public string GetBoardId()
+    {
+        if (!string.IsNullOrWhiteSpace(SerialNumber))
+            return SerialNumber;
+
+        if (!string.IsNullOrWhiteSpace(UsbPath))
+            return $"USB:{UsbPath}";
+
+        return $"FTDI-{Index:D2}";
+    }
+
+    /// <summary>
+    /// Whether this device is identified by USB port path (less stable).
+    /// </summary>
+    public bool IsPortBased => string.IsNullOrWhiteSpace(SerialNumber);
+};

@@ -11,15 +11,8 @@ namespace MultiRoomAudio.Services;
 /// <summary>
 /// Manages 12V trigger relays for amplifier zones.
 /// Maps custom sinks to relay channels and controls power based on playback state.
+/// Supports multiple relay boards simultaneously.
 /// </summary>
-/// <remarks>
-/// The trigger feature:
-/// - Activates a relay when any player starts streaming to a mapped custom sink
-/// - Keeps the relay on while playback is active
-/// - Turns off the relay after a configurable delay when playback stops
-/// - Supports graceful shutdown (all relays off)
-/// - Persists configuration to YAML
-/// </remarks>
 public class TriggerService : IHostedService, IAsyncDisposable
 {
     private readonly ILogger<TriggerService> _logger;
@@ -32,14 +25,16 @@ public class TriggerService : IHostedService, IAsyncDisposable
     private readonly object _configLock = new();
     private readonly object _stateLock = new();
 
-    private IRelayBoard? _relayBoard;
+    // Multi-board support: Dictionary of board ID -> relay board instance
+    private readonly Dictionary<string, IRelayBoard> _relayBoards = new();
+    private readonly Dictionary<string, TriggerFeatureState> _boardStates = new();
+    private readonly Dictionary<string, string?> _boardErrors = new();
+
     private TriggerFeatureConfiguration _config = new();
-    private TriggerFeatureState _state = TriggerFeatureState.Disabled;
-    private string? _errorMessage;
     private bool _disposed;
 
-    // Track active triggers and their off timers
-    private readonly ConcurrentDictionary<int, TriggerChannelState> _channelStates = new();
+    // Track active triggers and their off timers using composite key (boardId, channel)
+    private readonly ConcurrentDictionary<(string BoardId, int Channel), TriggerChannelState> _channelStates = new();
 
     /// <summary>
     /// Internal state for a trigger channel.
@@ -73,21 +68,6 @@ public class TriggerService : IHostedService, IAsyncDisposable
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
             .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitDefaults)
             .Build();
-
-        // Initialize channel states (will be adjusted when config is loaded)
-        InitializeChannelStates(8);
-    }
-
-    private void InitializeChannelStates(int channelCount)
-    {
-        // Ensure we have states for all channels up to the max
-        for (int i = 1; i <= 16; i++)
-        {
-            if (!_channelStates.ContainsKey(i))
-            {
-                _channelStates[i] = new TriggerChannelState();
-            }
-        }
     }
 
     #region IHostedService
@@ -96,17 +76,19 @@ public class TriggerService : IHostedService, IAsyncDisposable
     {
         _logger.LogInformation("TriggerService starting...");
 
-        // Load configuration
+        // Load configuration (with migration if needed)
         _config = LoadConfiguration();
 
         if (_config.Enabled)
         {
-            // Try to connect to the relay board
-            ConnectToBoard();
+            // Connect to all configured boards
+            foreach (var boardConfig in _config.Boards)
+            {
+                ConnectBoard(boardConfig.BoardId);
+            }
         }
         else
         {
-            _state = TriggerFeatureState.Disabled;
             _logger.LogInformation("Trigger feature is disabled");
         }
 
@@ -125,10 +107,15 @@ public class TriggerService : IHostedService, IAsyncDisposable
             kvp.Value.OffDelayTimer = null;
         }
 
-        // Turn off all relays on graceful shutdown
-        _relayBoard?.AllOff();
-        _relayBoard?.Dispose();
-        _relayBoard = null;
+        // Turn off all relays and dispose all boards
+        foreach (var board in _relayBoards.Values)
+        {
+            board.AllOff();
+            board.Dispose();
+        }
+        _relayBoards.Clear();
+        _boardStates.Clear();
+        _boardErrors.Clear();
 
         _logger.LogInformation("TriggerService stopped");
         return Task.CompletedTask;
@@ -136,22 +123,56 @@ public class TriggerService : IHostedService, IAsyncDisposable
 
     #endregion
 
-    #region Public API
+    #region Public API - Feature Status
 
     /// <summary>
-    /// Get the current status of the trigger feature.
+    /// Get the current status of the trigger feature (all boards).
     /// </summary>
     public TriggerFeatureResponse GetStatus()
     {
-        var triggers = new List<TriggerResponse>();
-        var channelCount = _config.ChannelCount;
+        var boardResponses = new List<TriggerBoardResponse>();
 
-        for (int channel = 1; channel <= channelCount; channel++)
+        foreach (var boardConfig in _config.Boards)
         {
-            var config = _config.Triggers.FirstOrDefault(t => t.Channel == channel)
+            var boardResponse = GetBoardStatus(boardConfig.BoardId);
+            if (boardResponse != null)
+            {
+                boardResponses.Add(boardResponse);
+            }
+        }
+
+        var totalChannels = _config.Boards.Sum(b => b.ChannelCount);
+
+        return new TriggerFeatureResponse(
+            Enabled: _config.Enabled,
+            Boards: boardResponses,
+            TotalChannels: totalChannels
+        );
+    }
+
+    /// <summary>
+    /// Get status for a specific board.
+    /// </summary>
+    public TriggerBoardResponse? GetBoardStatus(string boardId)
+    {
+        var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+        if (boardConfig == null)
+            return null;
+
+        _relayBoards.TryGetValue(boardId, out var relayBoard);
+        _boardStates.TryGetValue(boardId, out var state);
+        _boardErrors.TryGetValue(boardId, out var errorMessage);
+
+        var isConnected = relayBoard?.IsConnected ?? false;
+        var isPortBased = boardId.StartsWith("USB:");
+
+        var triggers = new List<TriggerResponse>();
+        for (int channel = 1; channel <= boardConfig.ChannelCount; channel++)
+        {
+            var config = boardConfig.Triggers.FirstOrDefault(t => t.Channel == channel)
                 ?? new TriggerConfiguration { Channel = channel };
 
-            var channelState = _channelStates.GetValueOrDefault(channel) ?? new TriggerChannelState();
+            var channelState = _channelStates.GetValueOrDefault((boardId, channel)) ?? new TriggerChannelState();
 
             // Get display name for the sink
             string? sinkDisplayName = null;
@@ -161,7 +182,7 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 sinkDisplayName = sink?.Description ?? sink?.Name ?? config.CustomSinkName;
             }
 
-            var relayState = _relayBoard?.GetRelay(channel) ?? RelayState.Unknown;
+            var relayState = relayBoard?.GetRelay(channel) ?? RelayState.Unknown;
 
             triggers.Add(new TriggerResponse(
                 Channel: channel,
@@ -178,69 +199,55 @@ public class TriggerService : IHostedService, IAsyncDisposable
             ));
         }
 
-        return new TriggerFeatureResponse(
-            Enabled: _config.Enabled,
-            State: _state,
-            ChannelCount: channelCount,
-            DevicePath: _config.DevicePath,
-            FtdiSerialNumber: _config.FtdiSerialNumber,
-            ErrorMessage: _errorMessage,
+        return new TriggerBoardResponse(
+            BoardId: boardId,
+            DisplayName: boardConfig.DisplayName,
+            IsConnected: isConnected,
+            State: state,
+            ChannelCount: boardConfig.ChannelCount,
+            UsbPath: boardConfig.UsbPath,
+            IsPortBased: isPortBased,
+            ErrorMessage: errorMessage,
             Triggers: triggers,
-            CurrentRelayStates: _relayBoard?.CurrentState ?? 0
+            CurrentRelayStates: relayBoard?.CurrentState ?? 0
         );
     }
 
+    #endregion
+
+    #region Public API - Feature Enable/Disable
+
     /// <summary>
-    /// Enable or disable the trigger feature.
+    /// Enable or disable the trigger feature (affects all boards).
     /// </summary>
-    public bool SetEnabled(bool enabled, string? ftdiSerialNumber = null, int? channelCount = null)
+    public bool SetEnabled(bool enabled)
     {
         lock (_stateLock)
         {
             _config.Enabled = enabled;
-            _config.FtdiSerialNumber = ftdiSerialNumber;
-
-            // Update channel count if provided
-            if (channelCount.HasValue && ValidChannelCounts.IsValid(channelCount.Value))
-            {
-                var oldCount = _config.ChannelCount;
-                _config.ChannelCount = channelCount.Value;
-
-                // If reducing channels, turn off and unassign triggers beyond new count
-                if (channelCount.Value < oldCount)
-                {
-                    for (int ch = channelCount.Value + 1; ch <= oldCount; ch++)
-                    {
-                        CancelOffTimer(ch);
-                        _relayBoard?.SetRelay(ch, false);
-                        var state = _channelStates.GetValueOrDefault(ch);
-                        if (state != null)
-                        {
-                            state.IsActive = false;
-                            state.ActivePlayerCount = 0;
-                        }
-                        // Remove trigger config for channels beyond the new count
-                        _config.Triggers.RemoveAll(t => t.Channel > channelCount.Value);
-                    }
-                }
-
-                _logger.LogInformation("Channel count changed from {Old} to {New}", oldCount, channelCount.Value);
-            }
 
             if (enabled)
             {
-                var result = ConnectToBoard();
+                // Connect to all configured boards
+                foreach (var boardConfig in _config.Boards)
+                {
+                    ConnectBoard(boardConfig.BoardId);
+                }
                 SaveConfiguration();
-                return result;
+                return true;
             }
             else
             {
-                // Disable: turn off all relays and disconnect
-                _relayBoard?.AllOff();
-                _relayBoard?.Dispose();
-                _relayBoard = null;
-                _state = TriggerFeatureState.Disabled;
-                _errorMessage = null;
+                // Disable: turn off all relays and disconnect all boards
+                foreach (var board in _relayBoards.Values)
+                {
+                    board.AllOff();
+                    board.Dispose();
+                }
+                _relayBoards.Clear();
+                _boardStates.Clear();
+                _boardErrors.Clear();
+
                 SaveConfiguration();
                 _logger.LogInformation("Trigger feature disabled");
                 return true;
@@ -248,65 +255,189 @@ public class TriggerService : IHostedService, IAsyncDisposable
         }
     }
 
+    #endregion
+
+    #region Public API - Board Management
+
     /// <summary>
-    /// Update just the channel count without changing enabled state.
+    /// Add a new relay board.
     /// </summary>
-    public bool SetChannelCount(int channelCount)
+    public bool AddBoard(string boardId, string? displayName, int channelCount)
     {
+        if (string.IsNullOrWhiteSpace(boardId))
+            throw new ArgumentException("Board ID is required", nameof(boardId));
+
         if (!ValidChannelCounts.IsValid(channelCount))
+            channelCount = ValidChannelCounts.Clamp(channelCount);
+
+        lock (_configLock)
         {
-            _logger.LogWarning("Invalid channel count: {Count}", channelCount);
-            return false;
-        }
-
-        lock (_stateLock)
-        {
-            var oldCount = _config.ChannelCount;
-            if (oldCount == channelCount)
-                return true;
-
-            _config.ChannelCount = channelCount;
-
-            // If reducing channels, turn off and unassign triggers beyond new count
-            if (channelCount < oldCount)
+            // Check if board already exists
+            if (_config.Boards.Any(b => b.BoardId == boardId))
             {
-                for (int ch = channelCount + 1; ch <= oldCount; ch++)
-                {
-                    CancelOffTimer(ch);
-                    _relayBoard?.SetRelay(ch, false);
-                    var state = _channelStates.GetValueOrDefault(ch);
-                    if (state != null)
-                    {
-                        state.IsActive = false;
-                        state.ActivePlayerCount = 0;
-                    }
-                }
-                // Remove trigger configs beyond the new count
-                _config.Triggers.RemoveAll(t => t.Channel > channelCount);
+                _logger.LogWarning("Board '{BoardId}' already exists", boardId);
+                return false;
+            }
+
+            var boardConfig = new TriggerBoardConfiguration
+            {
+                BoardId = boardId,
+                DisplayName = displayName,
+                ChannelCount = channelCount,
+                UsbPath = boardId.StartsWith("USB:") ? boardId.Substring(4) : null
+            };
+
+            _config.Boards.Add(boardConfig);
+
+            // Initialize channel states for this board
+            for (int i = 1; i <= 16; i++)
+            {
+                _channelStates.TryAdd((boardId, i), new TriggerChannelState());
+            }
+
+            // Connect if feature is enabled
+            if (_config.Enabled)
+            {
+                ConnectBoard(boardId);
             }
 
             SaveConfiguration();
-            _logger.LogInformation("Channel count changed from {Old} to {New}", oldCount, channelCount);
+            _logger.LogInformation("Added board '{BoardId}' ({DisplayName}) with {Channels} channels",
+                boardId, displayName ?? boardId, channelCount);
+
             return true;
         }
     }
 
     /// <summary>
-    /// Configure a trigger channel.
+    /// Remove a relay board.
     /// </summary>
-    public bool ConfigureTrigger(int channel, string? customSinkName, int offDelaySeconds, string? zoneName)
+    public bool RemoveBoard(string boardId)
     {
-        if (channel < 1 || channel > _config.ChannelCount)
-            throw new ArgumentOutOfRangeException(nameof(channel), $"Channel must be between 1 and {_config.ChannelCount}");
+        lock (_configLock)
+        {
+            var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+            if (boardConfig == null)
+            {
+                _logger.LogWarning("Board '{BoardId}' not found", boardId);
+                return false;
+            }
+
+            // Disconnect and turn off relays
+            if (_relayBoards.TryGetValue(boardId, out var board))
+            {
+                board.AllOff();
+                board.Dispose();
+                _relayBoards.Remove(boardId);
+            }
+            _boardStates.Remove(boardId);
+            _boardErrors.Remove(boardId);
+
+            // Cancel all timers for this board
+            for (int ch = 1; ch <= 16; ch++)
+            {
+                CancelOffTimer(boardId, ch);
+                _channelStates.TryRemove((boardId, ch), out _);
+            }
+
+            _config.Boards.Remove(boardConfig);
+            SaveConfiguration();
+
+            _logger.LogInformation("Removed board '{BoardId}'", boardId);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Update a board's settings.
+    /// </summary>
+    public bool UpdateBoard(string boardId, string? displayName, int? channelCount)
+    {
+        lock (_configLock)
+        {
+            var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+            if (boardConfig == null)
+            {
+                _logger.LogWarning("Board '{BoardId}' not found", boardId);
+                return false;
+            }
+
+            if (displayName != null)
+            {
+                boardConfig.DisplayName = displayName;
+            }
+
+            if (channelCount.HasValue)
+            {
+                var newCount = ValidChannelCounts.IsValid(channelCount.Value)
+                    ? channelCount.Value
+                    : ValidChannelCounts.Clamp(channelCount.Value);
+
+                var oldCount = boardConfig.ChannelCount;
+                boardConfig.ChannelCount = newCount;
+
+                // If reducing channels, turn off relays beyond new count
+                if (newCount < oldCount && _relayBoards.TryGetValue(boardId, out var board))
+                {
+                    for (int ch = newCount + 1; ch <= oldCount; ch++)
+                    {
+                        CancelOffTimer(boardId, ch);
+                        board.SetRelay(ch, false);
+                        if (_channelStates.TryGetValue((boardId, ch), out var state))
+                        {
+                            state.IsActive = false;
+                            state.ActivePlayerCount = 0;
+                        }
+                    }
+                    // Remove trigger configs beyond new count
+                    boardConfig.Triggers.RemoveAll(t => t.Channel > newCount);
+                }
+            }
+
+            SaveConfiguration();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Reconnect a specific board.
+    /// </summary>
+    public bool ReconnectBoard(string boardId)
+    {
+        var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+        if (boardConfig == null)
+        {
+            _logger.LogWarning("Board '{BoardId}' not found", boardId);
+            return false;
+        }
+
+        return ConnectBoard(boardId);
+    }
+
+    #endregion
+
+    #region Public API - Channel Configuration
+
+    /// <summary>
+    /// Configure a trigger channel on a specific board.
+    /// </summary>
+    public bool ConfigureTrigger(string boardId, int channel, string? customSinkName, int offDelaySeconds, string? zoneName)
+    {
+        var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+        if (boardConfig == null)
+            throw new ArgumentException($"Board '{boardId}' not found", nameof(boardId));
+
+        if (channel < 1 || channel > boardConfig.ChannelCount)
+            throw new ArgumentOutOfRangeException(nameof(channel), $"Channel must be between 1 and {boardConfig.ChannelCount}");
 
         lock (_configLock)
         {
             // Find or create the trigger config
-            var trigger = _config.Triggers.FirstOrDefault(t => t.Channel == channel);
+            var trigger = boardConfig.Triggers.FirstOrDefault(t => t.Channel == channel);
             if (trigger == null)
             {
                 trigger = new TriggerConfiguration { Channel = channel };
-                _config.Triggers.Add(trigger);
+                boardConfig.Triggers.Add(trigger);
             }
 
             // Validate custom sink exists (if specified)
@@ -315,9 +446,8 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 var sink = _sinksService.GetSink(customSinkName);
                 if (sink == null)
                 {
-                    _logger.LogWarning("Custom sink '{SinkName}' not found for trigger {Channel}",
-                        customSinkName, channel);
-                    // Allow configuration anyway - sink might be created later
+                    _logger.LogWarning("Custom sink '{SinkName}' not found for trigger {BoardId}/{Channel}",
+                        customSinkName, boardId, channel);
                 }
             }
 
@@ -328,10 +458,12 @@ public class TriggerService : IHostedService, IAsyncDisposable
             // If unassigning, turn off the relay and cancel timer
             if (string.IsNullOrEmpty(customSinkName))
             {
-                CancelOffTimer(channel);
-                _relayBoard?.SetRelay(channel, false);
-                var state = _channelStates.GetValueOrDefault(channel);
-                if (state != null)
+                CancelOffTimer(boardId, channel);
+                if (_relayBoards.TryGetValue(boardId, out var board))
+                {
+                    board.SetRelay(channel, false);
+                }
+                if (_channelStates.TryGetValue((boardId, channel), out var state))
                 {
                     state.IsActive = false;
                     state.ActivePlayerCount = 0;
@@ -339,8 +471,8 @@ public class TriggerService : IHostedService, IAsyncDisposable
             }
 
             SaveConfiguration();
-            _logger.LogInformation("Trigger {Channel} configured: sink={Sink}, delay={Delay}s, zone={Zone}",
-                channel, customSinkName ?? "(none)", offDelaySeconds, zoneName ?? "(none)");
+            _logger.LogInformation("Trigger {BoardId}/{Channel} configured: sink={Sink}, delay={Delay}s, zone={Zone}",
+                boardId, channel, customSinkName ?? "(none)", offDelaySeconds, zoneName ?? "(none)");
 
             return true;
         }
@@ -349,38 +481,46 @@ public class TriggerService : IHostedService, IAsyncDisposable
     /// <summary>
     /// Manually control a relay (for testing).
     /// </summary>
-    public bool ManualControl(int channel, bool on)
+    public bool ManualControl(string boardId, int channel, bool on)
     {
-        if (channel < 1 || channel > _config.ChannelCount)
-            throw new ArgumentOutOfRangeException(nameof(channel), $"Channel must be between 1 and {_config.ChannelCount}");
+        var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+        if (boardConfig == null)
+            throw new ArgumentException($"Board '{boardId}' not found", nameof(boardId));
 
-        if (_relayBoard == null || !_relayBoard.IsConnected)
+        if (channel < 1 || channel > boardConfig.ChannelCount)
+            throw new ArgumentOutOfRangeException(nameof(channel), $"Channel must be between 1 and {boardConfig.ChannelCount}");
+
+        if (!_relayBoards.TryGetValue(boardId, out var board) || !board.IsConnected)
         {
-            _logger.LogWarning("Cannot control relay - board not connected");
+            _logger.LogWarning("Cannot control relay - board '{BoardId}' not connected", boardId);
             return false;
         }
 
         // Cancel any pending off timer
         if (on)
         {
-            CancelOffTimer(channel);
+            CancelOffTimer(boardId, channel);
         }
 
-        var result = _relayBoard.SetRelay(channel, on);
+        var result = board.SetRelay(channel, on);
         if (result)
         {
-            _logger.LogInformation("Manual control: relay {Channel} set to {State}", channel, on ? "ON" : "OFF");
+            _logger.LogInformation("Manual control: {BoardId}/{Channel} set to {State}", boardId, channel, on ? "ON" : "OFF");
         }
 
         return result;
     }
+
+    #endregion
+
+    #region Public API - Device Discovery
 
     /// <summary>
     /// Get list of available FTDI devices.
     /// </summary>
     public List<FtdiDeviceInfo> GetAvailableDevices()
     {
-        // Return mock device in mock hardware mode
+        // Return mock devices in mock hardware mode
         if (_environment.IsMockHardware)
         {
             return new List<FtdiDeviceInfo>
@@ -388,8 +528,21 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 new FtdiDeviceInfo(
                     Index: 0,
                     SerialNumber: "MOCK001",
-                    Description: "Mock 8-Channel Relay Board",
-                    IsOpen: false
+                    Description: "Mock 8-Channel Relay Board A",
+                    IsOpen: _relayBoards.ContainsKey("MOCK001")
+                ),
+                new FtdiDeviceInfo(
+                    Index: 1,
+                    SerialNumber: "MOCK002",
+                    Description: "Mock 8-Channel Relay Board B",
+                    IsOpen: _relayBoards.ContainsKey("MOCK002")
+                ),
+                new FtdiDeviceInfo(
+                    Index: 2,
+                    SerialNumber: null,
+                    Description: "Mock Board (No Serial)",
+                    IsOpen: false,
+                    UsbPath: "1-2.3"
                 )
             };
         }
@@ -402,23 +555,31 @@ public class TriggerService : IHostedService, IAsyncDisposable
         return FtdiRelayBoard.EnumerateDevices();
     }
 
+    #endregion
+
+    #region Public API - Player Events
+
     /// <summary>
     /// Called when a player starts playing to a device.
     /// </summary>
     public void OnPlayerStarted(string playerName, string? deviceId)
     {
-        if (!_config.Enabled || _relayBoard == null || string.IsNullOrEmpty(deviceId))
+        if (!_config.Enabled || string.IsNullOrEmpty(deviceId))
             return;
 
-        // Find the trigger channel for this device/sink
-        var trigger = _config.Triggers.FirstOrDefault(t =>
-            !string.IsNullOrEmpty(t.CustomSinkName) &&
-            string.Equals(t.CustomSinkName, deviceId, StringComparison.OrdinalIgnoreCase));
+        // Find the trigger for this device across all boards
+        foreach (var boardConfig in _config.Boards)
+        {
+            var trigger = boardConfig.Triggers.FirstOrDefault(t =>
+                !string.IsNullOrEmpty(t.CustomSinkName) &&
+                string.Equals(t.CustomSinkName, deviceId, StringComparison.OrdinalIgnoreCase));
 
-        if (trigger == null)
-            return;
-
-        ActivateTrigger(trigger.Channel, playerName);
+            if (trigger != null && _relayBoards.ContainsKey(boardConfig.BoardId))
+            {
+                ActivateTrigger(boardConfig.BoardId, trigger.Channel, playerName);
+                return;
+            }
+        }
     }
 
     /// <summary>
@@ -426,17 +587,21 @@ public class TriggerService : IHostedService, IAsyncDisposable
     /// </summary>
     public void OnPlayerStopped(string playerName, string? deviceId)
     {
-        if (!_config.Enabled || _relayBoard == null || string.IsNullOrEmpty(deviceId))
+        if (!_config.Enabled || string.IsNullOrEmpty(deviceId))
             return;
 
-        var trigger = _config.Triggers.FirstOrDefault(t =>
-            !string.IsNullOrEmpty(t.CustomSinkName) &&
-            string.Equals(t.CustomSinkName, deviceId, StringComparison.OrdinalIgnoreCase));
+        foreach (var boardConfig in _config.Boards)
+        {
+            var trigger = boardConfig.Triggers.FirstOrDefault(t =>
+                !string.IsNullOrEmpty(t.CustomSinkName) &&
+                string.Equals(t.CustomSinkName, deviceId, StringComparison.OrdinalIgnoreCase));
 
-        if (trigger == null)
-            return;
-
-        DeactivateTrigger(trigger.Channel, trigger.OffDelaySeconds, playerName);
+            if (trigger != null && _relayBoards.ContainsKey(boardConfig.BoardId))
+            {
+                DeactivateTrigger(boardConfig.BoardId, trigger.Channel, trigger.OffDelaySeconds, playerName);
+                return;
+            }
+        }
     }
 
     /// <summary>
@@ -446,29 +611,37 @@ public class TriggerService : IHostedService, IAsyncDisposable
     {
         lock (_configLock)
         {
-            var affectedTriggers = _config.Triggers
-                .Where(t => string.Equals(t.CustomSinkName, sinkName, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            var affected = false;
 
-            foreach (var trigger in affectedTriggers)
+            foreach (var boardConfig in _config.Boards)
             {
-                _logger.LogInformation("Unassigning trigger {Channel} - sink '{SinkName}' was deleted",
-                    trigger.Channel, sinkName);
+                var affectedTriggers = boardConfig.Triggers
+                    .Where(t => string.Equals(t.CustomSinkName, sinkName, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
-                trigger.CustomSinkName = null;
-
-                // Turn off relay and cancel timer
-                CancelOffTimer(trigger.Channel);
-                _relayBoard?.SetRelay(trigger.Channel, false);
-                var state = _channelStates.GetValueOrDefault(trigger.Channel);
-                if (state != null)
+                foreach (var trigger in affectedTriggers)
                 {
-                    state.IsActive = false;
-                    state.ActivePlayerCount = 0;
+                    _logger.LogInformation("Unassigning trigger {BoardId}/{Channel} - sink '{SinkName}' was deleted",
+                        boardConfig.BoardId, trigger.Channel, sinkName);
+
+                    trigger.CustomSinkName = null;
+
+                    // Turn off relay and cancel timer
+                    CancelOffTimer(boardConfig.BoardId, trigger.Channel);
+                    if (_relayBoards.TryGetValue(boardConfig.BoardId, out var board))
+                    {
+                        board.SetRelay(trigger.Channel, false);
+                    }
+                    if (_channelStates.TryGetValue((boardConfig.BoardId, trigger.Channel), out var state))
+                    {
+                        state.IsActive = false;
+                        state.ActivePlayerCount = 0;
+                    }
+                    affected = true;
                 }
             }
 
-            if (affectedTriggers.Count > 0)
+            if (affected)
             {
                 SaveConfiguration();
             }
@@ -477,76 +650,100 @@ public class TriggerService : IHostedService, IAsyncDisposable
 
     #endregion
 
-    #region Private Methods
+    #region Private Methods - Board Connection
 
-    private bool ConnectToBoard()
+    private bool ConnectBoard(string boardId)
     {
         lock (_stateLock)
         {
-            _relayBoard?.Dispose();
-            _relayBoard = null;
-            _errorMessage = null;
+            // Dispose existing connection if any
+            if (_relayBoards.TryGetValue(boardId, out var existingBoard))
+            {
+                existingBoard.Dispose();
+                _relayBoards.Remove(boardId);
+            }
+
+            var boardConfig = _config.Boards.FirstOrDefault(b => b.BoardId == boardId);
+            if (boardConfig == null)
+            {
+                _logger.LogWarning("Board config for '{BoardId}' not found", boardId);
+                return false;
+            }
+
+            // Initialize channel states for this board
+            for (int i = 1; i <= 16; i++)
+            {
+                _channelStates.TryAdd((boardId, i), new TriggerChannelState());
+            }
 
             // Use mock relay board in mock hardware mode
             if (_environment.IsMockHardware)
             {
-                _relayBoard = new MockRelayBoard(_loggerFactory.CreateLogger<MockRelayBoard>());
-                _relayBoard.Open();
-                _state = TriggerFeatureState.Connected;
-                _errorMessage = null;
-                _logger.LogInformation("Connected to mock relay board (MOCK_HARDWARE mode)");
+                var mockBoard = new MockRelayBoard(_loggerFactory.CreateLogger<MockRelayBoard>());
+                mockBoard.Open();
+                _relayBoards[boardId] = mockBoard;
+                _boardStates[boardId] = TriggerFeatureState.Connected;
+                _boardErrors[boardId] = null;
+                _logger.LogInformation("Connected to mock relay board '{BoardId}' (MOCK_HARDWARE mode)", boardId);
                 return true;
             }
 
             if (!FtdiRelayBoard.IsLibraryAvailable())
             {
-                _state = TriggerFeatureState.Error;
-                _errorMessage = "FTDI library (libftd2xx) not available. Install the FTDI D2XX driver.";
-                _logger.LogWarning("FTDI library not available");
+                _boardStates[boardId] = TriggerFeatureState.Error;
+                _boardErrors[boardId] = "FTDI library (libftd2xx) not available. Install the FTDI D2XX driver.";
+                _logger.LogWarning("FTDI library not available for board '{BoardId}'", boardId);
                 return false;
             }
 
-            _relayBoard = new FtdiRelayBoard(_loggerFactory.CreateLogger<FtdiRelayBoard>());
+            var newBoard = new FtdiRelayBoard(_loggerFactory.CreateLogger<FtdiRelayBoard>());
 
             bool connected;
-            if (!string.IsNullOrEmpty(_config.FtdiSerialNumber))
+            if (boardId.StartsWith("USB:"))
             {
-                connected = _relayBoard.OpenBySerial(_config.FtdiSerialNumber);
+                // Port-based board - need to find by USB path
+                // For now, just try to open the first available device
+                // TODO: Implement USB path-based device matching
+                connected = newBoard.Open();
             }
             else
             {
-                connected = _relayBoard.Open();
+                // Serial-based board
+                connected = newBoard.OpenBySerial(boardId);
             }
 
             if (connected)
             {
-                _state = TriggerFeatureState.Connected;
-                _errorMessage = null;
-                _logger.LogInformation("Connected to FTDI relay board");
+                _relayBoards[boardId] = newBoard;
+                _boardStates[boardId] = TriggerFeatureState.Connected;
+                _boardErrors[boardId] = null;
+                _logger.LogInformation("Connected to FTDI relay board '{BoardId}'", boardId);
                 return true;
             }
             else
             {
-                _state = TriggerFeatureState.Disconnected;
-                _errorMessage = "Failed to connect to FTDI relay board. Check USB connection and that ftdi_sio is unloaded.";
-                _relayBoard.Dispose();
-                _relayBoard = null;
-                _logger.LogWarning("Failed to connect to FTDI relay board");
+                _boardStates[boardId] = TriggerFeatureState.Disconnected;
+                _boardErrors[boardId] = "Failed to connect to FTDI relay board. Check USB connection.";
+                newBoard.Dispose();
+                _logger.LogWarning("Failed to connect to FTDI relay board '{BoardId}'", boardId);
                 return false;
             }
         }
     }
 
-    private void ActivateTrigger(int channel, string playerName)
+    #endregion
+
+    #region Private Methods - Trigger Activation
+
+    private void ActivateTrigger(string boardId, int channel, string playerName)
     {
-        var state = _channelStates.GetValueOrDefault(channel);
-        if (state == null)
+        if (!_channelStates.TryGetValue((boardId, channel), out var state))
             return;
 
         lock (_stateLock)
         {
             // Cancel any pending off timer
-            CancelOffTimer(channel);
+            CancelOffTimer(boardId, channel);
 
             // Increment active player count
             state.ActivePlayerCount++;
@@ -556,21 +753,23 @@ public class TriggerService : IHostedService, IAsyncDisposable
             if (!state.IsActive)
             {
                 state.IsActive = true;
-                _relayBoard?.SetRelay(channel, true);
-                _logger.LogInformation("Trigger {Channel} activated by player '{Player}'", channel, playerName);
+                if (_relayBoards.TryGetValue(boardId, out var board))
+                {
+                    board.SetRelay(channel, true);
+                }
+                _logger.LogInformation("Trigger {BoardId}/{Channel} activated by player '{Player}'", boardId, channel, playerName);
             }
             else
             {
-                _logger.LogDebug("Trigger {Channel} already active, player '{Player}' joined (count: {Count})",
-                    channel, playerName, state.ActivePlayerCount);
+                _logger.LogDebug("Trigger {BoardId}/{Channel} already active, player '{Player}' joined (count: {Count})",
+                    boardId, channel, playerName, state.ActivePlayerCount);
             }
         }
     }
 
-    private void DeactivateTrigger(int channel, int offDelaySeconds, string playerName)
+    private void DeactivateTrigger(string boardId, int channel, int offDelaySeconds, string playerName)
     {
-        var state = _channelStates.GetValueOrDefault(channel);
-        if (state == null)
+        if (!_channelStates.TryGetValue((boardId, channel), out var state))
             return;
 
         lock (_stateLock)
@@ -578,8 +777,8 @@ public class TriggerService : IHostedService, IAsyncDisposable
             // Decrement active player count
             state.ActivePlayerCount = Math.Max(0, state.ActivePlayerCount - 1);
 
-            _logger.LogDebug("Player '{Player}' stopped on trigger {Channel} (remaining: {Count})",
-                playerName, channel, state.ActivePlayerCount);
+            _logger.LogDebug("Player '{Player}' stopped on trigger {BoardId}/{Channel} (remaining: {Count})",
+                playerName, boardId, channel, state.ActivePlayerCount);
 
             // Only start off delay if no players are active
             if (state.ActivePlayerCount == 0 && state.IsActive)
@@ -588,39 +787,40 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 {
                     // Immediate off
                     state.IsActive = false;
-                    _relayBoard?.SetRelay(channel, false);
-                    _logger.LogInformation("Trigger {Channel} deactivated immediately", channel);
+                    if (_relayBoards.TryGetValue(boardId, out var board))
+                    {
+                        board.SetRelay(channel, false);
+                    }
+                    _logger.LogInformation("Trigger {BoardId}/{Channel} deactivated immediately", boardId, channel);
                 }
                 else
                 {
                     // Start off delay timer
-                    StartOffTimer(channel, offDelaySeconds);
-                    _logger.LogInformation("Trigger {Channel} will deactivate in {Delay} seconds",
-                        channel, offDelaySeconds);
+                    StartOffTimer(boardId, channel, offDelaySeconds);
+                    _logger.LogInformation("Trigger {BoardId}/{Channel} will deactivate in {Delay} seconds",
+                        boardId, channel, offDelaySeconds);
                 }
             }
         }
     }
 
-    private void StartOffTimer(int channel, int delaySeconds)
+    private void StartOffTimer(string boardId, int channel, int delaySeconds)
     {
-        var state = _channelStates.GetValueOrDefault(channel);
-        if (state == null)
+        if (!_channelStates.TryGetValue((boardId, channel), out var state))
             return;
 
-        CancelOffTimer(channel);
+        CancelOffTimer(boardId, channel);
 
         var timer = new Timer(delaySeconds * 1000);
         timer.AutoReset = false;
-        timer.Elapsed += (_, _) => OnOffTimerElapsed(channel);
+        timer.Elapsed += (_, _) => OnOffTimerElapsed(boardId, channel);
         state.OffDelayTimer = timer;
         timer.Start();
     }
 
-    private void CancelOffTimer(int channel)
+    private void CancelOffTimer(string boardId, int channel)
     {
-        var state = _channelStates.GetValueOrDefault(channel);
-        if (state?.OffDelayTimer != null)
+        if (_channelStates.TryGetValue((boardId, channel), out var state) && state.OffDelayTimer != null)
         {
             state.OffDelayTimer.Stop();
             state.OffDelayTimer.Dispose();
@@ -628,10 +828,9 @@ public class TriggerService : IHostedService, IAsyncDisposable
         }
     }
 
-    private void OnOffTimerElapsed(int channel)
+    private void OnOffTimerElapsed(string boardId, int channel)
     {
-        var state = _channelStates.GetValueOrDefault(channel);
-        if (state == null)
+        if (!_channelStates.TryGetValue((boardId, channel), out var state))
             return;
 
         lock (_stateLock)
@@ -641,11 +840,18 @@ public class TriggerService : IHostedService, IAsyncDisposable
             {
                 state.IsActive = false;
                 state.OffDelayTimer = null;
-                _relayBoard?.SetRelay(channel, false);
-                _logger.LogInformation("Trigger {Channel} deactivated after delay", channel);
+                if (_relayBoards.TryGetValue(boardId, out var board))
+                {
+                    board.SetRelay(channel, false);
+                }
+                _logger.LogInformation("Trigger {BoardId}/{Channel} deactivated after delay", boardId, channel);
             }
         }
     }
+
+    #endregion
+
+    #region Private Methods - Configuration
 
     private TriggerFeatureConfiguration LoadConfiguration()
     {
@@ -663,11 +869,25 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 if (string.IsNullOrWhiteSpace(yaml))
                     return new TriggerFeatureConfiguration();
 
+                #pragma warning disable CS0618 // Obsolete properties are for migration only
                 var config = _deserializer.Deserialize<TriggerFeatureConfiguration>(yaml);
-                _logger.LogInformation("Loaded trigger configuration: enabled={Enabled}, {Count} triggers configured",
-                    config?.Enabled ?? false, config?.Triggers?.Count ?? 0);
+                #pragma warning restore CS0618
 
-                return config ?? new TriggerFeatureConfiguration();
+                if (config == null)
+                    return new TriggerFeatureConfiguration();
+
+                // Migrate from legacy single-board format if needed
+                if (config.NeedsMigration)
+                {
+                    _logger.LogInformation("Migrating trigger config from single-board to multi-board format");
+                    config.MigrateFromLegacy();
+                    SaveConfigurationInternal(config);
+                }
+
+                _logger.LogInformation("Loaded trigger configuration: enabled={Enabled}, {BoardCount} boards configured",
+                    config.Enabled, config.Boards.Count);
+
+                return config;
             }
             catch (Exception ex)
             {
@@ -679,18 +899,26 @@ public class TriggerService : IHostedService, IAsyncDisposable
 
     private void SaveConfiguration()
     {
+        SaveConfigurationInternal(_config);
+    }
+
+    private void SaveConfigurationInternal(TriggerFeatureConfiguration config)
+    {
         lock (_configLock)
         {
             try
             {
-                // Remove unconfigured triggers before saving
-                _config.Triggers = _config.Triggers
-                    .Where(t => !string.IsNullOrEmpty(t.CustomSinkName) ||
-                                !string.IsNullOrEmpty(t.ZoneName) ||
-                                t.OffDelaySeconds != 60)
-                    .ToList();
+                // Clean up unconfigured triggers before saving
+                foreach (var board in config.Boards)
+                {
+                    board.Triggers = board.Triggers
+                        .Where(t => !string.IsNullOrEmpty(t.CustomSinkName) ||
+                                    !string.IsNullOrEmpty(t.ZoneName) ||
+                                    t.OffDelaySeconds != 60)
+                        .ToList();
+                }
 
-                var yaml = _serializer.Serialize(_config);
+                var yaml = _serializer.Serialize(config);
                 File.WriteAllText(_configPath, yaml);
                 _logger.LogDebug("Saved trigger configuration");
             }
