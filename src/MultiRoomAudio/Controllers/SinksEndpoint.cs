@@ -207,6 +207,7 @@ public static class SinksEndpoint
                     sink.PulseAudioSinkName,
                     frequencyHz: request?.FrequencyHz ?? 1000,
                     durationMs: request?.DurationMs ?? 1500,
+                    channelName: request?.ChannelName,
                     ct: ct);
 
                 return Results.Ok(new
@@ -216,7 +217,8 @@ public static class SinksEndpoint
                     sinkName = name,
                     pulseAudioSinkName = sink.PulseAudioSinkName,
                     frequencyHz = request?.FrequencyHz ?? 1000,
-                    durationMs = request?.DurationMs ?? 1500
+                    durationMs = request?.DurationMs ?? 1500,
+                    channelName = request?.ChannelName
                 });
             }, logger, "play test tone", name);
         })

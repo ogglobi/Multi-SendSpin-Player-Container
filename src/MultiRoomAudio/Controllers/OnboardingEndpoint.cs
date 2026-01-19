@@ -107,6 +107,7 @@ public static class OnboardingEndpoint
                     device.Id,
                     frequencyHz: request?.FrequencyHz ?? 1000,
                     durationMs: request?.DurationMs ?? 1500,
+                    channelName: request?.ChannelName,
                     ct: ct);
 
                 return Results.Ok(new
@@ -116,7 +117,8 @@ public static class OnboardingEndpoint
                     deviceId = id,
                     deviceName = device.Name,
                     frequencyHz = request?.FrequencyHz ?? 1000,
-                    durationMs = request?.DurationMs ?? 1500
+                    durationMs = request?.DurationMs ?? 1500,
+                    channelName = request?.ChannelName
                 });
             }, logger, "play test tone", id);
         })
@@ -172,4 +174,7 @@ public record OnboardingCompleteRequest(int DevicesConfigured = 0, int PlayersCr
 /// <summary>
 /// Request to play a test tone.
 /// </summary>
-public record TestToneRequest(int? FrequencyHz = null, int? DurationMs = null);
+public record TestToneRequest(
+    int? FrequencyHz = null,
+    int? DurationMs = null,
+    string? ChannelName = null);
