@@ -102,8 +102,8 @@ public sealed class HidRelayBoard : IRelayBoard
             report[0] = 0; // Report ID
             _stream.GetFeature(report);
 
-            // Extract serial from bytes 1-5 (ASCII characters)
-            _serialNumber = System.Text.Encoding.ASCII.GetString(report, 1, 5).TrimEnd('\0');
+            // Extract serial from bytes 1-5 (ASCII characters, sanitized)
+            _serialNumber = SanitizeSerial(report, 1, 5);
 
             // Current relay state is in byte 7
             _currentState = report[7];
@@ -224,6 +224,25 @@ public sealed class HidRelayBoard : IRelayBoard
     }
 
     /// <summary>
+    /// Sanitize serial number by removing non-printable characters.
+    /// Some HID relay boards have garbage bytes in the serial field.
+    /// </summary>
+    private static string SanitizeSerial(byte[] data, int offset, int length)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = offset; i < offset + length && i < data.Length; i++)
+        {
+            char c = (char)data[i];
+            // Keep only printable ASCII characters (0x20-0x7E)
+            if (c >= 0x20 && c <= 0x7E)
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Parse the channel count from the product name (e.g., "USBRelay8" -> 8).
     /// Returns null if cannot be determined from the name, allowing caller to use configured value.
     ///
@@ -295,7 +314,7 @@ public sealed class HidRelayBoard : IRelayBoard
                 report[0] = 0;
                 stream.GetFeature(report);
 
-                var serial = System.Text.Encoding.ASCII.GetString(report, 1, 5).TrimEnd('\0');
+                var serial = SanitizeSerial(report, 1, 5);
                 if (serial.Equals(serialNumber, StringComparison.OrdinalIgnoreCase))
                 {
                     return device;
@@ -338,7 +357,7 @@ public sealed class HidRelayBoard : IRelayBoard
                         var report = new byte[9];
                         report[0] = 0;
                         stream.GetFeature(report);
-                        serial = System.Text.Encoding.ASCII.GetString(report, 1, 5).TrimEnd('\0');
+                        serial = SanitizeSerial(report, 1, 5);
                         currentState = report[7];
                     }
                     catch
