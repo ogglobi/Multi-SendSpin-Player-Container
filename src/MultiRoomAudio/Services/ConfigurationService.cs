@@ -735,7 +735,7 @@ public class ConfigurationService
             maxVolume,
             (config, value) => config.MaxVolume = value,
             currentDevice,
-            v => v?.ToString() + "%" ?? "(cleared)");
+            v => v.HasValue ? $"{v}%" : "(cleared)");
     }
 
     /// <summary>
