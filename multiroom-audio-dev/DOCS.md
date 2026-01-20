@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-a3cdc18
+## Development Build: sha-d41de60
 
 **Current Dev Build Changes** (recent)
 
-- Add XML documentation to endpoint extensions and validation attributes
-- Improve thread safety with ReaderWriterLockSlim and disposal patterns
-- Add AppArmor profile and improve HAOS security rating
-- Add structured error handling and audio system documentation
-- Refactor controllers: move batch logic to service, standardize patterns
-- Extract StartupDiagnosticsService and add UpdateDeviceProperty helper
-- Update all user-facing references from "Initial Volume" to "Startup Volume"
-- Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into feature/rename-initial-volume-to-startup-volume
-- Use FireAndForget helper for async player connection and broadcast
-- Add thread safety to DefaultPaParser with file locking
+- Refactor exception handling to use typed exceptions
+- Merge pull request #82 from scyto/feature/12v-trigger-plus-mock-hardware
+- Add logging when pactl process fails to start in diagnostics
+- Fix null coalescing operator precedence bug in SetDeviceMaxVolume
+- Update SinksEndpoint to use --channel-map, remove dead code
+- Add --no-remix flag to prevent PulseAudio channel upmixing
+- Use paplay --channel-map for multi-channel test tones
+- Fix test tone routing for multi-channel devices
+- Fix test tone routing for remap sinks, reduce tone volume
+- Add configurable mock hardware via YAML
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
