@@ -41,11 +41,22 @@ multi-room audio from a single server.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `log_level` | string | `info` | Logging verbosity (debug, info, warning, error) |
+| `relay_serial_port` | device | null | Serial port for Modbus/CH340 relay board (dropdown) |
+| `relay_devices` | list | `[]` | Additional device paths for HID/FTDI relay boards |
 
 ### Example Configuration
 
 ```yaml
 log_level: info
+```
+
+### Example with Relay Boards
+
+```yaml
+log_level: info
+relay_serial_port: /dev/ttyUSB0
+relay_devices:
+  - /dev/hidraw0
 ```
 
 ## Audio Device Setup

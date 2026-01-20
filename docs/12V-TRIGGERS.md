@@ -90,6 +90,26 @@ USB relay boards should work automatically when connected. If not detected:
 2. Restart the add-on after connecting the board
 3. For Modbus boards, ensure the serial port is visible in hardware settings
 
+### Optional: Explicit Device Configuration
+
+For more granular control, you can configure specific devices in the add-on Configuration tab:
+
+| Option | Description |
+|--------|-------------|
+| **Relay Serial Port** | Dropdown to select a serial port for Modbus/CH340 boards |
+| **Relay Devices** | List of additional device paths (e.g., `/dev/hidraw0` for HID boards) |
+
+Example YAML configuration:
+
+```yaml
+log_level: info
+relay_serial_port: /dev/ttyUSB0
+relay_devices:
+  - /dev/hidraw0
+```
+
+This is optional—by default, the add-on has access to all USB and serial devices.
+
 ## Configuration
 
 ### Enable Triggers

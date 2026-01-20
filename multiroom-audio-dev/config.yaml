@@ -40,9 +40,16 @@ panel_title: Multi-Room Audio (Dev)
 # User-configurable options
 options:
   log_level: info
+  relay_serial_port: null
+  relay_devices: []
+  mock_hardware: false
 
 schema:
   log_level: list(debug|info|warning|error)
+  relay_serial_port: device(subsystem=tty)?
+  relay_devices:
+    - str?
+  mock_hardware: bool?
 
 # Watchdog - auto-restart if health check fails
 watchdog: http://[HOST]:[PORT:8096]/api/health
