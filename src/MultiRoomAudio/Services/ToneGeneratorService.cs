@@ -80,7 +80,7 @@ public class ToneGeneratorService
                 _logger.LogDebug("Generated test tone WAV file: {TempFile} ({Size} bytes)", tempFile, wavData.Length);
 
                 // Play via paplay
-                await PlayWithPaplayAsync(sinkName, tempFile, ct);
+                await PlayWithPaplayAsync(sinkName, tempFile, channelMap: null, ct);
 
                 _logger.LogDebug("Test tone playback completed");
             }
@@ -105,6 +105,153 @@ public class ToneGeneratorService
         {
             _playbackLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Play a test tone to a specific channel using paplay's --channel-map flag.
+    /// This is the preferred method for multi-channel devices as it lets PulseAudio
+    /// handle the channel routing directly.
+    /// </summary>
+    /// <param name="sinkName">PulseAudio sink name (device ID)</param>
+    /// <param name="channelName">Channel name to route audio to (e.g., "side-left", "front-right")</param>
+    /// <param name="frequencyHz">Tone frequency in Hz (default: 1000)</param>
+    /// <param name="durationMs">Duration in milliseconds (default: 1500)</param>
+    /// <param name="ct">Cancellation token</param>
+    public async Task PlayChannelToneAsync(
+        string sinkName,
+        string channelName,
+        int frequencyHz = DefaultFrequency,
+        int durationMs = DefaultDuration,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(channelName))
+            throw new ArgumentException("Channel name is required", nameof(channelName));
+
+        // Prevent overlapping playback
+        if (!await _playbackLock.WaitAsync(0, ct))
+        {
+            _logger.LogDebug("Test tone already playing, skipping request");
+            throw new InvalidOperationException("A test tone is already playing");
+        }
+
+        try
+        {
+            _logger.LogInformation("Playing test tone: {Frequency}Hz for {Duration}ms on sink {Sink} channel {Channel}",
+                frequencyHz, durationMs, sinkName, channelName);
+
+            // In mock mode, simulate playback without actual audio
+            if (_environment.IsMockHardware)
+            {
+                _logger.LogDebug("Mock mode: simulating channel test tone on {Channel}", channelName);
+                await Task.Delay(Math.Min(durationMs, 100), ct);
+                _logger.LogDebug("Mock test tone playback completed");
+                return;
+            }
+
+            // Real hardware mode - generate mono WAV and use --channel-map for routing
+            string? tempFile = null;
+            try
+            {
+                // Generate mono WAV file
+                var wavData = GenerateMonoWavFile(frequencyHz, durationMs);
+
+                // Write to temp file
+                tempFile = Path.Combine(Path.GetTempPath(), $"testtone_{Guid.NewGuid():N}.wav");
+                await File.WriteAllBytesAsync(tempFile, wavData, ct);
+                _logger.LogDebug("Generated mono test tone WAV: {TempFile} ({Size} bytes)", tempFile, wavData.Length);
+
+                // Play via paplay with --channel-map to route to specific channel
+                await PlayWithPaplayAsync(sinkName, tempFile, channelName, ct);
+
+                _logger.LogDebug("Test tone playback completed on channel {Channel}", channelName);
+            }
+            finally
+            {
+                // Clean up temp file
+                if (tempFile != null && File.Exists(tempFile))
+                {
+                    try
+                    {
+                        File.Delete(tempFile);
+                        _logger.LogDebug("Cleaned up temp file: {TempFile}", tempFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to clean up temp file: {TempFile}", tempFile);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _playbackLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Generate a mono WAV file containing a sine wave tone.
+    /// Used with paplay's --channel-map flag to route to specific channels.
+    /// </summary>
+    /// <param name="frequencyHz">Frequency of the tone in Hz</param>
+    /// <param name="durationMs">Duration of the tone in milliseconds</param>
+    private byte[] GenerateMonoWavFile(int frequencyHz, int durationMs)
+    {
+        const int monoChannels = 1;
+        var numSamples = (int)(SampleRate * durationMs / 1000.0);
+        var dataSize = numSamples * monoChannels * (BitsPerSample / 8);
+
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
+
+        // WAV header
+        writer.Write("RIFF"u8);
+        writer.Write(36 + dataSize);  // File size - 8
+        writer.Write("WAVE"u8);
+
+        // Format chunk
+        writer.Write("fmt "u8);
+        writer.Write(16);  // Chunk size
+        writer.Write((short)1);  // PCM format
+        writer.Write((short)monoChannels);
+        writer.Write(SampleRate);
+        writer.Write(SampleRate * monoChannels * BitsPerSample / 8);  // Byte rate
+        writer.Write((short)(monoChannels * BitsPerSample / 8));  // Block align
+        writer.Write((short)BitsPerSample);
+
+        // Data chunk
+        writer.Write("data"u8);
+        writer.Write(dataSize);
+
+        // Generate sine wave samples with fade in/out to avoid clicks
+        var fadeLength = Math.Min(numSamples / 10, SampleRate / 20);  // 50ms fade or 10% of duration
+
+        for (int i = 0; i < numSamples; i++)
+        {
+            // Calculate sine wave sample
+            double t = (double)i / SampleRate;
+            double sample = Math.Sin(2 * Math.PI * frequencyHz * t);
+
+            // Apply fade envelope
+            double envelope = 1.0;
+            if (i < fadeLength)
+            {
+                envelope = (double)i / fadeLength;  // Fade in
+            }
+            else if (i > numSamples - fadeLength)
+            {
+                envelope = (double)(numSamples - i) / fadeLength;  // Fade out
+            }
+
+            sample *= envelope;
+
+            // Convert to 16-bit signed integer
+            short sampleInt = (short)(sample * short.MaxValue * 0.4);  // 40% volume
+
+            // Write mono sample
+            writer.Write(sampleInt);
+        }
+
+        return ms.ToArray();
     }
 
     /// <summary>
@@ -215,19 +362,32 @@ public class ToneGeneratorService
     /// <summary>
     /// Play a WAV file through paplay to a specific sink.
     /// </summary>
-    private async Task PlayWithPaplayAsync(string sinkName, string wavFile, CancellationToken ct)
+    /// <param name="sinkName">PulseAudio sink name</param>
+    /// <param name="wavFile">Path to WAV file</param>
+    /// <param name="channelMap">Optional channel map for routing (e.g., "side-left")</param>
+    /// <param name="ct">Cancellation token</param>
+    private async Task PlayWithPaplayAsync(string sinkName, string wavFile, string? channelMap, CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
             FileName = "paplay",
-            ArgumentList = { $"--device={sinkName}", wavFile },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
-        _logger.LogDebug("Running: paplay --device={Sink} {File}", sinkName, wavFile);
+        psi.ArgumentList.Add($"--device={sinkName}");
+        if (!string.IsNullOrEmpty(channelMap))
+        {
+            psi.ArgumentList.Add($"--channel-map={channelMap}");
+        }
+        psi.ArgumentList.Add(wavFile);
+
+        _logger.LogDebug("Running: paplay --device={Sink}{ChannelMap} {File}",
+            sinkName,
+            !string.IsNullOrEmpty(channelMap) ? $" --channel-map={channelMap}" : "",
+            wavFile);
 
         using var process = new Process { StartInfo = psi };
         process.Start();
@@ -344,7 +504,7 @@ public class ToneGeneratorService
                     masterChannelCount, tempFile, wavData.Length);
 
                 // Play via paplay to the master device
-                await PlayWithPaplayAsync(masterSinkName, tempFile, ct);
+                await PlayWithPaplayAsync(masterSinkName, tempFile, channelMap: null, ct);
 
                 _logger.LogDebug("Test tone playback completed on master channel {Channel}", targetChannelIndex);
             }

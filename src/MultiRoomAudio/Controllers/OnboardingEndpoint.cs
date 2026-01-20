@@ -119,48 +119,39 @@ public static class OnboardingEndpoint
                     return Results.NotFound(new ErrorResponse(false, $"Device '{id}' not found"));
 
                 // For multi-channel devices with a specific channel requested,
-                // generate a proper multi-channel WAV with audio only on the target channel
+                // use PlayChannelToneAsync with --channel-map for direct routing
                 if (!string.IsNullOrEmpty(request?.ChannelName) && device.MaxChannels > 2)
                 {
-                    // Use device's actual channel map if available, otherwise fall back to standard mapping
-                    var channelIndex = -1;
-                    if (device.ChannelMap != null)
+                    // Validate channel exists on device if we have channel map info
+                    if (device.ChannelMap != null &&
+                        !device.ChannelMap.Contains(request.ChannelName, StringComparer.OrdinalIgnoreCase))
                     {
-                        channelIndex = Array.FindIndex(device.ChannelMap,
-                            c => c.Equals(request.ChannelName, StringComparison.OrdinalIgnoreCase));
-                    }
-                    else
-                    {
-                        // Fall back to standard 7.1 mapping if device doesn't report channel map
-                        channelIndex = PulseAudioChannels.GetChannelIndex(request.ChannelName);
+                        return Results.BadRequest(new ErrorResponse(false,
+                            $"Channel '{request.ChannelName}' not found on device. " +
+                            $"Available channels: {string.Join(", ", device.ChannelMap)}"));
                     }
 
-                    if (channelIndex >= 0)
+                    logger.LogInformation(
+                        "Multi-channel test: Playing to device '{Device}' channel {ChannelName} via --channel-map",
+                        device.Id, request.ChannelName);
+
+                    await toneGenerator.PlayChannelToneAsync(
+                        device.Id,
+                        request.ChannelName,
+                        request.FrequencyHz ?? 1000,
+                        request.DurationMs ?? 1500,
+                        ct);
+
+                    return Results.Ok(new
                     {
-                        logger.LogInformation(
-                            "Multi-channel test: Playing to device '{Device}' channel {Index} ({ChannelName})",
-                            device.Id, channelIndex, request.ChannelName);
-
-                        await toneGenerator.PlayMasterChannelToneAsync(
-                            device.Id,
-                            device.MaxChannels,
-                            channelIndex,
-                            request.FrequencyHz ?? 1000,
-                            request.DurationMs ?? 1500,
-                            ct);
-
-                        return Results.Ok(new
-                        {
-                            success = true,
-                            message = "Test tone played successfully",
-                            deviceId = id,
-                            deviceName = device.Name,
-                            frequencyHz = request.FrequencyHz ?? 1000,
-                            durationMs = request.DurationMs ?? 1500,
-                            channelName = request.ChannelName,
-                            channelIndex
-                        });
-                    }
+                        success = true,
+                        message = "Test tone played successfully",
+                        deviceId = id,
+                        deviceName = device.Name,
+                        frequencyHz = request.FrequencyHz ?? 1000,
+                        durationMs = request.DurationMs ?? 1500,
+                        channelName = request.ChannelName
+                    });
                 }
 
                 // Fallback: stereo devices or whole-device tests use original 2-channel method
