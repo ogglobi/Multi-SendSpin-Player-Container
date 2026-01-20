@@ -84,6 +84,7 @@ public partial class PaModuleRunner : IPaModuleRunner
             .Replace("\\", "")      // Remove backslashes
             .Replace("'", @"'\''")  // Escape single quotes for shell-style quoting
             .Replace("\"", "")      // Remove double quotes
+            .Replace("`", "")       // Remove backticks (command substitution)
             .Replace("\n", " ")     // Replace newlines with spaces
             .Replace("\r", "")      // Remove carriage returns
             .Replace("\0", "")      // Remove null chars
