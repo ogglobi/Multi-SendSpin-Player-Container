@@ -170,6 +170,21 @@ detected:
 3. Click "Add Relay Board" and select your detected board
 4. Assign relay channels to custom sinks
 5. Configure off-delay (time before relay turns off after playback stops)
+6. Optionally set a zone name for each channel (e.g., "Living Room Amp")
+
+### Startup/Shutdown Behavior
+
+Each relay board can be configured with startup and shutdown behaviors:
+
+| Behavior | Description |
+| -------- | ----------- |
+| **All Off** (default) | Turn all relays OFF - safest option, amplifiers start powered down |
+| **All On** | Turn all relays ON - useful if you want amplifiers always powered |
+| **No Change** | Preserve current relay state - hardware maintains its state |
+
+These settings control what happens when the service starts (or board reconnects) and
+when the service stops gracefully. The default "All Off" prevents amplifiers from
+unexpectedly powering on after a restart.
 
 ### Multiple Boards
 
