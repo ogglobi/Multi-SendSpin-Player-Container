@@ -219,10 +219,19 @@ squeezelite-docker/
 | GET | `/api/players` | List all players |
 | POST | `/api/players` | Create new player |
 | GET | `/api/players/{name}` | Get player details |
+| GET | `/api/players/{name}/stats` | Get player statistics |
+| PUT | `/api/players/{name}` | Update player settings |
+| PUT | `/api/players/{name}/rename` | Rename player |
 | DELETE | `/api/players/{name}` | Delete player |
+| POST | `/api/players/{name}/start` | Start player |
 | POST | `/api/players/{name}/stop` | Stop player |
 | POST | `/api/players/{name}/restart` | Restart player |
+| POST | `/api/players/{name}/pause` | Pause player |
+| POST | `/api/players/{name}/resume` | Resume player |
+| PUT | `/api/players/{name}/device` | Change player device |
 | PUT | `/api/players/{name}/volume` | Set volume |
+| PUT | `/api/players/{name}/startup-volume` | Set startup volume |
+| PUT | `/api/players/{name}/mute` | Mute/unmute player |
 | PUT | `/api/players/{name}/offset` | Set delay offset |
 
 ### Audio Devices
@@ -230,12 +239,46 @@ squeezelite-docker/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/devices` | List audio devices |
+| GET | `/api/devices/default` | Get default device |
+| GET | `/api/devices/aliases` | List device aliases |
+| GET | `/api/devices/{id}` | Get device details |
+| GET | `/api/devices/{id}/capabilities` | Get device capabilities |
+| POST | `/api/devices/refresh` | Refresh device list |
+| POST | `/api/devices/rematch` | Rematch devices to players |
+| PUT | `/api/devices/{id}/alias` | Set device alias |
+| PUT | `/api/devices/{id}/hidden` | Hide/unhide device |
+| PUT | `/api/devices/{id}/max-volume` | Set device max volume |
 | GET | `/api/providers` | List available providers |
+
+### Sound Cards
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/api/cards` | List all sound cards |
+| GET | `/api/cards/saved` | List saved card configurations |
 | GET | `/api/cards/{id}` | Get card details |
 | PUT | `/api/cards/{id}/profile` | Set card profile |
 | PUT | `/api/cards/{id}/mute` | Mute/unmute card in real-time |
 | PUT | `/api/cards/{id}/boot-mute` | Set boot mute preference |
+| PUT | `/api/cards/{id}/max-volume` | Set card max volume |
+| DELETE | `/api/cards/{id}/saved` | Delete saved card config |
+
+### Custom Sinks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/sinks` | List custom audio sinks |
+| GET | `/api/sinks/channels` | List available channel mappings |
+| GET | `/api/sinks/{name}` | Get sink details |
+| GET | `/api/sinks/{name}/status` | Get sink status |
+| POST | `/api/sinks/combine` | Create combined sink |
+| POST | `/api/sinks/remap` | Create remapped sink |
+| POST | `/api/sinks/{name}/reload` | Reload sink |
+| POST | `/api/sinks/{name}/test-tone` | Play test tone |
+| DELETE | `/api/sinks/{name}` | Delete custom sink |
+| GET | `/api/sinks/import/scan` | Scan for importable sinks |
+| GET | `/api/sinks/import/status` | Get import status |
+| POST | `/api/sinks/import` | Import sinks from default.pa |
 
 ### 12V Triggers (Relay Control)
 
@@ -256,12 +299,33 @@ squeezelite-docker/
 | DELETE | `/api/triggers/boards/{boardId}/{channel}` | Unassign trigger channel |
 | POST | `/api/triggers/boards/{boardId}/{channel}/test` | Test relay (on/off) |
 
-### Other
+### Onboarding
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/onboarding/status` | Get onboarding status |
+| POST | `/api/onboarding/complete` | Mark onboarding complete |
+| POST | `/api/onboarding/skip` | Skip onboarding |
+| POST | `/api/onboarding/reset` | Reset onboarding |
+| POST | `/api/onboarding/create-players` | Create players from onboarding |
+| POST | `/api/devices/{id}/test-tone` | Play test tone on device |
+
+### Logs
+
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET | `/api/logs` | Get log entries |
+| GET | `/api/logs/stats` | Get log statistics |
+| DELETE | `/api/logs` | Clear logs |
+
+### Health & Status
+
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
 | GET | `/api/health` | Health check |
-| GET | `/api/sinks` | List custom audio sinks |
+| GET | `/api/health/ready` | Ready check |
+| GET | `/api/health/live` | Liveness check |
+| GET | `/api/status` | System status |
 
 ---
 
