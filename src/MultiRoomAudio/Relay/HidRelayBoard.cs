@@ -490,13 +490,30 @@ public record HidRelayDeviceInfo(
     public bool IsPathBased => string.IsNullOrWhiteSpace(SerialNumber);
 
     /// <summary>
-    /// Compute a stable 8-character hash from a string.
+    /// Compute a stable 8-character hash from a device path.
     /// Uses MD5 for deterministic results across process restarts and platforms.
     /// (String.GetHashCode is randomized per-process in .NET Core)
     /// </summary>
+    /// <remarks>
+    /// On Linux, HidSharp returns sysfs paths like:
+    /// /sys/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0/0003:16C0:05DF.0003/hidraw/hidraw1
+    ///
+    /// The hidraw/hidrawN suffix can change between boots, but the USB port path (1-3)
+    /// is stable. We extract and hash only the stable portion.
+    /// </remarks>
     internal static string StableHash(string input)
     {
-        var bytes = Encoding.UTF8.GetBytes(input);
+        var pathToHash = input;
+
+        // On Linux, strip the volatile hidraw/hidrawN suffix before hashing
+        // Example: .../1-3:1.0/0003:16C0:05DF.0003/hidraw/hidraw1 -> .../1-3:1.0/0003:16C0:05DF.0003
+        var hidrawIndex = input.IndexOf("/hidraw/", StringComparison.Ordinal);
+        if (hidrawIndex > 0)
+        {
+            pathToHash = input.Substring(0, hidrawIndex);
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(pathToHash);
         var hash = MD5.HashData(bytes);
         // Take first 4 bytes for an 8-char hex string
         return $"{hash[0]:X2}{hash[1]:X2}{hash[2]:X2}{hash[3]:X2}";
