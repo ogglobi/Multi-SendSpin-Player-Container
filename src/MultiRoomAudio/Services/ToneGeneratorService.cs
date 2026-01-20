@@ -174,7 +174,7 @@ public class ToneGeneratorService
             sample *= envelope;
 
             // Convert to 16-bit signed integer
-            short sampleInt = (short)(sample * short.MaxValue * 0.8);  // 80% volume to avoid clipping
+            short sampleInt = (short)(sample * short.MaxValue * 0.4);  // 40% volume to avoid clipping and reduce loudness
 
             // Write sample for left channel
             writer.Write(playLeft ? sampleInt : (short)0);
@@ -283,5 +283,162 @@ public class ToneGeneratorService
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Play a test tone through a specific channel of a master device.
+    /// Used for testing individual channels of remap sinks.
+    /// </summary>
+    /// <param name="masterSinkName">PulseAudio sink name of the master device</param>
+    /// <param name="masterChannelCount">Total channels on master device (e.g., 8 for 7.1)</param>
+    /// <param name="targetChannelIndex">Zero-based index of the channel to test</param>
+    /// <param name="frequencyHz">Tone frequency in Hz</param>
+    /// <param name="durationMs">Duration in milliseconds</param>
+    /// <param name="ct">Cancellation token</param>
+    public async Task PlayMasterChannelToneAsync(
+        string masterSinkName,
+        int masterChannelCount,
+        int targetChannelIndex,
+        int frequencyHz = DefaultFrequency,
+        int durationMs = DefaultDuration,
+        CancellationToken ct = default)
+    {
+        if (targetChannelIndex < 0 || targetChannelIndex >= masterChannelCount)
+            throw new ArgumentOutOfRangeException(nameof(targetChannelIndex),
+                $"Channel index {targetChannelIndex} out of range for {masterChannelCount}-channel device");
+
+        // Prevent overlapping playback
+        if (!await _playbackLock.WaitAsync(0, ct))
+        {
+            _logger.LogDebug("Test tone already playing, skipping request");
+            throw new InvalidOperationException("A test tone is already playing");
+        }
+
+        try
+        {
+            _logger.LogInformation(
+                "Playing test tone: {Frequency}Hz for {Duration}ms on master {Sink} channel {Channel}/{Total}",
+                frequencyHz, durationMs, masterSinkName, targetChannelIndex, masterChannelCount);
+
+            // In mock mode, simulate playback without actual audio
+            if (_environment.IsMockHardware)
+            {
+                _logger.LogDebug("Mock mode: simulating master channel test tone on channel {Channel}",
+                    targetChannelIndex);
+                await Task.Delay(Math.Min(durationMs, 100), ct);
+                _logger.LogDebug("Mock test tone playback completed");
+                return;
+            }
+
+            // Real hardware mode - generate and play via paplay
+            string? tempFile = null;
+            try
+            {
+                // Generate multi-channel WAV file with audio only on target channel
+                var wavData = GenerateMultiChannelWavFile(frequencyHz, durationMs, masterChannelCount, targetChannelIndex);
+
+                // Write to temp file
+                tempFile = Path.Combine(Path.GetTempPath(), $"testtone_{Guid.NewGuid():N}.wav");
+                await File.WriteAllBytesAsync(tempFile, wavData, ct);
+                _logger.LogDebug("Generated {Channels}-channel test tone WAV: {TempFile} ({Size} bytes)",
+                    masterChannelCount, tempFile, wavData.Length);
+
+                // Play via paplay to the master device
+                await PlayWithPaplayAsync(masterSinkName, tempFile, ct);
+
+                _logger.LogDebug("Test tone playback completed on master channel {Channel}", targetChannelIndex);
+            }
+            finally
+            {
+                // Clean up temp file
+                if (tempFile != null && File.Exists(tempFile))
+                {
+                    try
+                    {
+                        File.Delete(tempFile);
+                        _logger.LogDebug("Cleaned up temp file: {TempFile}", tempFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to clean up temp file: {TempFile}", tempFile);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _playbackLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Generate a multi-channel WAV file with audio only on a specific channel.
+    /// Used for testing specific channels on multi-channel devices.
+    /// </summary>
+    /// <param name="frequencyHz">Frequency of the tone in Hz</param>
+    /// <param name="durationMs">Duration of the tone in milliseconds</param>
+    /// <param name="channelCount">Total number of channels (e.g., 8 for 7.1)</param>
+    /// <param name="targetChannel">Zero-based index of the channel to play audio on</param>
+    private byte[] GenerateMultiChannelWavFile(int frequencyHz, int durationMs, int channelCount, int targetChannel)
+    {
+        var numSamples = (int)(SampleRate * durationMs / 1000.0);
+        var bytesPerSample = BitsPerSample / 8;
+        var dataSize = numSamples * channelCount * bytesPerSample;
+
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
+
+        // WAV header
+        writer.Write("RIFF"u8);
+        writer.Write(36 + dataSize);  // File size - 8
+        writer.Write("WAVE"u8);
+
+        // Format chunk
+        writer.Write("fmt "u8);
+        writer.Write(16);  // Chunk size
+        writer.Write((short)1);  // PCM format
+        writer.Write((short)channelCount);
+        writer.Write(SampleRate);
+        writer.Write(SampleRate * channelCount * bytesPerSample);  // Byte rate
+        writer.Write((short)(channelCount * bytesPerSample));  // Block align
+        writer.Write((short)BitsPerSample);
+
+        // Data chunk
+        writer.Write("data"u8);
+        writer.Write(dataSize);
+
+        // Generate sine wave samples with fade in/out to avoid clicks
+        var fadeLength = Math.Min(numSamples / 10, SampleRate / 20);  // 50ms fade or 10% of duration
+
+        for (int i = 0; i < numSamples; i++)
+        {
+            // Calculate sine wave sample
+            double t = (double)i / SampleRate;
+            double sample = Math.Sin(2 * Math.PI * frequencyHz * t);
+
+            // Apply fade envelope
+            double envelope = 1.0;
+            if (i < fadeLength)
+            {
+                envelope = (double)i / fadeLength;  // Fade in
+            }
+            else if (i > numSamples - fadeLength)
+            {
+                envelope = (double)(numSamples - i) / fadeLength;  // Fade out
+            }
+
+            sample *= envelope;
+
+            // Convert to 16-bit signed integer
+            short sampleInt = (short)(sample * short.MaxValue * 0.4);  // 40% volume
+
+            // Write sample for each channel (only target channel has audio)
+            for (int ch = 0; ch < channelCount; ch++)
+            {
+                writer.Write(ch == targetChannel ? sampleInt : (short)0);
+            }
+        }
+
+        return ms.ToArray();
     }
 }

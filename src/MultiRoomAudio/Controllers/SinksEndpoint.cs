@@ -224,6 +224,58 @@ public static class SinksEndpoint
                     return Results.BadRequest(new ErrorResponse(false, $"Sink '{name}' has no PulseAudio sink name"));
                 }
 
+                // For remap sinks with a specific channel, play directly to master device
+                // This ensures only the target channel on the master device plays the tone,
+                // rather than playing to the remap sink which would broadcast to all channels
+                if (sink.Type == CustomSinkType.Remap &&
+                    !string.IsNullOrEmpty(request?.ChannelName) &&
+                    !string.IsNullOrEmpty(sink.MasterSink) &&
+                    sink.ChannelMappings != null)
+                {
+                    // Find the mapping for this output channel
+                    var mapping = sink.ChannelMappings.FirstOrDefault(m =>
+                        m.OutputChannel.Equals(request.ChannelName, StringComparison.OrdinalIgnoreCase));
+
+                    if (mapping != null)
+                    {
+                        // Get the master channel this output maps to
+                        var masterChannel = mapping.MasterChannel;
+                        var channelIndex = PulseAudioChannels.GetChannelIndex(masterChannel);
+
+                        if (channelIndex >= 0)
+                        {
+                            // Determine master device channel count (default to 8 for 7.1 surround)
+                            // This covers the most common multi-channel use case
+                            var masterChannelCount = 8;
+
+                            logger.LogInformation(
+                                "Remap sink test: Playing to master '{Master}' channel {Index} ({ChannelName})",
+                                sink.MasterSink, channelIndex, masterChannel);
+
+                            await toneGenerator.PlayMasterChannelToneAsync(
+                                sink.MasterSink,
+                                masterChannelCount,
+                                channelIndex,
+                                request.FrequencyHz ?? 1000,
+                                request.DurationMs ?? 1500,
+                                ct);
+
+                            return Results.Ok(new
+                            {
+                                success = true,
+                                message = "Test tone played successfully",
+                                sinkName = name,
+                                masterSink = sink.MasterSink,
+                                masterChannel = masterChannel,
+                                channelIndex = channelIndex,
+                                frequencyHz = request.FrequencyHz ?? 1000,
+                                durationMs = request.DurationMs ?? 1500
+                            });
+                        }
+                    }
+                }
+
+                // Fall back to original behavior for non-remap sinks or whole-sink tests
                 await toneGenerator.PlayTestToneAsync(
                     sink.PulseAudioSinkName,
                     frequencyHz: request?.FrequencyHz ?? 1000,
