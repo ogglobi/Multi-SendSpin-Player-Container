@@ -3590,10 +3590,14 @@ async function testTrigger(boardId, channel, on) {
     });
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}/test`, {
+        // Use query params for board IDs that contain slashes (e.g., MODBUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/test?boardId=${encodeURIComponent(boardId)}&channel=${channel}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}/test`;
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channel, on })
+            body: JSON.stringify({ on })
         });
 
         if (!response.ok) {
