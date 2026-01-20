@@ -1,4 +1,5 @@
 using MultiRoomAudio.Audio;
+using MultiRoomAudio.Audio.Mock;
 using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Utilities;
@@ -59,7 +60,9 @@ public class CardProfileService : IHostedService
         _logger.LogInformation("CardProfileService starting...");
 
         // Always enumerate cards to log what's available
-        var cards = PulseAudioCardEnumerator.GetCards().ToList();
+        var cards = _environment.IsMockHardware
+            ? MockCardEnumerator.GetCards().ToList()
+            : PulseAudioCardEnumerator.GetCards().ToList();
 
         if (cards.Count == 0)
         {
@@ -142,7 +145,11 @@ public class CardProfileService : IHostedService
                 }
 
                 // Apply the profile
-                if (PulseAudioCardEnumerator.SetCardProfile(card.Name, config.ProfileName, out var error))
+                var success = _environment.IsMockHardware
+                    ? MockCardEnumerator.SetCardProfile(card.Name, config.ProfileName, out var error)
+                    : PulseAudioCardEnumerator.SetCardProfile(card.Name, config.ProfileName, out error);
+
+                if (success)
                 {
                     _logger.LogInformation(
                         "Restored card '{CardName}' to profile '{Profile}'",
@@ -190,7 +197,9 @@ public class CardProfileService : IHostedService
     /// </summary>
     public IEnumerable<PulseAudioCard> GetCards()
     {
-        var cards = PulseAudioCardEnumerator.GetCards().ToList();
+        var cards = _environment.IsMockHardware
+            ? MockCardEnumerator.GetCards().ToList()
+            : PulseAudioCardEnumerator.GetCards().ToList();
         var savedProfiles = LoadConfigurations();
 
         return cards.Select(card =>
@@ -243,7 +252,9 @@ public class CardProfileService : IHostedService
     public async Task<CardProfileResponse> SetCardProfileAsync(string cardNameOrIndex, string profileName)
     {
         // Get current card state before change
-        var card = PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
+        var card = _environment.IsMockHardware
+            ? MockCardEnumerator.GetCard(cardNameOrIndex)
+            : PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
         if (card == null)
         {
             return new CardProfileResponse(
@@ -255,7 +266,11 @@ public class CardProfileService : IHostedService
         var previousProfile = card.ActiveProfile;
 
         // Attempt to change the profile
-        if (!PulseAudioCardEnumerator.SetCardProfile(card.Name, profileName, out var error))
+        var success = _environment.IsMockHardware
+            ? MockCardEnumerator.SetCardProfile(card.Name, profileName, out var error)
+            : PulseAudioCardEnumerator.SetCardProfile(card.Name, profileName, out error);
+
+        if (!success)
         {
             return new CardProfileResponse(
                 Success: false,
@@ -309,7 +324,9 @@ public class CardProfileService : IHostedService
     public bool RemoveSavedProfile(string cardNameOrIndex)
     {
         // Resolve card name if given an index
-        var card = PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
+        var card = _environment.IsMockHardware
+            ? MockCardEnumerator.GetCard(cardNameOrIndex)
+            : PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
         var cardName = card?.Name ?? cardNameOrIndex;
 
         return RemoveProfile(cardName);
@@ -320,7 +337,9 @@ public class CardProfileService : IHostedService
     /// </summary>
     public async Task<CardMuteResponse> SetCardMuteAsync(string cardNameOrIndex, bool muted)
     {
-        var card = PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
+        var card = _environment.IsMockHardware
+            ? MockCardEnumerator.GetCard(cardNameOrIndex)
+            : PulseAudioCardEnumerator.GetCard(cardNameOrIndex);
         if (card == null)
         {
             return new CardMuteResponse(false, $"Card '{cardNameOrIndex}' not found.");
@@ -333,7 +352,9 @@ public class CardProfileService : IHostedService
             displayName,
             muted ? "muted" : "unmuted");
 
-        var sinks = PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+        var sinks = _environment.IsMockHardware
+            ? MockCardEnumerator.GetSinksByCard(card.Index)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
         if (sinks.Count == 0)
         {
             return new CardMuteResponse(false, $"No sinks found for card '{card.Name}'.", CardOperationStatus.Error, card.Name);
@@ -344,7 +365,16 @@ public class CardProfileService : IHostedService
         {
             try
             {
-                var success = await _volumeRunner.SetMuteAsync(sinkName, muted);
+                bool success;
+                if (_environment.IsMockHardware)
+                {
+                    // Use mock implementation
+                    success = MockCardEnumerator.SetMuteBySink(sinkName, muted);
+                }
+                else
+                {
+                    success = await _volumeRunner.SetMuteAsync(sinkName, muted);
+                }
                 if (!success)
                 {
                     failed.Add(sinkName);
@@ -437,7 +467,9 @@ public class CardProfileService : IHostedService
         }
 
         // Get all sinks for this card
-        var sinks = PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+        var sinks = _environment.IsMockHardware
+            ? MockCardEnumerator.GetSinksByCard(card.Index)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
         if (sinks.Count == 0)
         {
             return new CardMaxVolumeResponse(false, $"No sinks found for card '{card.Name}'.", card.Name);
@@ -451,7 +483,12 @@ public class CardProfileService : IHostedService
         {
             try
             {
-                if (maxVolume.HasValue)
+                if (_environment.IsMockHardware)
+                {
+                    // Use mock implementation
+                    MockCardEnumerator.SetMaxVolumeBySink(sinkName, maxVolume);
+                }
+                else if (maxVolume.HasValue)
                 {
                     await _volumeRunner.SetVolumeAsync(sinkName, maxVolume.Value);
                 }
@@ -767,7 +804,9 @@ public class CardProfileService : IHostedService
 
     private bool? GetCardMuteState(PulseAudioCard card)
     {
-        var sinks = PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+        var sinks = _environment.IsMockHardware
+            ? MockCardEnumerator.GetSinksByCard(card.Index)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
         if (sinks.Count == 0)
         {
             return null;
@@ -775,7 +814,9 @@ public class CardProfileService : IHostedService
 
         try
         {
-            var output = PulseAudioCardEnumerator.GetSinksMuteStates();
+            var output = _environment.IsMockHardware
+                ? MockCardEnumerator.GetSinksMuteStates()
+                : PulseAudioCardEnumerator.GetSinksMuteStates();
             if (output.Count == 0)
             {
                 return null;
@@ -806,7 +847,9 @@ public class CardProfileService : IHostedService
 
     private int? GetCardMaxVolume(PulseAudioCard card)
     {
-        var sinks = PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+        var sinks = _environment.IsMockHardware
+            ? MockCardEnumerator.GetSinksByCard(card.Index)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
         if (sinks.Count == 0)
         {
             return null;
@@ -858,7 +901,9 @@ public class CardProfileService : IHostedService
         }
 
         var desiredMuted = config?.BootMuted ?? false;
-        var sinks = PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+        var sinks = _environment.IsMockHardware
+            ? MockCardEnumerator.GetSinksByCard(card.Index)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
         var previousState = logBootAction ? GetCardMuteState(card) : null;
         foreach (var sinkName in sinks)
         {

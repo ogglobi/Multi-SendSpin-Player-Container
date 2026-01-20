@@ -102,7 +102,25 @@ builder.Services.AddSingleton<ToneGeneratorService>();
 builder.Services.AddSingleton<OnboardingService>();
 
 // Add PulseAudio utilities (no startup dependency)
-builder.Services.AddSingleton<PaModuleRunner>();
+// Use mock implementations when MOCK_HARDWARE is enabled
+var isMockHardware = Environment.GetEnvironmentVariable("MOCK_HARDWARE")?.ToLower() == "true";
+if (isMockHardware)
+{
+    // Mock hardware configuration service - loads from mock_hardware.yaml if present
+    builder.Services.AddSingleton<MultiRoomAudio.Services.MockHardwareConfigService>();
+
+    builder.Services.AddSingleton<MultiRoomAudio.Utilities.IPaModuleRunner, MultiRoomAudio.Audio.Mock.MockPaModuleRunner>();
+    // Relay hardware abstractions - mock implementations
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayDeviceEnumerator, MultiRoomAudio.Relay.MockRelayDeviceEnumerator>();
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayBoardFactory, MultiRoomAudio.Relay.MockRelayBoardFactory>();
+}
+else
+{
+    builder.Services.AddSingleton<MultiRoomAudio.Utilities.IPaModuleRunner, MultiRoomAudio.Utilities.PaModuleRunner>();
+    // Relay hardware abstractions - real implementations
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayDeviceEnumerator, MultiRoomAudio.Relay.RealRelayDeviceEnumerator>();
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayBoardFactory, MultiRoomAudio.Relay.RealRelayBoardFactory>();
+}
 builder.Services.AddSingleton<DefaultPaParser>();
 
 // Startup diagnostics service
@@ -124,6 +142,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<CustomSinksService
 // 3. PlayerManagerService - autostart players LAST (depends on sinks existing)
 builder.Services.AddSingleton<PlayerManagerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PlayerManagerService>());
+
+// 4. TriggerService - 12V relay trigger control (depends on sinks for mapping)
+builder.Services.AddSingleton<TriggerService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TriggerService>());
 
 // Static files are served via UseStaticFiles() middleware below
 
@@ -152,6 +174,16 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 var app = builder.Build();
+
+// Wire up mock hardware config service to static enumerators if in mock mode
+if (isMockHardware)
+{
+    var mockConfigService = app.Services.GetService<MultiRoomAudio.Services.MockHardwareConfigService>();
+    if (mockConfigService != null)
+    {
+        MultiRoomAudio.Audio.Mock.MockCardEnumerator.SetConfigService(mockConfigService);
+    }
+}
 
 // Configure middleware pipeline
 app.UseCors("AllowAll");
@@ -217,6 +249,7 @@ app.MapSinksEndpoints();
 app.MapOnboardingEndpoints();
 app.MapCardsEndpoints();
 app.MapLogsEndpoints();
+app.MapTriggersEndpoints();
 
 // Root endpoint redirects to index.html or shows API info
 app.MapGet("/api", () => Results.Ok(new
@@ -234,6 +267,7 @@ app.MapGet("/api", () => Results.Ok(new
         sinks = "/api/sinks",
         cards = "/api/cards",
         logs = "/api/logs",
+        triggers = "/api/triggers",
         swagger = "/docs"
     }
 }))
@@ -289,3 +323,6 @@ logger.LogInformation("API documentation available at /docs");
 logger.LogInformation("========================================");
 
 app.Run();
+
+// Make Program class accessible for WebApplicationFactory in tests
+public partial class Program { }

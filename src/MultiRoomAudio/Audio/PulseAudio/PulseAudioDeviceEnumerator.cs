@@ -194,6 +194,17 @@ public static partial class PulseAudioDeviceEnumerator
             }
         }
 
+        // Extract channel map (e.g., "front-left,front-right,rear-left,rear-right,front-center,lfe,side-left,side-right")
+        string[]? channelMap = null;
+        var channelMapMatch = ChannelMapRegex().Match(block);
+        if (channelMapMatch.Success)
+        {
+            channelMap = channelMapMatch.Groups[1].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(c => c.Trim())
+                .ToArray();
+        }
+
         // Extract stable device identifiers from Properties section
         var identifiers = ParseDeviceIdentifiers(block);
 
@@ -208,7 +219,8 @@ public static partial class PulseAudioDeviceEnumerator
             DefaultLowLatencyMs: 50,   // Reasonable default for PulseAudio
             DefaultHighLatencyMs: 200, // Reasonable default for PulseAudio
             IsDefault: isDefault,
-            Identifiers: identifiers
+            Identifiers: identifiers,
+            ChannelMap: channelMap
         );
     }
 
@@ -254,6 +266,9 @@ public static partial class PulseAudioDeviceEnumerator
 
     [GeneratedRegex(@"Sample Specification:\s*(.+)$", RegexOptions.Multiline)]
     private static partial Regex SampleSpecRegex();
+
+    [GeneratedRegex(@"Channel Map:\s*(.+)$", RegexOptions.Multiline)]
+    private static partial Regex ChannelMapRegex();
 
     [GeneratedRegex(@"Default Sink:\s*(.+)$", RegexOptions.Multiline)]
     private static partial Regex DefaultSinkRegex();

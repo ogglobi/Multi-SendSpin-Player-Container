@@ -118,11 +118,48 @@ public static class OnboardingEndpoint
                 if (device == null)
                     return Results.NotFound(new ErrorResponse(false, $"Device '{id}' not found"));
 
-                // Play test tone
+                // For multi-channel devices with a specific channel requested,
+                // use PlayChannelToneAsync with --channel-map for direct routing
+                if (!string.IsNullOrEmpty(request?.ChannelName) && device.MaxChannels > 2)
+                {
+                    // Validate channel exists on device if we have channel map info
+                    if (device.ChannelMap != null &&
+                        !device.ChannelMap.Contains(request.ChannelName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return Results.BadRequest(new ErrorResponse(false,
+                            $"Channel '{request.ChannelName}' not found on device. " +
+                            $"Available channels: {string.Join(", ", device.ChannelMap)}"));
+                    }
+
+                    logger.LogInformation(
+                        "Multi-channel test: Playing to device '{Device}' channel {ChannelName} via --channel-map",
+                        device.Id, request.ChannelName);
+
+                    await toneGenerator.PlayChannelToneAsync(
+                        device.Id,
+                        request.ChannelName,
+                        request.FrequencyHz ?? 1000,
+                        request.DurationMs ?? 1500,
+                        ct);
+
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        message = "Test tone played successfully",
+                        deviceId = id,
+                        deviceName = device.Name,
+                        frequencyHz = request.FrequencyHz ?? 1000,
+                        durationMs = request.DurationMs ?? 1500,
+                        channelName = request.ChannelName
+                    });
+                }
+
+                // Fallback: stereo devices or whole-device tests use original 2-channel method
                 await toneGenerator.PlayTestToneAsync(
                     device.Id,
                     frequencyHz: request?.FrequencyHz ?? 1000,
                     durationMs: request?.DurationMs ?? 1500,
+                    channelName: request?.ChannelName,
                     ct: ct);
 
                 return Results.Ok(new
@@ -132,7 +169,8 @@ public static class OnboardingEndpoint
                     deviceId = id,
                     deviceName = device.Name,
                     frequencyHz = request?.FrequencyHz ?? 1000,
-                    durationMs = request?.DurationMs ?? 1500
+                    durationMs = request?.DurationMs ?? 1500,
+                    channelName = request?.ChannelName
                 });
             }, logger, "play test tone", id);
         })
@@ -190,8 +228,10 @@ public record OnboardingCompleteRequest(int DevicesConfigured = 0, int PlayersCr
 /// </summary>
 /// <param name="FrequencyHz">Tone frequency in Hz (20-20000). Default: 1000Hz.</param>
 /// <param name="DurationMs">Tone duration in milliseconds (100-10000). Default: 1500ms.</param>
+/// <param name="ChannelName">Optional channel name for multi-channel devices.</param>
 public record TestToneRequest(
     [property: Range(20, 20000, ErrorMessage = "FrequencyHz must be between 20 and 20000.")]
     int? FrequencyHz = null,
     [property: Range(100, 10000, ErrorMessage = "DurationMs must be between 100 and 10000.")]
-    int? DurationMs = null);
+    int? DurationMs = null,
+    string? ChannelName = null);

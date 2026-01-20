@@ -13,7 +13,7 @@ namespace MultiRoomAudio.Services;
 public class CustomSinksService : IHostedService, IAsyncDisposable
 {
     private readonly ILogger<CustomSinksService> _logger;
-    private readonly PaModuleRunner _moduleRunner;
+    private readonly IPaModuleRunner _moduleRunner;
     private readonly EnvironmentService _environment;
     private readonly ConcurrentDictionary<string, CustomSinkContext> _sinks = new();
     private readonly string _configPath;
@@ -37,7 +37,7 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
 
     public CustomSinksService(
         ILogger<CustomSinksService> logger,
-        PaModuleRunner moduleRunner,
+        IPaModuleRunner moduleRunner,
         EnvironmentService environment)
     {
         _logger = logger;
@@ -227,6 +227,12 @@ public class CustomSinksService : IHostedService, IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateSinkName(request.Name);
+
+        // Validate master sink exists
+        if (!await _moduleRunner.SinkExistsAsync(request.MasterSink, cancellationToken))
+        {
+            throw new ArgumentException($"Master sink '{request.MasterSink}' not found. Use /api/devices to list available sinks.");
+        }
 
         // Check if sink name already exists in PulseAudio before we try to add locally
         if (await _moduleRunner.SinkExistsAsync(request.Name, cancellationToken))

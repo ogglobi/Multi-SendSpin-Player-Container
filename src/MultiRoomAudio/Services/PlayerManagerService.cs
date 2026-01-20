@@ -29,6 +29,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private readonly IHubContext<PlayerStatusHub> _hubContext;
     private readonly VolumeCommandRunner _volumeRunner;
     private readonly BackendFactory _backendFactory;
+    private readonly TriggerService _triggerService;
     private readonly ConcurrentDictionary<string, PlayerContext> _players = new();
     private readonly MdnsServerDiscovery _serverDiscovery;
     private bool _disposed;
@@ -154,10 +155,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     /// <summary>
     /// Pattern for valid player names.
-    /// Allows alphanumeric characters, spaces, hyphens, underscores, and apostrophes.
+    /// Allows alphanumeric characters, spaces, hyphens, underscores, apostrophes, and ampersands.
     /// </summary>
     private static readonly Regex ValidPlayerNamePattern = new(
-        @"^[a-zA-Z0-9\s\-_']+$",
+        @"^[a-zA-Z0-9\s\-_'&]+$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -365,7 +366,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         EnvironmentService environment,
         IHubContext<PlayerStatusHub> hubContext,
         VolumeCommandRunner volumeRunner,
-        BackendFactory backendFactory)
+        BackendFactory backendFactory,
+        TriggerService triggerService)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -374,6 +376,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         _hubContext = hubContext;
         _volumeRunner = volumeRunner;
         _backendFactory = backendFactory;
+        _triggerService = triggerService;
         _serverDiscovery = new MdnsServerDiscovery(
             loggerFactory.CreateLogger<MdnsServerDiscovery>());
     }
@@ -632,7 +635,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Validate against allowed character pattern
         if (!ValidPlayerNamePattern.IsMatch(name))
         {
-            errorMessage = "Player name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and apostrophes are allowed.";
+            errorMessage = "Player name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, apostrophes, and ampersands are allowed.";
             return false;
         }
 
@@ -1705,6 +1708,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         {
             _logger.LogDebug("Player '{Name}' pipeline state: {State}", name, state);
 
+            var previousState = context.State;
+
             if (state == AudioPipelineState.Playing)
                 context.State = PlayerState.Playing;
             else if (state == AudioPipelineState.Buffering)
@@ -1722,6 +1727,25 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             if (state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering)
             {
                 _ = PushVolumeToServerAsync(name, context);
+            }
+
+            // Notify trigger service of playback state changes
+            // Activate when transitioning TO an active state (Playing/Buffering) from inactive
+            // Deactivate when transitioning TO a stopped state (Idle/Stopping) from active
+            var stateStr = state.ToString();
+            var isActiveState = state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering;
+            var wasInactiveState = previousState != PlayerState.Playing && previousState != PlayerState.Buffering;
+            var isStoppedState = state == AudioPipelineState.Idle ||
+                                 stateStr.Equals("Stopping", StringComparison.OrdinalIgnoreCase);
+            var wasActiveState = previousState == PlayerState.Playing || previousState == PlayerState.Buffering;
+
+            if (isActiveState && wasInactiveState)
+            {
+                _triggerService.OnPlayerStarted(name, context.Config.DeviceId);
+            }
+            else if (isStoppedState && wasActiveState)
+            {
+                _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
             }
 
             // Broadcast status update on pipeline state change
@@ -1988,6 +2012,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
 
         _logger.LogInformation("Internal stop for player '{Name}': {Reason}", name, reason);
+
+        // Notify trigger service that player stopped
+        _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
 
         try
         {

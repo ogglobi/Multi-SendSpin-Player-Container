@@ -132,6 +132,7 @@ public static class SinksEndpoint
         group.MapDelete("/{name}", async (
             string name,
             CustomSinksService service,
+            TriggerService triggerService,
             ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
@@ -140,6 +141,9 @@ public static class SinksEndpoint
             var deleted = await service.DeleteSinkAsync(name, ct);
             if (!deleted)
                 return SinkNotFoundResult(name, logger, "delete");
+
+            // Notify trigger service to unassign any triggers using this sink
+            triggerService.OnSinkDeleted(name);
 
             logger.LogInformation("API: Sink {SinkName} deleted successfully", name);
             return Results.Ok(new SuccessResponse(true, $"Sink '{name}' deleted"));
@@ -220,10 +224,53 @@ public static class SinksEndpoint
                     return Results.BadRequest(new ErrorResponse(false, $"Sink '{name}' has no PulseAudio sink name"));
                 }
 
+                // For remap sinks with a specific channel, play directly to master device
+                // This ensures only the target channel on the master device plays the tone,
+                // rather than playing to the remap sink which would broadcast to all channels
+                if (sink.Type == CustomSinkType.Remap &&
+                    !string.IsNullOrEmpty(request?.ChannelName) &&
+                    !string.IsNullOrEmpty(sink.MasterSink) &&
+                    sink.ChannelMappings != null)
+                {
+                    // Find the mapping for this output channel
+                    var mapping = sink.ChannelMappings.FirstOrDefault(m =>
+                        m.OutputChannel.Equals(request.ChannelName, StringComparison.OrdinalIgnoreCase));
+
+                    if (mapping != null)
+                    {
+                        // Get the master channel this output maps to
+                        var masterChannel = mapping.MasterChannel;
+
+                        logger.LogInformation(
+                            "Remap sink test: Playing to master '{Master}' channel {ChannelName} via --channel-map",
+                            sink.MasterSink, masterChannel);
+
+                        await toneGenerator.PlayChannelToneAsync(
+                            sink.MasterSink,
+                            masterChannel,
+                            request.FrequencyHz ?? 1000,
+                            request.DurationMs ?? 1500,
+                            ct);
+
+                        return Results.Ok(new
+                        {
+                            success = true,
+                            message = "Test tone played successfully",
+                            sinkName = name,
+                            masterSink = sink.MasterSink,
+                            masterChannel = masterChannel,
+                            frequencyHz = request.FrequencyHz ?? 1000,
+                            durationMs = request.DurationMs ?? 1500
+                        });
+                    }
+                }
+
+                // Fall back to original behavior for non-remap sinks or whole-sink tests
                 await toneGenerator.PlayTestToneAsync(
                     sink.PulseAudioSinkName,
                     frequencyHz: request?.FrequencyHz ?? 1000,
                     durationMs: request?.DurationMs ?? 1500,
+                    channelName: request?.ChannelName,
                     ct: ct);
 
                 return Results.Ok(new
@@ -233,7 +280,8 @@ public static class SinksEndpoint
                     sinkName = name,
                     pulseAudioSinkName = sink.PulseAudioSinkName,
                     frequencyHz = request?.FrequencyHz ?? 1000,
-                    durationMs = request?.DurationMs ?? 1500
+                    durationMs = request?.DurationMs ?? 1500,
+                    channelName = request?.ChannelName
                 });
             }, logger, "play test tone", name);
         })
