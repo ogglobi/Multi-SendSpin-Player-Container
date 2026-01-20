@@ -73,7 +73,7 @@ public partial class PaModuleRunner : IPaModuleRunner
     /// Sanitizes a description string for use in device.description property.
     /// Since we use Process.ArgumentList (not shell), we don't need shell escaping.
     /// We only need to remove characters that could cause issues in PulseAudio property values.
-    /// The description is wrapped in single quotes for pactl, so we must remove single quotes.
+    /// The description is wrapped in double quotes for pactl, so we must remove double quotes.
     /// </summary>
     private static string SanitizeDescription(string description)
     {
@@ -83,11 +83,10 @@ public partial class PaModuleRunner : IPaModuleRunner
         // Sanitize for PulseAudio property values
         // Since we use ArgumentList, .NET handles process argument escaping - no shell escaping needed
         // We only remove characters that could break PulseAudio's property parsing
-        // Single quotes must be removed because the description is wrapped in single quotes for pactl
+        // Double quotes must be removed because the description is wrapped in double quotes for pactl
         return description
-            .Replace("\\", "")      // Remove backslashes
-            .Replace("'", "")       // Remove single quotes (description is wrapped in single quotes)
-            .Replace("\"", "")      // Remove double quotes (could break property parsing)
+            .Replace("\\", "")      // Remove backslashes (escape character)
+            .Replace("\"", "")      // Remove double quotes (description is wrapped in double quotes)
             .Replace("\n", " ")     // Replace newlines with spaces
             .Replace("\r", "")      // Remove carriage returns
             .Replace("\0", "")      // Remove null chars
@@ -143,8 +142,9 @@ public partial class PaModuleRunner : IPaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            // No quotes needed - ArgumentList handles escaping, and PulseAudio parses the value directly
-            args.Add($"sink_properties=device.description={safeDesc}");
+            // Use double quotes around the description value - PulseAudio needs this for values with spaces
+            // The entire argument is one string, so ArgumentList passes it intact to pactl
+            args.Add($"sink_properties=device.description=\"{safeDesc}\"");
         }
 
         _logger.LogInformation("Loading combine-sink '{SinkName}' with {SlaveCount} slaves. Args: {Args}",
@@ -240,8 +240,9 @@ public partial class PaModuleRunner : IPaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            // No quotes needed - ArgumentList handles escaping, and PulseAudio parses the value directly
-            args.Add($"sink_properties=device.description={safeDesc}");
+            // Use double quotes around the description value - PulseAudio needs this for values with spaces
+            // The entire argument is one string, so ArgumentList passes it intact to pactl
+            args.Add($"sink_properties=device.description=\"{safeDesc}\"");
         }
 
         _logger.LogInformation("Loading remap-sink '{SinkName}' from master '{Master}' with {Channels} channels. Args: {Args}",
