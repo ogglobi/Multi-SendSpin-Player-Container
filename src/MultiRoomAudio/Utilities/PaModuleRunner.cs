@@ -143,10 +143,12 @@ public partial class PaModuleRunner : IPaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            args.Add($"sink_properties=device.description='{safeDesc}'");
+            // No quotes needed - ArgumentList handles escaping, and PulseAudio parses the value directly
+            args.Add($"sink_properties=device.description={safeDesc}");
         }
 
-        _logger.LogInformation("Loading combine-sink '{SinkName}' with {SlaveCount} slaves", sinkName, slaveList.Count);
+        _logger.LogInformation("Loading combine-sink '{SinkName}' with {SlaveCount} slaves. Args: {Args}",
+            sinkName, slaveList.Count, string.Join(" | ", args));
 
         var result = await RunPactlAsync(args.ToArray(), cancellationToken);
 
@@ -238,11 +240,12 @@ public partial class PaModuleRunner : IPaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            args.Add($"sink_properties=device.description='{safeDesc}'");
+            // No quotes needed - ArgumentList handles escaping, and PulseAudio parses the value directly
+            args.Add($"sink_properties=device.description={safeDesc}");
         }
 
-        _logger.LogInformation("Loading remap-sink '{SinkName}' from master '{Master}' with {Channels} channels",
-            sinkName, masterSink, channels);
+        _logger.LogInformation("Loading remap-sink '{SinkName}' from master '{Master}' with {Channels} channels. Args: {Args}",
+            sinkName, masterSink, channels, string.Join(" | ", args));
 
         var result = await RunPactlAsync(args.ToArray(), cancellationToken);
 
