@@ -99,7 +99,11 @@ public class StartupDiagnosticsService
         };
 
         using var process = Process.Start(psi);
-        if (process == null) return;
+        if (process == null)
+        {
+            _logger.LogWarning("Failed to start pactl process for diagnostics. Is PulseAudio available?");
+            return;
+        }
 
         var output = process.StandardOutput.ReadToEnd();
         var error = process.StandardError.ReadToEnd();
@@ -136,7 +140,11 @@ public class StartupDiagnosticsService
         };
 
         using var sinkProcess = Process.Start(psi);
-        if (sinkProcess == null) return;
+        if (sinkProcess == null)
+        {
+            _logger.LogWarning("Failed to start pactl process for sink diagnostics. Is PulseAudio available?");
+            return;
+        }
 
         var sinkOutput = sinkProcess.StandardOutput.ReadToEnd();
         sinkProcess.WaitForExit(5000);
