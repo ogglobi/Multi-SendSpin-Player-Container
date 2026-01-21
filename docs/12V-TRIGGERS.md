@@ -122,6 +122,11 @@ ls /dev/ttyUSB*
 
 #### Multiple Modbus Boards
 
+Multiple different board types = works and tested.
+Multiple HID types with duplicate hardware = works and tested
+CH340 = not tested 
+FTDI = not tested
+
 If you have multiple CH340-based boards, use `/dev/serial/by-path/` for stable identification. The `/dev/ttyUSB*` names can swap between reboots.
 
 ```bash
