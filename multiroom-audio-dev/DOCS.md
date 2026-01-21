@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-c4ea116
+## Development Build: sha-956065f
 
 **Current Dev Build Changes** (recent)
 
+- Fix HID relay board hash stability across reboots
 - Add helpful error messages for inaccessible HID relay boards
 - Merge branch 'dev' into feature/hid-multi-board-support
 - Merge pull request #87 from scyto/dev
@@ -14,7 +15,6 @@
 - Add USB port-based identification for Modbus/CH340 relay boards
 - Add support for multiple identical HID relay boards
 - Fix relay_serial_port optional schema in dev config
-- Fix code formatting (dotnet format)
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
