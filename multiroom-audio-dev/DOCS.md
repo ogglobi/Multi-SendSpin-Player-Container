@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-f265ff6
+## Development Build: sha-a49d96b
 
 **Current Dev Build Changes** (recent)
 
+- Merge branch 'dev' into feature/hid-multi-board-support
 - Merge pull request #87 from scyto/dev
+- cool
+- Fix URL-encoded boardId in trigger API endpoints
+- Document /dev/serial/by-path for multiple Modbus boards
+- Add USB port-based identification for Modbus/CH340 relay boards
+- Add support for multiple identical HID relay boards
 - Fix relay_serial_port optional schema in dev config
 - Fix code formatting (dotnet format)
 - Fix: Read mock_hardware from HAOS options.json for DI registration
-- Add HAOS config options and mock hardware toggle
-- Merge pull request #86 from scyto/dev
-- Add 12V trigger documentation and README feature mention
-- Fix UI relay test for Modbus boards with slashes in ID
-- Add Modbus ASCII relay board support for CH340/CH341 devices
-- Merge pull request #85 from scyto/feature/sink-description-special-chars
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
