@@ -720,13 +720,15 @@ public class TriggerService : IHostedService, IAsyncDisposable
             // Connect to the board
             bool connected;
 
+            string? connectionError = null;
+
             if (boardId.StartsWith("HID:", StringComparison.OrdinalIgnoreCase))
             {
                 // HID boards always use path-based identification (hash of device path)
                 var pathHash = boardId.Substring(4);
                 if (board is HidRelayBoard hidBoard)
                 {
-                    connected = hidBoard.OpenByPathHash(pathHash);
+                    connected = hidBoard.OpenByPathHash(pathHash, out connectionError);
                 }
                 else
                 {
@@ -807,9 +809,11 @@ public class TriggerService : IHostedService, IAsyncDisposable
             else
             {
                 _boardStates[boardId] = TriggerFeatureState.Disconnected;
-                _boardErrors[boardId] = $"Failed to connect to {boardType} relay board. Check USB connection.";
+                // Use detailed error from connection attempt if available
+                _boardErrors[boardId] = connectionError ?? $"Failed to connect to {boardType} relay board. Check USB connection.";
                 board.Dispose();
-                _logger.LogWarning("Failed to connect to {BoardType} relay board '{BoardId}'", boardType, boardId);
+                _logger.LogWarning("Failed to connect to {BoardType} relay board '{BoardId}': {Error}",
+                    boardType, boardId, connectionError ?? "Unknown error");
                 return false;
             }
         }

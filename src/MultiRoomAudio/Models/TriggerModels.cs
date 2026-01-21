@@ -484,7 +484,11 @@ public record RelayDeviceInfo(
     /// <summary>Whether this device is identified by path (less stable).</summary>
     bool IsPathBased,
     /// <summary>Whether the channel count was auto-detected (true) or needs manual config (false).</summary>
-    bool ChannelCountDetected = false
+    bool ChannelCountDetected = false,
+    /// <summary>Whether the device is accessible (can be opened). False if permission denied or device mapping missing.</summary>
+    bool IsAccessible = true,
+    /// <summary>Error message if the device is not accessible (e.g., Docker device mapping hint).</summary>
+    string? AccessError = null
 )
 {
     /// <summary>

@@ -84,7 +84,9 @@ public class RealRelayDeviceEnumerator : IRelayDeviceEnumerator
                     IsInUse: false, // We don't track this here - TriggerService manages it
                     UsbPath: hid.DevicePath,
                     IsPathBased: true,
-                    ChannelCountDetected: hid.ChannelCountDetected
+                    ChannelCountDetected: hid.ChannelCountDetected,
+                    IsAccessible: hid.IsAccessible,
+                    AccessError: hid.AccessError
                 ));
             }
         }
