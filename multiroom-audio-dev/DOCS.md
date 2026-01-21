@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-956065f
+## Development Build: sha-d7deb7e
 
 **Current Dev Build Changes** (recent)
 
+- Update docs: clarify HID relay device mapping requirements
 - Fix HID relay board hash stability across reboots
 - Add helpful error messages for inaccessible HID relay boards
 - Merge branch 'dev' into feature/hid-multi-board-support
@@ -14,7 +15,6 @@
 - Document /dev/serial/by-path for multiple Modbus boards
 - Add USB port-based identification for Modbus/CH340 relay boards
 - Add support for multiple identical HID relay boards
-- Fix relay_serial_port optional schema in dev config
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
