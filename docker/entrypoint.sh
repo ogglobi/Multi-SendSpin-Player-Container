@@ -114,10 +114,10 @@ mkdir -p /run/pulse
 chmod 755 /run/pulse
 
 # Apply PulseAudio sample rate/format from environment variables
-# Defaults: 192000Hz, s32le (hi-res DAC friendly)
-# These are applied to daemon.conf before PulseAudio starts
-PA_SAMPLE_RATE="${PA_SAMPLE_RATE:-192000}"
-PA_SAMPLE_FORMAT="${PA_SAMPLE_FORMAT:-s32le}"
+# Defaults: 48000Hz, s16le (conservative, standard CD quality)
+# For hi-res: set PA_SAMPLE_RATE=192000 PA_SAMPLE_FORMAT=s32le
+PA_SAMPLE_RATE="${PA_SAMPLE_RATE:-48000}"
+PA_SAMPLE_FORMAT="${PA_SAMPLE_FORMAT:-s16le}"
 
 if [ -f /etc/pulse/daemon.conf ]; then
     echo "Configuring PulseAudio: ${PA_SAMPLE_FORMAT} @ ${PA_SAMPLE_RATE}Hz"
