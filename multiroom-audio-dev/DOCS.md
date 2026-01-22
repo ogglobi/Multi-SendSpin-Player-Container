@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-e875459
+## Development Build: sha-683e033
 
 **Current Dev Build Changes** (recent)
 
+- Document PA_SAMPLE_RATE and PA_SAMPLE_FORMAT environment variables
 - Merge pull request #12 from scyto/feature/conservative-audio-defaults-and-stats-improvements
 - Extract and populate hardware sample format from PulseAudio sinks
 - Merge pull request #11 from scyto/feature/conservative-audio-defaults-and-stats-improvements
@@ -14,7 +15,6 @@
 - small edit
 - Merge pull request #92 from scyto/dev
 - Expand HID relay documentation with Docker device mapping details
-- Merge pull request #91 from scyto/dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
