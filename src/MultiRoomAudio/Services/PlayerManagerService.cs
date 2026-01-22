@@ -1376,11 +1376,15 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         var config = context.Config;
 
-        // Get startup volume from persisted config (NOT runtime volume)
-        // This ensures MA learns the correct preference on reconnection
+        // Get startup volume and advertised format from persisted config (NOT runtime values)
+        // This ensures we pick up any changes made via the API before restart
         var startupVolume = _config.Players.TryGetValue(name, out var persistedConfig)
             ? persistedConfig.Volume ?? 100
             : config.Volume;
+
+        var advertisedFormat = _config.Players.TryGetValue(name, out var persistedConfigForFormat)
+            ? persistedConfigForFormat.AdvertisedFormat
+            : config.AdvertisedFormat;
 
         // Fully remove and dispose old player
         await RemoveAndDisposePlayerAsync(name);
@@ -1393,7 +1397,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             ServerUrl = config.ServerUrl,
             Volume = startupVolume,  // Use startup volume, not runtime volume
             DelayMs = config.DelayMs,
-            AdvertisedFormat = config.AdvertisedFormat,
+            AdvertisedFormat = advertisedFormat,  // Use persisted format, not runtime format
             Persist = false // Already persisted
         };
 
