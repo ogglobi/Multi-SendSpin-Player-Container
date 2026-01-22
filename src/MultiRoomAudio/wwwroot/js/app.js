@@ -461,6 +461,11 @@ async function openEditPlayerModal(playerName) {
         // Store original name for update logic
         document.getElementById('editingPlayerName').value = playerName;
 
+        // Store original values to detect changes
+        document.getElementById('playerForm').dataset.originalDevice = player.device || '';
+        document.getElementById('playerForm').dataset.originalServerUrl = player.serverUrl || '';
+        document.getElementById('playerForm').dataset.originalFormat = player.advertisedFormat || 'all';
+
         // Populate form with current values
         document.getElementById('playerName').value = player.name;
         document.getElementById('serverUrl').value = player.serverUrl || '';
@@ -523,12 +528,22 @@ async function savePlayer() {
     try {
         if (isEditing) {
             // Edit mode: Use PUT to update config, then restart if needed
+            // Get original values to detect changes
+            const form = document.getElementById('playerForm');
+            const originalDevice = form.dataset.originalDevice || '';
+            const originalServerUrl = form.dataset.originalServerUrl || '';
+            const originalFormat = form.dataset.originalFormat || 'all';
+
+            const currentDevice = device || '';
+            const currentServerUrl = serverUrl || '';
+            const currentFormat = advertisedFormat === 'all' ? '' : advertisedFormat;
+
             const updatePayload = {
                 name: name !== editingName ? name : undefined,  // Only include if changed
-                device: device || '',  // Empty string = default device
-                serverUrl: serverUrl || '',  // Empty string = mDNS discovery
-                volume,
-                advertisedFormat: advertisedFormat === 'all' ? '' : advertisedFormat  // Empty string = all formats
+                device: currentDevice !== originalDevice ? currentDevice : undefined,  // Only include if changed
+                serverUrl: currentServerUrl !== originalServerUrl ? currentServerUrl : undefined,  // Only include if changed
+                volume,  // Always send volume (it's used for startup volume)
+                advertisedFormat: currentFormat !== (originalFormat === 'all' ? '' : originalFormat) ? currentFormat : undefined  // Only include if changed
             };
 
             const response = await fetch(`./api/players/${encodeURIComponent(editingName)}`, {
