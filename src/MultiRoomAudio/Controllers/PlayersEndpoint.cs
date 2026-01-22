@@ -469,6 +469,15 @@ public static class PlayersEndpoint
                             currentName, savedConfig.AdvertisedFormat ?? "all");
                     }
 
+                    // Handle buffer size change
+                    if (request.BufferSizeMs.HasValue && request.BufferSizeMs.Value != savedConfig.BufferSizeMs)
+                    {
+                        savedConfig.BufferSizeMs = request.BufferSizeMs.Value;
+                        needsRestart = true;
+                        logger.LogInformation("API: Player {PlayerName} buffer size changed to {BufferSizeMs}ms",
+                            currentName, savedConfig.BufferSizeMs);
+                    }
+
                     config.Save();
                 }
 

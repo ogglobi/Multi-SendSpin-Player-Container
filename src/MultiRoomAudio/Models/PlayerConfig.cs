@@ -148,6 +148,12 @@ public class PlayerUpdateRequest
     public int? Volume { get; set; }
 
     /// <summary>
+    /// Buffer size in milliseconds.
+    /// </summary>
+    [Range(10, 10000, ErrorMessage = "BufferSizeMs must be between 10 and 10000 milliseconds.")]
+    public int? BufferSizeMs { get; set; }
+
+    /// <summary>
     /// Specific audio format to advertise. If null or empty, defaults to "flac-48000" for maximum MA compatibility.
     /// Format string: "codec-samplerate-bitdepth" (e.g., "flac-192000", "pcm-96000-24").
     /// UI selection only available when ENABLE_ADVANCED_FORMATS is enabled.

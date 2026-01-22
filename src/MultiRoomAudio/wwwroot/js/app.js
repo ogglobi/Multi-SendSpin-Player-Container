@@ -484,6 +484,7 @@ async function openEditPlayerModal(playerName) {
         document.getElementById('serverUrl').value = player.serverUrl || '';
         document.getElementById('initialVolume').value = player.volume;
         document.getElementById('initialVolumeValue').textContent = player.volume + '%';
+        document.getElementById('editBufferSizeMs').value = player.bufferSizeMs || 100;
 
         // Set device dropdown
         await refreshDevices();
@@ -568,6 +569,12 @@ async function savePlayer() {
                 }
             }
 
+            // Include buffer size
+            const bufferSizeMs = parseInt(document.getElementById('editBufferSizeMs').value);
+            if (!isNaN(bufferSizeMs)) {
+                updatePayload.bufferSizeMs = bufferSizeMs;
+            }
+
             const response = await fetch(`./api/players/${encodeURIComponent(editingName)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -628,6 +635,12 @@ async function savePlayer() {
                 if (advertisedFormat) {
                     payload.advertisedFormat = advertisedFormat;
                 }
+            }
+
+            // Include buffer size
+            const bufferSizeMs = parseInt(document.getElementById('editBufferSizeMs').value);
+            if (!isNaN(bufferSizeMs)) {
+                payload.bufferSizeMs = bufferSizeMs;
             }
 
             const response = await fetch('./api/players', {
