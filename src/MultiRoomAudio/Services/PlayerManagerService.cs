@@ -756,12 +756,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Probe device capabilities (used for reporting in Stats for Nerds)
         var deviceCapabilities = _backendFactory.GetDeviceCapabilities(request.Device);
 
-        // Apply format filtering if advanced formats are enabled
+        // Apply format filtering (always defaults to flac-48000 for maximum compatibility)
         var audioFormats = GetDefaultFormats();
-        if (_environment.EnableAdvancedFormats)
-        {
-            audioFormats = FilterFormatsByPreference(audioFormats, request.AdvertisedFormat);
-        }
+        audioFormats = FilterFormatsByPreference(audioFormats, request.AdvertisedFormat);
 
         // Create capabilities with player role
         var clientCapabilities = new ClientCapabilities
@@ -2020,16 +2017,21 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     /// <summary>
     /// Filters advertised audio formats based on user preference.
-    /// Used by advanced formats feature to advertise only a specific format.
+    /// Defaults to flac-48000 for maximum MA compatibility when no format specified.
     /// </summary>
     /// <param name="allFormats">List of all supported formats.</param>
-    /// <param name="advertisedFormat">Format preference string (e.g., "flac-192000", "pcm-96000-24").</param>
-    /// <returns>Filtered list containing only the preferred format, or all formats if preference is invalid.</returns>
+    /// <param name="advertisedFormat">Format preference string (e.g., "flac-192000", "pcm-96000-24"). If null/empty, defaults to "flac-48000".</param>
+    /// <returns>Filtered list containing only the preferred format, or all formats if preference is "all".</returns>
     private List<AudioFormat> FilterFormatsByPreference(List<AudioFormat> allFormats, string? advertisedFormat)
     {
-        // If no preference or "all", return all formats
-        if (string.IsNullOrWhiteSpace(advertisedFormat) ||
-            advertisedFormat.Equals("all", StringComparison.OrdinalIgnoreCase))
+        // Default to flac-48000 for maximum compatibility with all MA builds
+        if (string.IsNullOrWhiteSpace(advertisedFormat))
+        {
+            advertisedFormat = "flac-48000";
+        }
+
+        // If explicitly set to "all", return all formats
+        if (advertisedFormat.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
             return allFormats;
         }

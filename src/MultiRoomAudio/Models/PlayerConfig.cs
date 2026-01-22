@@ -69,9 +69,9 @@ public class PlayerCreateRequest
     public bool Persist { get; set; } = true;
 
     /// <summary>
-    /// Specific audio format to advertise. If null or empty, advertises all supported formats.
+    /// Specific audio format to advertise. If null or empty, defaults to "flac-48000" for maximum MA compatibility.
     /// Format string: "codec-samplerate-bitdepth" (e.g., "flac-192000", "pcm-96000-24").
-    /// Only used when ENABLE_ADVANCED_FORMATS is enabled.
+    /// UI selection only available when ENABLE_ADVANCED_FORMATS is enabled.
     /// </summary>
     [StringLength(50, ErrorMessage = "AdvertisedFormat cannot exceed 50 characters.")]
     public string? AdvertisedFormat { get; set; }
@@ -148,9 +148,9 @@ public class PlayerUpdateRequest
     public int? Volume { get; set; }
 
     /// <summary>
-    /// Specific audio format to advertise. If null or empty, advertises all supported formats.
+    /// Specific audio format to advertise. If null or empty, defaults to "flac-48000" for maximum MA compatibility.
     /// Format string: "codec-samplerate-bitdepth" (e.g., "flac-192000", "pcm-96000-24").
-    /// Only used when ENABLE_ADVANCED_FORMATS is enabled.
+    /// UI selection only available when ENABLE_ADVANCED_FORMATS is enabled.
     /// </summary>
     [StringLength(50, ErrorMessage = "AdvertisedFormat cannot exceed 50 characters.")]
     public string? AdvertisedFormat { get; set; }
