@@ -67,6 +67,35 @@ public static class PlayersEndpoint
         .WithName("ListPlayers")
         .WithDescription("Get all active players");
 
+        // GET /api/players/formats - Get available audio formats
+        group.MapGet("/formats", (ILoggerFactory loggerFactory) =>
+        {
+            var logger = loggerFactory.CreateLogger("PlayersEndpoint");
+            logger.LogDebug("API: GET /api/players/formats");
+
+            var formats = new List<AudioFormatOption>
+            {
+                new("all", "All Formats", "Advertise all supported formats (default)"),
+                new("flac-192000", "FLAC 192kHz", "Hi-res lossless 192kHz"),
+                new("flac-96000", "FLAC 96kHz", "Hi-res lossless 96kHz"),
+                new("flac-48000", "FLAC 48kHz", "CD quality lossless 48kHz"),
+                new("flac-44100", "FLAC 44.1kHz", "CD quality lossless 44.1kHz"),
+                new("pcm-192000-32", "PCM 192kHz 32-bit", "Hi-res uncompressed 192kHz 32-bit"),
+                new("pcm-96000-32", "PCM 96kHz 32-bit", "Hi-res uncompressed 96kHz 32-bit"),
+                new("pcm-48000-32", "PCM 48kHz 32-bit", "CD quality uncompressed 48kHz 32-bit"),
+                new("pcm-192000-24", "PCM 192kHz 24-bit", "Hi-res uncompressed 192kHz 24-bit"),
+                new("pcm-96000-24", "PCM 96kHz 24-bit", "Hi-res uncompressed 96kHz 24-bit"),
+                new("pcm-48000-24", "PCM 48kHz 24-bit", "CD quality uncompressed 48kHz 24-bit"),
+                new("pcm-48000-16", "PCM 48kHz 16-bit", "Standard uncompressed 48kHz 16-bit"),
+                new("pcm-44100-16", "PCM 44.1kHz 16-bit", "CD quality uncompressed 44.1kHz 16-bit"),
+                new("opus-48000", "Opus 48kHz", "Efficient compressed 48kHz (256kbps)")
+            };
+
+            return Results.Ok(new AudioFormatsResponse(formats));
+        })
+        .WithName("GetAudioFormats")
+        .WithDescription("Get list of available audio formats for player configuration");
+
         // GET /api/players/{name} - Get specific player
         group.MapGet("/{name}", (string name, PlayerManagerService manager, ILoggerFactory loggerFactory) =>
         {
@@ -421,6 +450,14 @@ public static class PlayersEndpoint
                     {
                         savedConfig.Server = request.ServerUrl == "" ? null : request.ServerUrl;
                         needsRestart = true;
+                    }
+
+                    if (request.AdvertisedFormat != null && request.AdvertisedFormat != savedConfig.AdvertisedFormat)
+                    {
+                        savedConfig.AdvertisedFormat = request.AdvertisedFormat == "" ? null : request.AdvertisedFormat;
+                        needsRestart = true;
+                        logger.LogInformation("API: Player {PlayerName} advertised format changed to '{Format}'",
+                            currentName, savedConfig.AdvertisedFormat ?? "all");
                     }
 
                     config.Save();

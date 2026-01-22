@@ -521,6 +521,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 ServerUrl = playerConfig.Server,
                 Volume = playerConfig.Volume ?? 100,
                 DelayMs = playerConfig.DelayMs,
+                AdvertisedFormat = playerConfig.AdvertisedFormat,
                 Persist = false // Already persisted, don't re-save
             };
 
@@ -682,7 +683,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 ClientId = components.Capabilities.ClientId,
                 ServerUrl = request.ServerUrl,
                 Volume = request.Volume,
-                DelayMs = request.DelayMs
+                DelayMs = request.DelayMs,
+                AdvertisedFormat = request.AdvertisedFormat
             };
 
             var cts = new CancellationTokenSource();
@@ -717,7 +719,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     Autostart = true,
                     DelayMs = request.DelayMs,
                     Server = request.ServerUrl,
-                    Volume = request.Volume
+                    Volume = request.Volume,
+                    AdvertisedFormat = request.AdvertisedFormat
                 };
                 _config.SetPlayer(request.Name, persistConfig);
                 _config.Save();
@@ -765,13 +768,16 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // This ensures we only advertise formats the hardware can actually use
         var audioFormats = GetFormatsForSink(sinkSampleRate);
 
+        // Further filter based on user's advertised format preference
+        audioFormats = FilterFormatsByPreference(audioFormats, request.AdvertisedFormat);
+
         _logger.LogDebug(
-            "Player '{Name}' on device '{Device}' - sink rate: {SinkRate}Hz, advertising {FormatCount} formats (max {MaxRate}Hz)",
+            "Player '{Name}' on device '{Device}' - sink rate: {SinkRate}Hz, advertising {FormatCount} format(s) (max {MaxRate}Hz)",
             request.Name,
             request.Device ?? "default",
             sinkSampleRate,
             audioFormats.Count,
-            audioFormats.Max(f => f.SampleRate));
+            audioFormats.Count > 0 ? audioFormats.Max(f => f.SampleRate) : 0);
 
         // Create capabilities with player role
         var clientCapabilities = new ClientCapabilities
@@ -1071,7 +1077,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     DeviceCapabilities: null,
                     IsPendingReconnection: isPendingReconnection,
                     ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
-                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
+                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+                    AdvertisedFormat: config.AdvertisedFormat
                 ));
             }
         }
@@ -1967,7 +1974,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             DeviceCapabilities: context.DeviceCapabilities,
             IsPendingReconnection: isPendingReconnection,
             ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
-            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
+            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+            AdvertisedFormat: context.Config.AdvertisedFormat
         );
     }
 
@@ -2046,6 +2054,61 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Opus for efficiency when streaming
             new AudioFormat { Codec = "opus", SampleRate = 48000, Channels = 2, Bitrate = 256 },
         };
+    }
+
+    /// <summary>
+    /// Filters formats based on the advertised format preference.
+    /// </summary>
+    /// <param name="allFormats">All available formats for the sink.</param>
+    /// <param name="advertisedFormat">The format preference string (e.g., "flac-192000", "pcm-96000-24", or null/"all" for all formats).</param>
+    /// <returns>Filtered list of formats to advertise.</returns>
+    private List<AudioFormat> FilterFormatsByPreference(List<AudioFormat> allFormats, string? advertisedFormat)
+    {
+        // If no preference or "all", return all formats
+        if (string.IsNullOrWhiteSpace(advertisedFormat) || advertisedFormat.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            return allFormats;
+        }
+
+        // Parse the format string (e.g., "flac-192000" or "pcm-96000-24")
+        var parts = advertisedFormat.Split('-');
+        if (parts.Length < 2)
+        {
+            _logger.LogWarning("Invalid advertised format '{Format}', using all formats", advertisedFormat);
+            return allFormats;
+        }
+
+        var codec = parts[0].ToLowerInvariant();
+        if (!int.TryParse(parts[1], out var sampleRate))
+        {
+            _logger.LogWarning("Invalid sample rate in format '{Format}', using all formats", advertisedFormat);
+            return allFormats;
+        }
+
+        int? bitDepth = null;
+        if (parts.Length >= 3 && int.TryParse(parts[2], out var parsedBitDepth))
+        {
+            bitDepth = parsedBitDepth;
+        }
+
+        // Find the matching format
+        var matchingFormat = allFormats.FirstOrDefault(f =>
+            f.Codec.Equals(codec, StringComparison.OrdinalIgnoreCase) &&
+            f.SampleRate == sampleRate &&
+            (bitDepth == null || f.BitDepth == bitDepth));
+
+        if (matchingFormat != null)
+        {
+            _logger.LogInformation(
+                "Advertising single format: {Codec} {SampleRate}Hz{BitDepth}",
+                matchingFormat.Codec,
+                matchingFormat.SampleRate,
+                matchingFormat.BitDepth.HasValue ? $" {matchingFormat.BitDepth}-bit" : "");
+            return new List<AudioFormat> { matchingFormat };
+        }
+
+        _logger.LogWarning("Format '{Format}' not found in available formats, using all formats", advertisedFormat);
+        return allFormats;
     }
 
     /// <summary>

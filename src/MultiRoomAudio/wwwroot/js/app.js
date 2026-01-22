@@ -3,6 +3,7 @@
 // State
 let players = {};
 let devices = [];
+let formats = []; // Available audio formats
 let connection = null;
 let currentBuildVersion = null; // Stored build version for comparison
 let isUserInteracting = false; // Track if user is dragging a slider
@@ -370,6 +371,34 @@ async function refreshStatus() {
     }
 }
 
+// Fetch and populate audio format options
+async function refreshFormats() {
+    try {
+        const response = await fetch('./api/players/formats');
+        if (!response.ok) throw new Error('Failed to fetch formats');
+
+        const data = await response.json();
+        formats = data.formats || [];
+
+        // Update format select
+        const formatSelect = document.getElementById('advertisedFormat');
+        if (formatSelect) {
+            const currentValue = formatSelect.value;
+            formatSelect.innerHTML = '';
+            formats.forEach(format => {
+                const option = document.createElement('option');
+                option.value = format.id;
+                option.textContent = format.label;
+                option.title = format.description;
+                formatSelect.appendChild(option);
+            });
+            if (currentValue) formatSelect.value = currentValue;
+        }
+    } catch (error) {
+        console.error('Error refreshing formats:', error);
+    }
+}
+
 async function refreshDevices() {
     try {
         const response = await fetch('./api/devices');
@@ -409,10 +438,11 @@ function openAddPlayerModal() {
     document.getElementById('playerModalSubmitIcon').className = 'fas fa-plus me-1';
     document.getElementById('playerModalSubmitText').textContent = 'Add Player';
 
-    // Refresh devices and show modal
-    refreshDevices();
-    const modal = new bootstrap.Modal(document.getElementById('playerModal'));
-    modal.show();
+    // Refresh devices and formats, then show modal
+    Promise.all([refreshDevices(), refreshFormats()]).then(() => {
+        const modal = new bootstrap.Modal(document.getElementById('playerModal'));
+        modal.show();
+    });
 }
 
 // Open the modal in Edit mode with player data
@@ -437,8 +467,10 @@ async function openEditPlayerModal(playerName) {
         document.getElementById('initialVolume').value = player.volume;
         document.getElementById('initialVolumeValue').textContent = player.volume + '%';
 
+        // Refresh dropdowns
+        await Promise.all([refreshDevices(), refreshFormats()]);
+
         // Set device dropdown
-        await refreshDevices();
         const audioDeviceSelect = document.getElementById('audioDevice');
         if (player.device) {
             audioDeviceSelect.value = player.device;
@@ -446,6 +478,12 @@ async function openEditPlayerModal(playerName) {
             if (audioDeviceSelect.value !== player.device) {
                 showAlert(`Warning: Previously configured device "${player.device}" is no longer available. Please select a new device.`, 'warning');
             }
+        }
+
+        // Set format dropdown
+        const formatSelect = document.getElementById('advertisedFormat');
+        if (formatSelect) {
+            formatSelect.value = player.advertisedFormat || 'all';
         }
 
         // Set modal to Edit mode
@@ -471,6 +509,7 @@ async function savePlayer() {
     const device = document.getElementById('audioDevice').value;
     const serverUrl = document.getElementById('serverUrl').value.trim();
     const volume = parseInt(document.getElementById('initialVolume').value);
+    const advertisedFormat = document.getElementById('advertisedFormat').value;
 
     if (!name) {
         showAlert('Please enter a player name', 'warning');
@@ -488,7 +527,8 @@ async function savePlayer() {
                 name: name !== editingName ? name : undefined,  // Only include if changed
                 device: device || '',  // Empty string = default device
                 serverUrl: serverUrl || '',  // Empty string = mDNS discovery
-                volume
+                volume,
+                advertisedFormat: advertisedFormat === 'all' ? '' : advertisedFormat  // Empty string = all formats
             };
 
             const response = await fetch(`./api/players/${encodeURIComponent(editingName)}`, {
@@ -545,6 +585,7 @@ async function savePlayer() {
                     device: device || null,
                     serverUrl: serverUrl || null,
                     volume,
+                    advertisedFormat: advertisedFormat === 'all' ? null : advertisedFormat,
                     persist: true
                 })
             });
