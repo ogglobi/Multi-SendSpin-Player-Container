@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-ea2cc5c
+## Development Build: sha-eb880ba
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #14 from scyto/feature/per-player-format-selection
+- Fix format dropdown not updating and change detection issues
 - Merge pull request #13 from scyto/feature/per-player-format-selection
 - Fix: Include advertisedFormat in player creation payload
 - Add per-player audio format selection feature (dev-only)
@@ -13,8 +15,6 @@
 - Extract and populate hardware sample format from PulseAudio sinks
 - Merge pull request #11 from scyto/feature/conservative-audio-defaults-and-stats-improvements
 - Add hardware format display to Stats for Nerds
-- Add PulseAudio runtime configuration via environment variables
-- Merge pull request #93 from scyto/dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
