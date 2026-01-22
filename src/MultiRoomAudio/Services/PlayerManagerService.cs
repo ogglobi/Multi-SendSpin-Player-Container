@@ -754,13 +754,32 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Probe device capabilities (used for reporting in Stats for Nerds)
         var deviceCapabilities = _backendFactory.GetDeviceCapabilities(request.Device);
 
+        // Get the device to determine its sample rate for format filtering
+        // If no device specified, get the default device
+        var device = string.IsNullOrEmpty(request.Device)
+            ? _backendFactory.GetDefaultDevice()
+            : _backendFactory.GetDevice(request.Device);
+        var sinkSampleRate = device?.DefaultSampleRate ?? 192000;
+
+        // Filter advertised formats based on sink's negotiated sample rate
+        // This ensures we only advertise formats the hardware can actually use
+        var audioFormats = GetFormatsForSink(sinkSampleRate);
+
+        _logger.LogDebug(
+            "Player '{Name}' on device '{Device}' - sink rate: {SinkRate}Hz, advertising {FormatCount} formats (max {MaxRate}Hz)",
+            request.Name,
+            request.Device ?? "default",
+            sinkSampleRate,
+            audioFormats.Count,
+            audioFormats.Max(f => f.SampleRate));
+
         // Create capabilities with player role
         var clientCapabilities = new ClientCapabilities
         {
             ClientId = request.ClientId ?? GenerateClientId(request.Name),
             ClientName = request.Name,
             Roles = new List<string> { "controller@v1", "player@v1", "metadata@v1" },
-            AudioFormats = GetDefaultFormats(),
+            AudioFormats = audioFormats,
             BufferCapacity = ServerAnnouncedBufferCapacityBytes,
             InitialVolume = request.Volume
         };
@@ -1962,11 +1981,17 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         if (!_players.TryGetValue(name, out var context))
             return null;
 
+        // Get the device info for hardware format display
+        var device = string.IsNullOrEmpty(context.Config.DeviceId)
+            ? _backendFactory.GetDefaultDevice()
+            : _backendFactory.GetDevice(context.Config.DeviceId);
+
         return PlayerStatsMapper.BuildStats(
             name,
             context.Pipeline,
             context.ClockSync,
-            context.Player);
+            context.Player,
+            device);
     }
 
     private static string GenerateClientId(string name)
@@ -1975,20 +2000,49 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         return ClientIdGenerator.Generate(name);
     }
 
-    private static List<AudioFormat> GetDefaultFormats()
+    /// <summary>
+    /// Gets audio formats filtered by the sink's negotiated sample rate.
+    /// This ensures we only advertise formats the hardware can actually handle,
+    /// so Music Assistant sends appropriate quality per player.
+    /// </summary>
+    /// <param name="sinkSampleRate">The sink's current sample rate (from pactl list sinks).</param>
+    /// <returns>List of formats with sample rates at or below the sink rate.</returns>
+    private static List<AudioFormat> GetFormatsForSink(int sinkSampleRate)
+    {
+        var allFormats = GetAllSupportedFormats();
+
+        // Filter formats to only include rates the sink can handle
+        // This prevents advertising 192kHz to a Bluetooth device that only does 48kHz
+        return allFormats
+            .Where(f => f.SampleRate <= sinkSampleRate)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gets all supported audio formats (maximum capability list).
+    /// </summary>
+    private static List<AudioFormat> GetAllSupportedFormats()
     {
         // Advertise hi-res formats to SendSpin/Music Assistant server
         // Server will send highest quality available that we support
         return new List<AudioFormat>
         {
-            // Hi-res FLAC (preferred for quality)
+            // Hi-res FLAC (preferred for quality - lossless compression)
             new AudioFormat { Codec = "flac", SampleRate = 192000, Channels = 2 },
             new AudioFormat { Codec = "flac", SampleRate = 96000, Channels = 2 },
             new AudioFormat { Codec = "flac", SampleRate = 48000, Channels = 2 },
-            // Hi-res PCM
+            new AudioFormat { Codec = "flac", SampleRate = 44100, Channels = 2 },
+            // Hi-res PCM 32-bit (maximum precision)
+            new AudioFormat { Codec = "pcm", SampleRate = 192000, Channels = 2, BitDepth = 32 },
+            new AudioFormat { Codec = "pcm", SampleRate = 96000, Channels = 2, BitDepth = 32 },
+            new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 32 },
+            // Hi-res PCM 24-bit
             new AudioFormat { Codec = "pcm", SampleRate = 192000, Channels = 2, BitDepth = 24 },
             new AudioFormat { Codec = "pcm", SampleRate = 96000, Channels = 2, BitDepth = 24 },
+            new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 24 },
+            // Standard PCM 16-bit
             new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 16 },
+            new AudioFormat { Codec = "pcm", SampleRate = 44100, Channels = 2, BitDepth = 16 },
             // Opus for efficiency when streaming
             new AudioFormat { Codec = "opus", SampleRate = 48000, Channels = 2, Bitrate = 256 },
         };
