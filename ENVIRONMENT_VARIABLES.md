@@ -80,20 +80,33 @@ AUDIO_BACKEND=pulse
 
 ### ENABLE_ADVANCED_FORMATS
 
-Enable per-player audio format selection feature (dev-only).
+Enable per-player audio format selection UI (dev-only).
 
 - **Type:** Boolean
 - **Default:** `false`
 - **Valid Values:** `true`, `false`, `1`, `0`, `yes`, `no`
-- **Description:** Enables advanced audio format selection UI and API endpoints. When enabled, allows per-player format filtering (e.g., advertise only "PCM 192kHz 32-bit" instead of all formats). This is a development/testing feature not recommended for production use.
+- **Description:** Controls whether the advanced format selection UI is displayed. **Important:** All players default to advertising "flac-48000" for maximum Music Assistant compatibility regardless of this setting.
+
+**Behavior:**
+
+| Setting           | Default Format | UI Behavior                 | Use Case                                                                      |
+|-------------------|----------------|-----------------------------|-------------------------------------------------------------------------------|
+| `false` (default) | flac-48000     | No format dropdown shown    | Production - maximum MA compatibility                                         |
+| `true`            | flac-48000     | Format dropdown shown in UI | Development/testing - allows selecting specific formats or "All Formats"      |
+
+When enabled, the UI provides options to:
+
+- Keep the default "flac-48000" (recommended)
+- Select specific formats (e.g., "PCM 192kHz 32-bit", "FLAC 96kHz")
+- Choose "All Formats" to advertise all supported formats
 
 **Examples:**
 ```bash
-# Enable advanced formats feature
-ENABLE_ADVANCED_FORMATS=true
-
-# Disable (default)
+# Production (default) - flac-48000, no UI dropdown
 ENABLE_ADVANCED_FORMATS=false
+
+# Development - flac-48000 default, but UI allows format selection
+ENABLE_ADVANCED_FORMATS=true
 ```
 
 ### CONFIG_PATH
