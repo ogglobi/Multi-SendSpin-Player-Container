@@ -283,7 +283,12 @@ public class TriggerService : IHostedService, IAsyncDisposable
         // Infer board type from ID if not specified
         if (boardType == RelayBoardType.Unknown)
         {
-            boardType = boardId.StartsWith("HID:") ? RelayBoardType.UsbHid : RelayBoardType.Ftdi;
+            if (boardId.StartsWith("HID:", StringComparison.OrdinalIgnoreCase))
+                boardType = RelayBoardType.UsbHid;
+            else if (boardId.StartsWith("MODBUS:", StringComparison.OrdinalIgnoreCase))
+                boardType = RelayBoardType.Modbus;
+            else
+                boardType = RelayBoardType.Ftdi;
         }
 
         lock (_configLock)
@@ -692,7 +697,12 @@ public class TriggerService : IHostedService, IAsyncDisposable
             var boardType = boardConfig.BoardType;
             if (boardType == RelayBoardType.Unknown)
             {
-                boardType = boardId.StartsWith("HID:") ? RelayBoardType.UsbHid : RelayBoardType.Ftdi;
+                if (boardId.StartsWith("HID:", StringComparison.OrdinalIgnoreCase))
+                    boardType = RelayBoardType.UsbHid;
+                else if (boardId.StartsWith("MODBUS:", StringComparison.OrdinalIgnoreCase))
+                    boardType = RelayBoardType.Modbus;
+                else
+                    boardType = RelayBoardType.Ftdi;
             }
 
             // Check if the factory can create this board type
@@ -708,18 +718,51 @@ public class TriggerService : IHostedService, IAsyncDisposable
             var board = _boardFactory.CreateBoard(boardId, boardType);
 
             // Connect to the board
-            var serial = GetSerialFromBoardId(boardId);
             bool connected;
 
-            if (string.IsNullOrEmpty(serial) || boardId.StartsWith("USB:"))
+            string? connectionError = null;
+
+            if (boardId.StartsWith("HID:", StringComparison.OrdinalIgnoreCase))
             {
-                // Port-based board or no serial - open first available
+                // HID boards always use path-based identification (hash of device path)
+                var pathHash = boardId.Substring(4);
+                if (board is HidRelayBoard hidBoard)
+                {
+                    connected = hidBoard.OpenByPathHash(pathHash, out connectionError);
+                }
+                else
+                {
+                    _logger.LogWarning("Board '{BoardId}' is HID type but factory didn't create HidRelayBoard", boardId);
+                    connected = board.Open();
+                }
+            }
+            else if (boardId.StartsWith("USB:", StringComparison.OrdinalIgnoreCase))
+            {
+                // USB port-based board - open first available
                 connected = board.Open();
+            }
+            else if (boardId.StartsWith("MODBUS:", StringComparison.OrdinalIgnoreCase))
+            {
+                var modbusId = boardId.Substring(7);
+                // Check if it's a USB path hash (8 hex chars) or a port name (/dev/ttyUSB0)
+                var isHashId = modbusId.Length == 8 && modbusId.All(c => char.IsAsciiHexDigit(c));
+
+                if (isHashId && board is ModbusRelayBoard modbusBoard)
+                {
+                    // Hash-based identification - find by USB port path
+                    connected = modbusBoard.OpenByUsbPathHash(modbusId);
+                }
+                else
+                {
+                    // Legacy port-name based identification
+                    connected = board.OpenBySerial(boardId);
+                }
             }
             else
             {
-                // Serial-based board
-                connected = board.OpenBySerial(serial);
+                // FTDI uses serial-based identification
+                var serial = GetSerialFromBoardId(boardId);
+                connected = string.IsNullOrEmpty(serial) ? board.Open() : board.OpenBySerial(serial);
             }
 
             if (connected)
@@ -766,9 +809,11 @@ public class TriggerService : IHostedService, IAsyncDisposable
             else
             {
                 _boardStates[boardId] = TriggerFeatureState.Disconnected;
-                _boardErrors[boardId] = $"Failed to connect to {boardType} relay board. Check USB connection.";
+                // Use detailed error from connection attempt if available
+                _boardErrors[boardId] = connectionError ?? $"Failed to connect to {boardType} relay board. Check USB connection.";
                 board.Dispose();
-                _logger.LogWarning("Failed to connect to {BoardType} relay board '{BoardId}'", boardType, boardId);
+                _logger.LogWarning("Failed to connect to {BoardType} relay board '{BoardId}': {Error}",
+                    boardType, boardId, connectionError ?? "Unknown error");
                 return false;
             }
         }
@@ -776,14 +821,16 @@ public class TriggerService : IHostedService, IAsyncDisposable
 
     /// <summary>
     /// Extract the serial number from a board ID.
-    /// Handles HID:serial and USB:path formats.
+    /// Handles HID:serial, USB:path, and MODBUS:port formats.
     /// </summary>
     private static string? GetSerialFromBoardId(string boardId)
     {
-        if (boardId.StartsWith("HID:"))
+        if (boardId.StartsWith("HID:", StringComparison.OrdinalIgnoreCase))
             return boardId.Substring(4);
-        if (boardId.StartsWith("USB:"))
+        if (boardId.StartsWith("USB:", StringComparison.OrdinalIgnoreCase))
             return null; // Port-based, no serial
+        if (boardId.StartsWith("MODBUS:", StringComparison.OrdinalIgnoreCase))
+            return boardId; // Modbus uses the full ID including port path
         return boardId; // Assume the ID is the serial itself (FTDI)
     }
 
@@ -990,9 +1037,9 @@ public class TriggerService : IHostedService, IAsyncDisposable
                 if (string.IsNullOrWhiteSpace(yaml))
                     return new TriggerFeatureConfiguration();
 
-                #pragma warning disable CS0618 // Obsolete properties are for migration only
+#pragma warning disable CS0618 // Obsolete properties are for migration only
                 var config = _deserializer.Deserialize<TriggerFeatureConfiguration>(yaml);
-                #pragma warning restore CS0618
+#pragma warning restore CS0618
 
                 if (config == null)
                     return new TriggerFeatureConfiguration();

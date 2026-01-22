@@ -41,11 +41,22 @@ multi-room audio from a single server.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `log_level` | string | `info` | Logging verbosity (debug, info, warning, error) |
+| `relay_serial_port` | device | null | Serial port for Modbus/CH340 relay board (dropdown) |
+| `relay_devices` | list | `[]` | Additional device paths for HID/FTDI relay boards |
 
 ### Example Configuration
 
 ```yaml
 log_level: info
+```
+
+### Example with Relay Boards
+
+```yaml
+log_level: info
+relay_serial_port: /dev/ttyUSB0
+relay_devices:
+  - /dev/hidraw0
 ```
 
 ## Audio Device Setup
@@ -130,6 +141,14 @@ automatic power-on/off of amplifiers when playback starts and stops.
 - Any USB HID relay with VID 0x16C0, PID 0x05DF
 - Channel count is auto-detected from product name (e.g., "USBRelay8")
 
+**Modbus/Serial Relay Boards (CH340/CH341):**
+
+- Sainsmart 16-channel USB relay boards
+- Any CH340/CH341-based Modbus ASCII relay board (4, 8, or 16 channels)
+- VID 0x1A86, PID 0x7523
+- Channel count must be configured manually (cannot be auto-detected)
+- Appears as `/dev/ttyUSB*` on Linux, `COM*` on Windows
+
 ### Setup (Docker)
 
 For standalone Docker deployments, enable USB passthrough in your `docker-compose.yml`:
@@ -138,11 +157,13 @@ For standalone Docker deployments, enable USB passthrough in your `docker-compos
 services:
   multiroom-audio:
     devices:
-      # Required for both FTDI and USB HID relay boards
+      # Required for FTDI and USB HID relay boards
       - /dev/bus/usb:/dev/bus/usb
+      # Required for CH340/Modbus relay boards (serial port)
+      - /dev/ttyUSB0:/dev/ttyUSB0
     cap_add:
       # Optional: Only needed if ftdi_sio kernel driver claims your FTDI device
-      # Not required for USB HID boards
+      # Not required for USB HID or CH340 boards
       - SYS_RAWIO
 ```
 
@@ -152,9 +173,14 @@ services:
     devices:
       # For USB HID relay boards (find your hidraw device with 'ls /dev/hidraw*')
       - /dev/hidraw0:/dev/hidraw0
+      - /dev/hidraw1:/dev/hidraw1
       # For specific USB device (find path with 'lsusb')
       - /dev/bus/usb/001/002:/dev/bus/usb/001/002
+      # For CH340/Modbus relay boards
+      - /dev/ttyUSB0:/dev/ttyUSB0
 ```
+
+> **Important:** For HID relay boards, keep the same device number on both sides of the mapping (e.g., `/dev/hidraw0:/dev/hidraw0`, not `/dev/hidraw0:/dev/hidraw3`). The hidraw numbers may change after a host reboot—check `ls /dev/hidraw*` and update your configuration if needed.
 
 ### Setup (Home Assistant OS)
 
@@ -162,6 +188,7 @@ USB relay boards should work automatically when connected via USB. If not
 detected:
 1. Ensure the USB device is visible in Home Assistant's hardware settings
 2. Restart the add-on after connecting the relay board
+3. For CH340/Modbus boards, check that the serial port appears in hardware settings
 
 ### Trigger Configuration
 

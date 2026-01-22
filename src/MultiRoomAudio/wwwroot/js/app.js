@@ -103,6 +103,37 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Extract simplified USB port identifier from full device path
+// e.g., "...AppleUSB20HubPort@02341200..." -> "Port 4.1.2"
+function extractUsbPort(usbPath) {
+    if (!usbPath) return null;
+
+    // Look for USB hub port patterns in the path
+    // macOS: AppleUSB20HubPort@XXXXXXXX
+    const portMatches = usbPath.match(/HubPort@([0-9a-fA-F]+)/g);
+    if (portMatches && portMatches.length > 0) {
+        // Extract port numbers from hex addresses
+        // Format is typically: 0234XYZZ where X=hub port, Y=sub-port, ZZ=00
+        // e.g., 02340000=port 0, 02341000=port 1.0, 02341100=port 1.1, 02341200=port 1.2
+        const ports = portMatches.map(m => {
+            const hex = m.match(/@([0-9a-fA-F]+)/)[1];
+            // Extract digits at positions 4 and 5
+            const major = parseInt(hex.charAt(4), 16);
+            const minor = parseInt(hex.charAt(5), 16);
+            return minor > 0 ? `${major}.${minor}` : `${major}`;
+        });
+        return `Port ${ports.join('-')}`;
+    }
+
+    // Linux path pattern: look for usb port numbers like "1-2.3"
+    const linuxMatch = usbPath.match(/(\d+-[\d.]+)/);
+    if (linuxMatch) {
+        return `Port ${linuxMatch[1]}`;
+    }
+
+    return null;
+}
+
 // Format sample rate for display (e.g., 48000 -> "48kHz", 192000 -> "192kHz")
 function formatSampleRate(rate) {
     if (rate >= 1000) {
@@ -3254,14 +3285,16 @@ async function showAddBoardDialog() {
                 availableDevices.map(d => {
                     // Use boardId as the value (consistent with RelayDeviceInfo)
                     const id = d.boardId;
-                    // Build label showing type, description and serial/path
+                    // Build label showing type, description and simplified port
                     const typeLabel = d.boardType === 'UsbHid' ? 'HID' : 'FTDI';
-                    const idPart = d.serialNumber
-                        ? `SN: ${d.serialNumber}`
-                        : (d.usbPath ? `Port: ${d.usbPath}` : '');
                     const channelPart = d.channelCount ? ` - ${d.channelCount}ch` : '';
                     const detectedNote = d.channelCountDetected ? ' (auto)' : '';
-                    const label = `[${typeLabel}] ${d.description || 'Relay Board'}${channelPart}${detectedNote}${idPart ? ` (${idPart})` : ''}`;
+                    // Always show USB port for differentiation, plus serial if available
+                    const usbPort = extractUsbPort(d.usbPath);
+                    const portPart = usbPort || '';
+                    const serialPart = d.serialNumber ? `SN: ${d.serialNumber}` : '';
+                    const idParts = [portPart, serialPart].filter(Boolean).join(', ');
+                    const label = `[${typeLabel}] ${d.description || 'Relay Board'}${channelPart}${detectedNote}${idParts ? ` (${idParts})` : ''}`;
                     return `<option value="${escapeHtml(id)}" data-port-based="${d.isPathBased}" data-board-type="${d.boardType}" data-channel-count="${d.channelCount}" data-channel-detected="${d.channelCountDetected}">${escapeHtml(label)}</option>`;
                 }).join('');
         }
@@ -3590,10 +3623,14 @@ async function testTrigger(boardId, channel, on) {
     });
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}/test`, {
+        // Use query params for board IDs that contain slashes (e.g., MODBUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/test?boardId=${encodeURIComponent(boardId)}&channel=${channel}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}/test`;
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channel, on })
+            body: JSON.stringify({ on })
         });
 
         if (!response.ok) {

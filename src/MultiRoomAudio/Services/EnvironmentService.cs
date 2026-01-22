@@ -33,12 +33,6 @@ public class EnvironmentService
 
         _logger.LogDebug("Detecting runtime environment...");
         _isHaos = DetectHaos();
-        _isMockHardware = DetectMockHardware();
-
-        if (_isMockHardware)
-        {
-            _logger.LogInformation("MOCK_HARDWARE mode enabled - using simulated audio devices and relay board");
-        }
 
         if (_isHaos)
         {
@@ -86,6 +80,14 @@ public class EnvironmentService
 
             _logger.LogDebug("CONFIG_PATH: {ConfigPath}", _configPath);
             _logger.LogDebug("LOG_PATH: {LogPath}", _logPath);
+        }
+
+        // Detect mock hardware after HAOS options are loaded (so we can check both env var and HAOS config)
+        _isMockHardware = DetectMockHardware();
+
+        if (_isMockHardware)
+        {
+            _logger.LogInformation("MOCK_HARDWARE mode enabled - using simulated audio devices and relay board");
         }
     }
 
@@ -304,27 +306,51 @@ public class EnvironmentService
 
     private bool DetectMockHardware()
     {
+        // Check environment variable first (works for both Docker and HAOS)
         var mockHardwareValue = Environment.GetEnvironmentVariable(MockHardwareEnv);
-        if (string.IsNullOrEmpty(mockHardwareValue))
+        if (!string.IsNullOrEmpty(mockHardwareValue))
         {
-            _logger.LogDebug("{EnvVar} environment variable not set", MockHardwareEnv);
-            return false;
-        }
+            // Accept "true", "1", "yes" as truthy values (case-insensitive)
+            var isMock = mockHardwareValue.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                         mockHardwareValue == "1" ||
+                         mockHardwareValue.Equals("yes", StringComparison.OrdinalIgnoreCase);
 
-        // Accept "true", "1", "yes" as truthy values (case-insensitive)
-        var isMock = mockHardwareValue.Equals("true", StringComparison.OrdinalIgnoreCase) ||
-                     mockHardwareValue == "1" ||
-                     mockHardwareValue.Equals("yes", StringComparison.OrdinalIgnoreCase);
-
-        if (isMock)
-        {
-            _logger.LogDebug("{EnvVar} detected: {Value}", MockHardwareEnv, mockHardwareValue);
+            if (isMock)
+            {
+                _logger.LogDebug("{EnvVar} detected: {Value}", MockHardwareEnv, mockHardwareValue);
+                return true;
+            }
+            else
+            {
+                _logger.LogDebug("{EnvVar} set to {Value}, not enabling mock mode", MockHardwareEnv, mockHardwareValue);
+            }
         }
         else
         {
-            _logger.LogDebug("{EnvVar} set to {Value}, not enabling mock mode", MockHardwareEnv, mockHardwareValue);
+            _logger.LogDebug("{EnvVar} environment variable not set", MockHardwareEnv);
         }
 
-        return isMock;
+        // Check HAOS options (for add-on UI toggle)
+        if (_isHaos && _haosOptions != null)
+        {
+            if (_haosOptions.TryGetValue("mock_hardware", out var element))
+            {
+                try
+                {
+                    var haosValue = element.GetBoolean();
+                    if (haosValue)
+                    {
+                        _logger.LogDebug("Mock hardware enabled via HAOS options (mock_hardware: true)");
+                        return true;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    _logger.LogWarning("HAOS option 'mock_hardware' is not a boolean value");
+                }
+            }
+        }
+
+        return false;
     }
 }

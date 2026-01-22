@@ -37,10 +37,12 @@ public enum RelayBoardType
 {
     /// <summary>Unknown board type.</summary>
     Unknown,
-    /// <summary>FTDI-based relay board (Denkovi, etc.) - uses serial protocol.</summary>
+    /// <summary>FTDI-based relay board (Denkovi, etc.) - uses bitbang protocol.</summary>
     Ftdi,
     /// <summary>USB HID relay board (DCT Tech, ucreatefun, etc.) - uses HID protocol.</summary>
     UsbHid,
+    /// <summary>Modbus ASCII relay board (Sainsmart, etc.) - uses serial protocol over CH340/CH341.</summary>
+    Modbus,
     /// <summary>Mock board for testing.</summary>
     Mock
 }
@@ -69,10 +71,14 @@ public static class ValidChannelCounts
 
     public static int Clamp(int count)
     {
-        if (count <= 1) return 1;
-        if (count <= 2) return 2;
-        if (count <= 4) return 4;
-        if (count <= 8) return 8;
+        if (count <= 1)
+            return 1;
+        if (count <= 2)
+            return 2;
+        if (count <= 4)
+            return 4;
+        if (count <= 8)
+            return 8;
         return 16;
     }
 }
@@ -118,6 +124,7 @@ public class TriggerBoardConfiguration
     /// Unique identifier for this board.
     /// For FTDI: serial number or "USB:{path}".
     /// For HID: "HID:{serial}" or "HID:{path-hash}".
+    /// For Modbus: "MODBUS:{port}" (e.g., "MODBUS:/dev/ttyUSB0").
     /// </summary>
     [Required]
     public string BoardId { get; set; } = string.Empty;
@@ -213,9 +220,9 @@ public class TriggerFeatureConfiguration
     {
         get
         {
-            #pragma warning disable CS0618 // Obsolete - intentional for migration check
+#pragma warning disable CS0618 // Obsolete - intentional for migration check
             return FtdiSerialNumber != null || (Triggers != null && Triggers.Count > 0);
-            #pragma warning restore CS0618
+#pragma warning restore CS0618
         }
     }
 
@@ -224,9 +231,10 @@ public class TriggerFeatureConfiguration
     /// </summary>
     public void MigrateFromLegacy()
     {
-        if (!NeedsMigration) return;
+        if (!NeedsMigration)
+            return;
 
-        #pragma warning disable CS0618 // Obsolete - intentional for migration
+#pragma warning disable CS0618 // Obsolete - intentional for migration
         var legacyBoard = new TriggerBoardConfiguration
         {
             BoardId = FtdiSerialNumber ?? "LEGACY",
@@ -242,7 +250,7 @@ public class TriggerFeatureConfiguration
         DevicePath = null;
         ChannelCount = null;
         Triggers = null;
-        #pragma warning restore CS0618
+#pragma warning restore CS0618
     }
 }
 
@@ -310,6 +318,7 @@ public class AddBoardRequest
     /// Board identifier.
     /// For FTDI: serial number or "USB:{path}".
     /// For HID: "HID:{serial}" (auto-generated from device enumeration).
+    /// For Modbus: "MODBUS:{port}" (e.g., "MODBUS:/dev/ttyUSB0").
     /// </summary>
     [Required]
     public string BoardId { get; set; } = string.Empty;
@@ -475,7 +484,11 @@ public record RelayDeviceInfo(
     /// <summary>Whether this device is identified by path (less stable).</summary>
     bool IsPathBased,
     /// <summary>Whether the channel count was auto-detected (true) or needs manual config (false).</summary>
-    bool ChannelCountDetected = false
+    bool ChannelCountDetected = false,
+    /// <summary>Whether the device is accessible (can be opened). False if permission denied or device mapping missing.</summary>
+    bool IsAccessible = true,
+    /// <summary>Error message if the device is not accessible (e.g., Docker device mapping hint).</summary>
+    string? AccessError = null
 )
 {
     /// <summary>

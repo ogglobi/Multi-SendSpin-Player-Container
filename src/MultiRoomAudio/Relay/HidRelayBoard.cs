@@ -1,4 +1,6 @@
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using HidSharp;
 using MultiRoomAudio.Models;
 
@@ -49,7 +51,8 @@ public sealed class HidRelayBoard : IRelayBoard
 
     public bool Open()
     {
-        if (_disposed) return false;
+        if (_disposed)
+            return false;
 
         try
         {
@@ -71,7 +74,8 @@ public sealed class HidRelayBoard : IRelayBoard
 
     public bool OpenBySerial(string serialNumber)
     {
-        if (_disposed) return false;
+        if (_disposed)
+            return false;
 
         try
         {
@@ -89,6 +93,105 @@ public sealed class HidRelayBoard : IRelayBoard
             _logger?.LogError(ex, "Failed to open USB HID relay board by serial '{Serial}'", serialNumber);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Open a USB HID relay board by matching a hash of the device path.
+    /// Used for boards identified by path rather than serial number.
+    /// </summary>
+    /// <param name="pathHash">The hash portion of the board ID (e.g., "CA88BCAC" from "HID:CA88BCAC")</param>
+    /// <returns>True if connection was successful.</returns>
+    public bool OpenByPathHash(string pathHash)
+    {
+        return OpenByPathHash(pathHash, out _);
+    }
+
+    /// <summary>
+    /// Open a USB HID relay board by matching a hash of the device path.
+    /// Used for boards identified by path rather than serial number.
+    /// </summary>
+    /// <param name="pathHash">The hash portion of the board ID (e.g., "CA88BCAC" from "HID:CA88BCAC")</param>
+    /// <param name="errorDetails">Detailed error message if connection fails, including Docker device mapping hints.</param>
+    /// <returns>True if connection was successful.</returns>
+    public bool OpenByPathHash(string pathHash, out string? errorDetails)
+    {
+        errorDetails = null;
+
+        if (_disposed)
+        {
+            errorDetails = "Board instance has been disposed.";
+            return false;
+        }
+
+        try
+        {
+            var devices = DeviceList.Local.GetHidDevices(VendorId, ProductId);
+            foreach (var device in devices)
+            {
+                // Calculate the same stable hash that was used when enumerating
+                var deviceHash = HidRelayDeviceInfo.StableHash(device.DevicePath);
+                if (deviceHash.Equals(pathHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger?.LogDebug("Found HID relay board by path hash: {Hash}", pathHash);
+
+                    if (OpenDevice(device))
+                        return true;
+
+                    // OpenDevice failed - provide detailed error with hidraw device info
+                    var hidrawDevice = HidRelayDeviceInfo.ExtractHidrawDevice(device.DevicePath);
+                    if (hidrawDevice != null)
+                    {
+                        errorDetails = $"Device found but cannot open. Add '/dev/{hidrawDevice}:/dev/{hidrawDevice}' to your Docker compose devices (keep the same device number on both sides).";
+                        _logger?.LogWarning(
+                            "HID relay board HID:{Hash} found but cannot open. " +
+                            "Add '- /dev/{HidrawDevice}:/dev/{HidrawDevice}' to your compose.yml devices section (keep the same device number on both sides).",
+                            pathHash, hidrawDevice, hidrawDevice);
+                    }
+                    else
+                    {
+                        errorDetails = "Device found but cannot open. Check USB connection and permissions.";
+                    }
+                    return false;
+                }
+            }
+
+            _logger?.LogWarning("USB HID relay board with path hash '{Hash}' not found", pathHash);
+            errorDetails = "Device not found. It may have been disconnected.";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to open USB HID relay board by path hash '{Hash}'", pathHash);
+            errorDetails = $"Error opening device: {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get the hidraw device name for a board identified by path hash.
+    /// Useful for providing user-friendly error messages about Docker device mappings.
+    /// </summary>
+    /// <param name="pathHash">The hash portion of the board ID (e.g., "CA88BCAC" from "HID:CA88BCAC")</param>
+    /// <returns>The hidraw device name (e.g., "hidraw1") or null if not found.</returns>
+    public static string? GetHidrawDeviceForPathHash(string pathHash)
+    {
+        try
+        {
+            var devices = DeviceList.Local.GetHidDevices(VendorId, ProductId);
+            foreach (var device in devices)
+            {
+                var deviceHash = HidRelayDeviceInfo.StableHash(device.DevicePath);
+                if (deviceHash.Equals(pathHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    return HidRelayDeviceInfo.ExtractHidrawDevice(device.DevicePath);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore enumeration errors
+        }
+        return null;
     }
 
     private bool OpenDevice(HidDevice device)
@@ -133,8 +236,12 @@ public sealed class HidRelayBoard : IRelayBoard
 
         if (_stream != null)
         {
-            try { _stream.Close(); } catch { }
-            try { _stream.Dispose(); } catch { }
+            try
+            { _stream.Close(); }
+            catch { }
+            try
+            { _stream.Dispose(); }
+            catch { }
             _stream = null;
         }
 
@@ -221,7 +328,8 @@ public sealed class HidRelayBoard : IRelayBoard
     /// </summary>
     private void RefreshState()
     {
-        if (_stream == null) return;
+        if (_stream == null)
+            return;
 
         try
         {
@@ -345,6 +453,8 @@ public sealed class HidRelayBoard : IRelayBoard
 
     /// <summary>
     /// Enumerate all connected USB HID relay boards.
+    /// Devices that are found but cannot be opened (e.g., due to missing Docker device mappings)
+    /// are still returned with IsAccessible=false and an appropriate AccessError message.
     /// </summary>
     public static List<HidRelayDeviceInfo> EnumerateDevices(ILogger? logger = null)
     {
@@ -363,6 +473,8 @@ public sealed class HidRelayBoard : IRelayBoard
                     int? detectedChannels = ParseChannelCountFromName(productName);
                     int channelCount = detectedChannels ?? 8; // Default to 8 if not detectable
                     int currentState = 0;
+                    bool isAccessible = true;
+                    string? accessError = null;
 
                     // Try to read serial and state from feature report
                     try
@@ -374,9 +486,25 @@ public sealed class HidRelayBoard : IRelayBoard
                         serial = SanitizeSerial(report, 1, 5);
                         currentState = report[7];
                     }
-                    catch
+                    catch (Exception openEx)
                     {
-                        // Device might be in use by another process
+                        // Device found via USB but can't be opened - likely missing hidraw device mapping
+                        isAccessible = false;
+                        var hidrawDevice = HidRelayDeviceInfo.ExtractHidrawDevice(device.DevicePath);
+                        if (hidrawDevice != null)
+                        {
+                            accessError = $"Cannot open device. Add '/dev/{hidrawDevice}:/dev/{hidrawDevice}' to your Docker compose devices (keep the same device number on both sides).";
+                            logger?.LogWarning(
+                                "HID relay board found but cannot open: {Product} at {Path}. " +
+                                "Add '- /dev/{HidrawDevice}:/dev/{HidrawDevice}' to your compose.yml devices section (keep the same device number on both sides). Error: {Error}",
+                                productName, device.DevicePath, hidrawDevice, hidrawDevice, openEx.Message);
+                        }
+                        else
+                        {
+                            accessError = $"Cannot open device: {openEx.Message}";
+                            logger?.LogWarning(openEx, "HID relay board found but cannot open: {Product} at {Path}",
+                                productName, device.DevicePath);
+                        }
                     }
 
                     result.Add(new HidRelayDeviceInfo(
@@ -385,12 +513,17 @@ public sealed class HidRelayBoard : IRelayBoard
                         ProductName: productName,
                         ChannelCount: channelCount,
                         CurrentState: currentState,
-                        ChannelCountDetected: detectedChannels.HasValue
+                        ChannelCountDetected: detectedChannels.HasValue,
+                        IsAccessible: isAccessible,
+                        AccessError: accessError
                     ));
 
-                    logger?.LogDebug(
-                        "Found HID relay: Path={Path}, Serial={Serial}, Product={Product}, Channels={Channels} (detected={Detected})",
-                        device.DevicePath, serial, productName, channelCount, detectedChannels.HasValue);
+                    if (isAccessible)
+                    {
+                        logger?.LogDebug(
+                            "Found HID relay: Path={Path}, Serial={Serial}, Product={Product}, Channels={Channels} (detected={Detected})",
+                            device.DevicePath, serial, productName, channelCount, detectedChannels.HasValue);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -408,7 +541,8 @@ public sealed class HidRelayBoard : IRelayBoard
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+            return;
         _disposed = true;
         Close();
     }
@@ -417,13 +551,23 @@ public sealed class HidRelayBoard : IRelayBoard
 /// <summary>
 /// Information about a detected USB HID relay board.
 /// </summary>
+/// <param name="DevicePath">Full sysfs path to the device.</param>
+/// <param name="SerialNumber">Serial number read from the device (null if couldn't be read).</param>
+/// <param name="ProductName">USB product name (e.g., "USBRelay8").</param>
+/// <param name="ChannelCount">Number of relay channels (detected or default).</param>
+/// <param name="CurrentState">Relay state bitmask (0 if couldn't be read).</param>
+/// <param name="ChannelCountDetected">True if channel count was detected from product name.</param>
+/// <param name="IsAccessible">True if the device could be opened during enumeration.</param>
+/// <param name="AccessError">Error message if the device couldn't be opened (null if accessible).</param>
 public record HidRelayDeviceInfo(
     string DevicePath,
     string? SerialNumber,
     string? ProductName,
     int ChannelCount,
     int CurrentState,
-    bool ChannelCountDetected = true
+    bool ChannelCountDetected = true,
+    bool IsAccessible = true,
+    string? AccessError = null
 )
 {
     /// <summary>
@@ -435,12 +579,91 @@ public record HidRelayDeviceInfo(
         if (!string.IsNullOrWhiteSpace(SerialNumber))
             return $"HID:{SerialNumber}";
 
-        // Fallback to path-based ID
-        return $"HID:{DevicePath.GetHashCode():X8}";
+        // Fallback to path-based ID using stable hash
+        return $"HID:{StableHash(DevicePath)}";
     }
 
     /// <summary>
     /// Whether this device is identified by path (less stable).
     /// </summary>
     public bool IsPathBased => string.IsNullOrWhiteSpace(SerialNumber);
+
+    /// <summary>
+    /// Extract the hidraw device name (e.g., "hidraw1") from a sysfs device path.
+    /// Returns null if the path doesn't contain a hidraw reference.
+    /// </summary>
+    /// <example>
+    /// Input: /sys/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0/0003:16C0:05DF.0003/hidraw/hidraw1
+    /// Output: hidraw1
+    /// </example>
+    public static string? ExtractHidrawDevice(string devicePath)
+    {
+        // Look for /hidraw/hidrawN pattern
+        const string marker = "/hidraw/";
+        var idx = devicePath.IndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0)
+            return null;
+
+        var hidrawStart = idx + marker.Length;
+        // Find end of hidraw name (next / or end of string)
+        var hidrawEnd = devicePath.IndexOf('/', hidrawStart);
+        if (hidrawEnd < 0)
+            hidrawEnd = devicePath.Length;
+
+        return devicePath.Substring(hidrawStart, hidrawEnd - hidrawStart);
+    }
+
+    /// <summary>
+    /// Compute a stable 8-character hash from a device path.
+    /// Uses MD5 for deterministic results across process restarts and platforms.
+    /// (String.GetHashCode is randomized per-process in .NET Core)
+    /// </summary>
+    /// <remarks>
+    /// On Linux, HidSharp returns sysfs paths like:
+    /// /sys/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0/0003:16C0:05DF.0003/hidraw/hidraw1
+    ///
+    /// Only the USB port path (e.g., "usb1/1-3") is stable across reboots.
+    /// The interface suffix (1-3:1.0), device instance (.0003), and hidraw number all change.
+    /// We extract and hash only the stable USB port portion.
+    /// </remarks>
+    internal static string StableHash(string input)
+    {
+        var pathToHash = input;
+
+        // On Linux, extract just the USB port path which is stable across reboots
+        // Example: /sys/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0/0003:16C0:05DF.0003/hidraw/hidraw1
+        // We want just "usb1/1-3" - everything after the port number can change
+        var usbIndex = input.IndexOf("/usb", StringComparison.Ordinal);
+        if (usbIndex >= 0)
+        {
+            // Find the USB port path pattern like "usb1/1-3" or "usb2/2-1.4"
+            // The port path ends at the colon (1-3:1.0) or at a VID:PID pattern
+            var usbPortion = input.Substring(usbIndex + 1); // Skip leading /
+            var colonIndex = usbPortion.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                pathToHash = usbPortion.Substring(0, colonIndex);
+            }
+            else
+            {
+                // Fallback: strip hidraw suffix at minimum
+                var hidrawIndex = usbPortion.IndexOf("/hidraw/", StringComparison.Ordinal);
+                pathToHash = hidrawIndex > 0 ? usbPortion.Substring(0, hidrawIndex) : usbPortion;
+            }
+        }
+        else
+        {
+            // Non-Linux path, just strip hidraw suffix if present
+            var hidrawIndex = input.IndexOf("/hidraw/", StringComparison.Ordinal);
+            if (hidrawIndex > 0)
+            {
+                pathToHash = input.Substring(0, hidrawIndex);
+            }
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(pathToHash);
+        var hash = MD5.HashData(bytes);
+        // Take first 4 bytes for an 8-char hex string
+        return $"{hash[0]:X2}{hash[1]:X2}{hash[2]:X2}{hash[3]:X2}";
+    }
 }
