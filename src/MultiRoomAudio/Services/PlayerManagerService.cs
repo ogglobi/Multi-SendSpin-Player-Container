@@ -1393,6 +1393,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             ServerUrl = config.ServerUrl,
             Volume = startupVolume,  // Use startup volume, not runtime volume
             DelayMs = config.DelayMs,
+            AdvertisedFormat = config.AdvertisedFormat,
             Persist = false // Already persisted
         };
 
@@ -2328,6 +2329,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 ServerUrl = state.Config.Server,
                 Volume = state.Config.Volume ?? 100,
                 DelayMs = state.Config.DelayMs,
+                AdvertisedFormat = state.Config.AdvertisedFormat,
                 Persist = false // Already persisted
             };
 
