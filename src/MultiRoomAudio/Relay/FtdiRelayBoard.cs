@@ -619,7 +619,42 @@ public sealed class FtdiRelayBoard : IRelayBoard
     }
 
     /// <summary>
-    /// Write relay state to the board.
+    /// Read the actual hardware state of all relay pins.
+    /// This queries the FTDI chip directly to get the current pin states.
+    /// </summary>
+    /// <returns>Relay state bitmask from hardware (bit 0 = relay 1), or null if read failed.</returns>
+    public byte? ReadHardwareState()
+    {
+        lock (_lock)
+        {
+            if (_context == IntPtr.Zero)
+            {
+                _logger?.LogDebug("Cannot read hardware state - device not open");
+                return null;
+            }
+
+            try
+            {
+                int result = LibFtdi.ftdi_read_pins(_context, out byte pins);
+                if (result < 0)
+                {
+                    _logger?.LogWarning("Failed to read FTDI pins: error {Result} - {Error}",
+                        result, GetErrorString());
+                    return null;
+                }
+
+                return pins;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Exception reading FTDI pins");
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Write relay state to the board and verify the write succeeded.
     /// For 8-channel boards, writes 1 byte. For 16-channel, writes 2 bytes.
     /// </summary>
     private bool WriteState(ushort state)
@@ -652,6 +687,26 @@ public sealed class FtdiRelayBoard : IRelayBoard
             {
                 _logger?.LogWarning("FTDI write returned {BytesWritten} bytes (expected {Expected})",
                     bytesWritten, bytesToWrite);
+            }
+
+            // Verify the write succeeded by reading back hardware state
+            int readResult = LibFtdi.ftdi_read_pins(_context, out byte actualState);
+            if (readResult >= 0)
+            {
+                byte expectedLowByte = (byte)(state & 0xFF);
+                if (actualState != expectedLowByte)
+                {
+                    _logger?.LogWarning(
+                        "FTDI relay state mismatch: wrote 0x{Expected:X2}, hardware reports 0x{Actual:X2}",
+                        expectedLowByte, actualState);
+                    return false;
+                }
+                _logger?.LogDebug("FTDI write verified: 0x{State:X2}", actualState);
+            }
+            else
+            {
+                // Verification failed but write may have succeeded - log but don't fail
+                _logger?.LogDebug("Could not verify FTDI write (ftdi_read_pins returned {Result})", readResult);
             }
 
             return true;
@@ -755,6 +810,9 @@ public sealed class FtdiRelayBoard : IRelayBoard
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ftdi_read_data(IntPtr ftdi, [Out] byte[] buf, int size);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ftdi_read_pins(IntPtr ftdi, out byte pins);
 
         // Error handling
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
