@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-0e83da6
+## Development Build: sha-48a1c23
 
 **Current Dev Build Changes** (recent)
 
+- Merge branch 'main' into dev
 - Merge pull request #103 from scyto/dev
 - fix format selection i hope
 - Merge branch 'dev' of https://github.com/scyto/Multi-SendSpin-Player-Container into dev
@@ -13,8 +14,6 @@
 - Fix Kestrel address override warning at startup
 - Fix stats for nerds overlapping requests causing audio issues
 - Pause auto-refresh during modal editing, slow stats polling
-- Remove buffer size UI and fix stats/format bugs
-- Merge pull request #101 from scyto/dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
