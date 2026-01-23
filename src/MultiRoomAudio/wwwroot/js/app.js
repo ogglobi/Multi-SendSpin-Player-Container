@@ -484,7 +484,6 @@ async function openEditPlayerModal(playerName) {
         document.getElementById('serverUrl').value = player.serverUrl || '';
         document.getElementById('initialVolume').value = player.volume;
         document.getElementById('initialVolumeValue').textContent = player.volume + '%';
-        document.getElementById('editBufferSizeMs').value = player.bufferSizeMs || 100;
 
         // Set device dropdown
         await refreshDevices();
@@ -569,12 +568,6 @@ async function savePlayer() {
                 }
             }
 
-            // Include buffer size
-            const bufferSizeMs = parseInt(document.getElementById('editBufferSizeMs').value);
-            if (!isNaN(bufferSizeMs)) {
-                updatePayload.bufferSizeMs = bufferSizeMs;
-            }
-
             const response = await fetch(`./api/players/${encodeURIComponent(editingName)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -590,33 +583,36 @@ async function savePlayer() {
             const finalName = result.playerName || name;
             const wasRenamed = name !== editingName;
 
-            // Close modal and refresh
+            // Close modal and reset form
             bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
             document.getElementById('playerForm').reset();
             document.getElementById('initialVolumeValue').textContent = '75%';
-            await refreshStatus();
 
             // Show appropriate message based on changes
             if (result.needsRestart) {
                 if (wasRenamed) {
                     // For renames, offer to restart rather than auto-restart
                     // The name change is saved locally, but Music Assistant needs a restart to see it
+                    await refreshStatus();
                     showAlert(
                         `Player renamed to "${finalName}". Restart the player for the name to appear in Music Assistant.`,
                         'info',
                         8000 // Show for longer since it's actionable
                     );
                 } else {
-                    // For other changes requiring restart (e.g., server URL), auto-restart
+                    // For other changes requiring restart (e.g., server URL, format), auto-restart
                     const restartResponse = await fetch(`./api/players/${encodeURIComponent(finalName)}/restart`, {
                         method: 'POST'
                     });
                     if (!restartResponse.ok) {
                         console.warn('Restart request failed, player may need manual restart');
                     }
+                    // Refresh status AFTER restart completes
+                    await refreshStatus();
                     showAlert(`Player "${finalName}" updated and restarted`, 'success');
                 }
             } else {
+                await refreshStatus();
                 showAlert(`Player "${finalName}" updated successfully`, 'success');
             }
         } else {
@@ -635,12 +631,6 @@ async function savePlayer() {
                 if (advertisedFormat) {
                     payload.advertisedFormat = advertisedFormat;
                 }
-            }
-
-            // Include buffer size
-            const bufferSizeMs = parseInt(document.getElementById('editBufferSizeMs').value);
-            if (!isNaN(bufferSizeMs)) {
-                payload.bufferSizeMs = bufferSizeMs;
             }
 
             const response = await fetch('./api/players', {
@@ -1290,6 +1280,12 @@ let statsInterval = null;
 let currentStatsPlayer = null;
 
 function openStatsForNerds(playerName) {
+    // Clear any existing interval first to prevent multiple polling loops
+    if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
+    }
+
     currentStatsPlayer = playerName;
 
     // Update player name in modal header

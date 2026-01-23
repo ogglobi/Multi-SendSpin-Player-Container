@@ -230,19 +230,6 @@
                             <input type="range" class="form-range" id="initialVolume" min="0" max="100" value="75">
                             <span id="initialVolumeValue">75%</span>
                         </div>
-                        <div class="mb-3">
-                            <label for="editBufferSizeMs" class="form-label">
-                                Buffer Size (ms)
-                                <span class="text-muted" style="font-weight: normal;">
-                                    - Target buffer size. Higher = more stable, lower = less latency.
-                                </span>
-                            </label>
-                            <input type="number" class="form-control" id="editBufferSizeMs"
-                                   min="10" max="10000" step="10" value="100">
-                            <small class="text-muted">
-                                Default: 100ms. Increase if experiencing buffer overflow. Player will restart when changed.
-                            </small>
-                        </div>
                         <div class="mb-3" id="advertisedFormatGroup" style="display: none;">
                             <label for="advertisedFormat" class="form-label">Advertised Format</label>
                             <select class="form-select" id="advertisedFormat">
