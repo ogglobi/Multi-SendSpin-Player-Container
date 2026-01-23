@@ -40,6 +40,10 @@ public sealed class FtdiRelayBoard : IRelayBoard
     private const byte BITMODE_BITBANG = 0x01; // Async bitbang
     private const byte BITMODE_SYNCBB = 0x04;  // Synchronous bitbang (required by Denkovi)
 
+    // Pin mapping for Denkovi DAE-CB/Ro4-USB (4-channel board uses odd pins: D1, D3, D5, D7)
+    // The 4-relay board connects relays to FT245RL IO pins 1, 3, 5, 7 (not 0, 1, 2, 3)
+    private static readonly int[] Denkovi4ChPinMap = { 1, 3, 5, 7 };
+
     /// <summary>
     /// Static constructor to register custom native library resolver for cross-platform support.
     /// </summary>
@@ -523,14 +527,37 @@ public sealed class FtdiRelayBoard : IRelayBoard
     }
 
     /// <summary>
+    /// Get the bit mask for a relay channel, accounting for Denkovi board pin mapping.
+    /// </summary>
+    /// <param name="channel">Channel number (1-based).</param>
+    /// <returns>Bit mask for the specified channel.</returns>
+    /// <remarks>
+    /// Denkovi DAE-CB/Ro8-USB (8-channel): Sequential mapping, relay N uses bit N-1.
+    /// Denkovi DAE-CB/Ro4-USB (4-channel): Odd pin mapping, relay N uses bit (2*N - 1).
+    /// </remarks>
+    private ushort GetBitMaskForChannel(int channel)
+    {
+        if (_channelCount == 4 && channel >= 1 && channel <= 4)
+        {
+            // 4-channel Denkovi board uses odd pins: D1, D3, D5, D7
+            return (ushort)(1 << Denkovi4ChPinMap[channel - 1]);
+        }
+        else
+        {
+            // 8-channel Denkovi board uses sequential pins: D0-D7
+            return (ushort)(1 << (channel - 1));
+        }
+    }
+
+    /// <summary>
     /// Set the state of a specific relay channel.
     /// </summary>
-    /// <param name="channel">Channel number (1-16).</param>
+    /// <param name="channel">Channel number (1-8 for 8-ch board, 1-4 for 4-ch board).</param>
     /// <param name="on">True to turn on, false to turn off.</param>
     public bool SetRelay(int channel, bool on)
     {
-        if (channel < 1 || channel > 16)
-            throw new ArgumentOutOfRangeException(nameof(channel), "Channel must be 1-16");
+        if (channel < 1 || channel > _channelCount)
+            throw new ArgumentOutOfRangeException(nameof(channel), $"Channel must be 1-{_channelCount}");
 
         lock (_lock)
         {
@@ -540,8 +567,8 @@ public sealed class FtdiRelayBoard : IRelayBoard
                 return false;
             }
 
-            // Convert channel (1-16) to bit position (0-15)
-            ushort bit = (ushort)(1 << (channel - 1));
+            // Get the correct bit mask for this channel (handles 4-ch vs 8-ch pin mapping)
+            ushort bit = GetBitMaskForChannel(channel);
 
             ushort newState;
             if (on)
@@ -555,7 +582,7 @@ public sealed class FtdiRelayBoard : IRelayBoard
             if (WriteState(newState))
             {
                 _currentState = newState;
-                _logger?.LogDebug("Relay {Channel} set to {State}", channel, on ? "ON" : "OFF");
+                _logger?.LogDebug("Relay {Channel} set to {State} (bit mask 0x{Bit:X2})", channel, on ? "ON" : "OFF", bit);
                 return true;
             }
 
@@ -566,18 +593,19 @@ public sealed class FtdiRelayBoard : IRelayBoard
     /// <summary>
     /// Get the state of a specific relay channel.
     /// </summary>
-    /// <param name="channel">Channel number (1-16).</param>
+    /// <param name="channel">Channel number (1-8 for 8-ch board, 1-4 for 4-ch board).</param>
     public RelayState GetRelay(int channel)
     {
-        if (channel < 1 || channel > 16)
-            throw new ArgumentOutOfRangeException(nameof(channel), "Channel must be 1-16");
+        if (channel < 1 || channel > _channelCount)
+            throw new ArgumentOutOfRangeException(nameof(channel), $"Channel must be 1-{_channelCount}");
 
         lock (_lock)
         {
             if (_context == IntPtr.Zero)
                 return RelayState.Unknown;
 
-            ushort bit = (ushort)(1 << (channel - 1));
+            // Use the correct bit mask for this channel (handles 4-ch vs 8-ch pin mapping)
+            ushort bit = GetBitMaskForChannel(channel);
             return (_currentState & bit) != 0 ? RelayState.On : RelayState.Off;
         }
     }

@@ -595,7 +595,20 @@
                         <input type="text" class="form-control" id="addBoardDisplayName"
                                placeholder="e.g., Living Room, Basement">
                     </div>
-                    <div class="mb-3">
+                    <!-- Denkovi FTDI model selector (shown for FTDI boards) -->
+                    <div class="mb-3 d-none" id="addBoardDenkoviModelGroup">
+                        <label class="form-label" for="addBoardDenkoviModel">Denkovi Board Model</label>
+                        <select class="form-select" id="addBoardDenkoviModel">
+                            <option value="Ro8" data-channels="8" selected>DAE-CB/Ro8-USB (8 channels)</option>
+                            <option value="Ro4" data-channels="4">DAE-CB/Ro4-USB (4 channels)</option>
+                        </select>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>Only Denkovi USB relay boards are supported for FTDI.
+                            Uses synchronous bitbang mode (0x04).
+                        </div>
+                    </div>
+                    <!-- Generic channel count selector (shown for HID/other boards) -->
+                    <div class="mb-3" id="addBoardChannelCountGroup">
                         <label class="form-label" for="addBoardChannelCount">Channel Count</label>
                         <select class="form-select" id="addBoardChannelCount">
                             <option value="1">1</option>
@@ -701,11 +714,24 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="editBoardId">
+                    <input type="hidden" id="editBoardType">
                     <div class="mb-3">
                         <label class="form-label" for="editBoardDisplayName">Display Name</label>
                         <input type="text" class="form-control" id="editBoardDisplayName"
                                placeholder="e.g., Living Room, Basement">
                     </div>
+                    <!-- Denkovi FTDI model selector (shown for FTDI boards) -->
+                    <div class="mb-3 d-none" id="editBoardDenkoviModelGroup">
+                        <label class="form-label" for="editBoardDenkoviModel">Denkovi Board Model</label>
+                        <select class="form-select" id="editBoardDenkoviModel">
+                            <option value="Ro8" data-channels="8">DAE-CB/Ro8-USB (8 channels)</option>
+                            <option value="Ro4" data-channels="4">DAE-CB/Ro4-USB (4 channels)</option>
+                        </select>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>Only Denkovi USB relay boards are supported for FTDI.
+                        </div>
+                    </div>
+                    <!-- Generic channel count selector (shown for HID/other boards) -->
                     <div class="mb-3" id="editBoardChannelCountGroup">
                         <label class="form-label" for="editBoardChannelCount">Channel Count</label>
                         <select class="form-select" id="editBoardChannelCount">

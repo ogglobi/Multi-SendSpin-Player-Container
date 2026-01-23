@@ -37,7 +37,11 @@ public enum RelayBoardType
 {
     /// <summary>Unknown board type.</summary>
     Unknown,
-    /// <summary>FTDI-based relay board (Denkovi, etc.) - uses bitbang protocol.</summary>
+    /// <summary>
+    /// Denkovi FTDI-based relay board using synchronous bitbang mode.
+    /// Only Denkovi DAE-CB/Ro4-USB and DAE-CB/Ro8-USB models are supported.
+    /// Uses FT245RL chip with sync bitbang protocol (mode 0x04).
+    /// </summary>
     Ftdi,
     /// <summary>USB HID relay board (DCT Tech, ucreatefun, etc.) - uses HID protocol.</summary>
     UsbHid,
@@ -45,6 +49,26 @@ public enum RelayBoardType
     Modbus,
     /// <summary>Mock board for testing.</summary>
     Mock
+}
+
+/// <summary>
+/// Denkovi FTDI relay board models.
+/// Only these specific Denkovi models are supported - generic FTDI boards are not supported.
+/// All models use FT245RL chip with synchronous bitbang mode (0x04).
+/// </summary>
+public enum DenkoviBoardModel
+{
+    /// <summary>
+    /// DAE-CB/Ro8-USB - 8 channel relay board.
+    /// Uses sequential pin mapping: Relay 1-8 → Bits 0-7.
+    /// </summary>
+    Ro8,
+
+    /// <summary>
+    /// DAE-CB/Ro4-USB - 4 channel relay board.
+    /// Uses odd pin mapping: Relay 1-4 → Bits 1,3,5,7 (pins D1,D3,D5,D7).
+    /// </summary>
+    Ro4
 }
 
 /// <summary>
