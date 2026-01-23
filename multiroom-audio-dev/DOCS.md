@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-b96ec56
+## Development Build: sha-c78b43c
 
 **Current Dev Build Changes** (recent)
 
+- maybe fixed stats
 - Decouple stats UI from SDK access with active viewer tracking
 - Fix stats caching: use on-demand TTL instead of background timer
 - Add background stats caching to prevent audio dropouts
@@ -14,7 +15,6 @@
 - Remove buffer size UI and fix stats/format bugs
 - Merge pull request #101 from scyto/dev
 - Merge pull request #99 from scyto/feature/per-player-format-selection
-- tweak stats for nerds and rwadd the bufferms per player thing
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
