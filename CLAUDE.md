@@ -49,7 +49,7 @@ ASP.NET Core 8.0 Application
 ├── Relay/                        # 12V trigger hardware abstraction
 │   ├── IRelayBoard.cs           # Common relay board interface
 │   ├── HidRelayBoard.cs         # USB HID relay boards (DCT Tech)
-│   ├── FtdiRelayBoard.cs        # FTDI relay boards (Denkovi)
+│   ├── FtdiRelayBoard.cs        # Denkovi FTDI relay boards (DAE-CB/Ro4-USB, DAE-CB/Ro8-USB)
 │   └── MockRelayBoard.cs        # Mock board for testing
 ├── Audio/                        # Audio output layer
 │   ├── BufferedAudioSampleSource.cs  # Bridges timed buffer to audio output
@@ -369,11 +369,13 @@ The trigger system supports USB relay boards for automatic amplifier power contr
 
 ### Supported Hardware
 
-| Type | VID:PID | Example Products | Channel Detection |
-| ---- | ------- | ---------------- | ----------------- |
-| **USB HID** | `0x16C0:0x05DF` | DCT Tech, ucreatefun | Auto-detected from product name (e.g., "USBRelay8") |
-| **FTDI** | `0x0403:0x6001` | Denkovi DAE0006K | Manual configuration required |
-| **Modbus/CH340** | `0x1A86:0x7523` | Sainsmart 16-channel | Manual configuration required |
+| Type             | VID:PID         | Supported Models                                    | Channel Detection |
+|------------------|-----------------|-----------------------------------------------------|-------------------|
+| **USB HID**      | `0x16C0:0x05DF` | DCT Tech, ucreatefun                                | Auto-detected     |
+| **Denkovi FTDI** | `0x0403:0x6001` | DAE-CB/Ro8-USB (8ch), DAE-CB/Ro4-USB (4ch) **only** | Manual (model)    |
+| **Modbus/CH340** | `0x1A86:0x7523` | Sainsmart 16-channel                                | Manual            |
+
+**Important:** Only Denkovi USB relay boards are supported for FTDI. Generic FTDI relay boards are **not** supported.
 
 ### Board Identification
 
@@ -391,11 +393,21 @@ Boards are identified in priority order:
 - Command `0xFF` + channel: Turn relay ON
 - Command `0xFD` + channel: Turn relay OFF
 
-### FTDI Protocol Details
+### Denkovi FTDI Protocol Details
 
-- Uses bitbang mode on FT245RL chip
-- State written as single byte bitmask (bit 0 = channel 1, etc.)
+- Uses **synchronous bitbang mode (0x04)** on FT245RL chip - NOT async bitbang (0x01)
+- State written as single byte bitmask
 - Requires `libftdi1` library
+- Hardware state read-back supported via `ftdi_read_pins()`
+
+**Pin Mapping (Critical Difference):**
+
+| Model              | Relay 1 | Relay 2 | Relay 3 | Relay 4 | Relays 5-8 |
+|--------------------|---------|---------|---------|---------|------------|
+| **DAE-CB/Ro8-USB** | Bit 0   | Bit 1   | Bit 2   | Bit 3   | Bits 4-7   |
+| **DAE-CB/Ro4-USB** | Bit 1   | Bit 3   | Bit 5   | Bit 7   | N/A        |
+
+The 4-channel board uses **odd pins only** (D1, D3, D5, D7), not sequential pins.
 
 ### Modbus/CH340 Protocol Details
 
@@ -415,7 +427,7 @@ Boards are identified in priority order:
 | ---- | ------- |
 | `src/MultiRoomAudio/Relay/IRelayBoard.cs` | Common interface for all relay board types |
 | `src/MultiRoomAudio/Relay/HidRelayBoard.cs` | USB HID relay implementation using HidApi.Net |
-| `src/MultiRoomAudio/Relay/FtdiRelayBoard.cs` | FTDI relay implementation using libftdi1 |
+| `src/MultiRoomAudio/Relay/FtdiRelayBoard.cs` | Denkovi FTDI relay implementation using libftdi1 |
 | `src/MultiRoomAudio/Relay/ModbusRelayBoard.cs` | Modbus ASCII relay implementation using System.IO.Ports |
 | `src/MultiRoomAudio/Relay/MockRelayBoard.cs` | Mock implementation for testing |
 | `src/MultiRoomAudio/Services/TriggerService.cs` | Multi-board management, player↔channel mapping |
