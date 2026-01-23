@@ -99,6 +99,12 @@ public class PlayerConfiguration
     // PortAudio device index (for Sendspin SDK)
     public int? PortAudioDeviceIndex { get; set; }
 
+    // Advertised audio format (for advanced formats feature)
+    public string? AdvertisedFormat { get; set; }
+
+    // Buffer size in milliseconds (for audio pipeline tuning)
+    public int BufferSizeMs { get; set; } = 100;
+
     // Additional provider-specific settings
     public Dictionary<string, object>? Extra { get; set; }
 }

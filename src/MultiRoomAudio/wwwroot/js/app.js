@@ -3,10 +3,13 @@
 // State
 let players = {};
 let devices = [];
+let formats = [];
+let advancedFormatsEnabled = false;
 let connection = null;
 let currentBuildVersion = null; // Stored build version for comparison
 let isUserInteracting = false; // Track if user is dragging a slider
 let pendingUpdate = null; // Store pending updates during interaction
+let isModalOpen = false; // Pause auto-refresh while modal is open
 
 function formatBuildVersion(apiInfo) {
     const version = apiInfo?.version;
@@ -253,6 +256,7 @@ function getBusTypeLabel(busType) {
 document.addEventListener('DOMContentLoaded', async () => {
     // Load initial data
     await Promise.all([
+        checkAdvancedFormats(),
         refreshBuildInfo(),
         refreshStatus(),
         refreshDevices()
@@ -352,7 +356,12 @@ function setupSignalR() {
 }
 
 // API calls
-async function refreshStatus() {
+async function refreshStatus(force = false) {
+    // Skip auto-refresh while modal is open (unless forced)
+    if (isModalOpen && !force) {
+        return;
+    }
+
     try {
         const response = await fetch('./api/players');
         if (!response.ok) throw new Error('Failed to fetch players');
@@ -367,6 +376,47 @@ async function refreshStatus() {
     } catch (error) {
         console.error('Error refreshing status:', error);
         showAlert('Failed to load players', 'danger');
+    }
+}
+
+async function checkAdvancedFormats() {
+    try {
+        const response = await fetch('./api/players/formats');
+        advancedFormatsEnabled = response.ok;
+
+        if (advancedFormatsEnabled) {
+            document.getElementById('advertisedFormatGroup').style.display = 'block';
+        }
+    } catch (error) {
+        advancedFormatsEnabled = false;
+    }
+}
+
+async function refreshFormats() {
+    if (!advancedFormatsEnabled) return;
+
+    try {
+        const response = await fetch('./api/players/formats');
+        if (!response.ok) throw new Error('Failed to fetch formats');
+
+        const data = await response.json();
+        formats = data.formats || [];
+
+        const formatSelect = document.getElementById('advertisedFormat');
+        if (formatSelect) {
+            const currentValue = formatSelect.value;
+            formatSelect.innerHTML = '';
+            formats.forEach(format => {
+                const option = document.createElement('option');
+                option.value = format.id;
+                option.textContent = format.label;
+                option.title = format.description;
+                formatSelect.appendChild(option);
+            });
+            if (currentValue) formatSelect.value = currentValue;
+        }
+    } catch (error) {
+        console.error('Error refreshing formats:', error);
     }
 }
 
@@ -397,7 +447,9 @@ async function refreshDevices() {
 }
 
 // Open the modal in Add mode
-function openAddPlayerModal() {
+async function openAddPlayerModal() {
+    isModalOpen = true;
+
     // Reset form
     document.getElementById('playerForm').reset();
     document.getElementById('editingPlayerName').value = '';
@@ -409,14 +461,25 @@ function openAddPlayerModal() {
     document.getElementById('playerModalSubmitIcon').className = 'fas fa-plus me-1';
     document.getElementById('playerModalSubmitText').textContent = 'Add Player';
 
-    // Refresh devices and show modal
-    refreshDevices();
+    // Refresh devices and formats
+    await refreshDevices();
+    if (advancedFormatsEnabled) {
+        await refreshFormats();
+    }
+
     const modal = new bootstrap.Modal(document.getElementById('playerModal'));
     modal.show();
+
+    // Reset flag when modal closes
+    document.getElementById('playerModal').addEventListener('hidden.bs.modal', () => {
+        isModalOpen = false;
+    }, { once: true });
 }
 
 // Open the modal in Edit mode with player data
 async function openEditPlayerModal(playerName) {
+    isModalOpen = true;
+
     try {
         // Fetch current player data
         const response = await fetch(`./api/players/${encodeURIComponent(playerName)}`);
@@ -448,6 +511,22 @@ async function openEditPlayerModal(playerName) {
             }
         }
 
+        // Set advertised format dropdown (if advanced formats enabled)
+        if (advancedFormatsEnabled) {
+            // Refresh formats first to populate options
+            await refreshFormats();
+
+            // Store original format for change detection (default to flac-48000 for compatibility)
+            const originalFormat = player.advertisedFormat || 'flac-48000';
+            document.getElementById('playerForm').dataset.originalFormat = originalFormat;
+
+            // Set dropdown value AFTER options are populated
+            const formatSelect = document.getElementById('advertisedFormat');
+            if (formatSelect) {
+                formatSelect.value = originalFormat;
+            }
+        }
+
         // Set modal to Edit mode
         document.getElementById('playerModalIcon').className = 'fas fa-edit me-2';
         document.getElementById('playerModalTitleText').textContent = 'Edit Player';
@@ -456,7 +535,13 @@ async function openEditPlayerModal(playerName) {
 
         const modal = new bootstrap.Modal(document.getElementById('playerModal'));
         modal.show();
+
+        // Reset flag when modal closes
+        document.getElementById('playerModal').addEventListener('hidden.bs.modal', () => {
+            isModalOpen = false;
+        }, { once: true });
     } catch (error) {
+        isModalOpen = false;
         console.error('Error opening edit modal:', error);
         showAlert(error.message, 'danger');
     }
@@ -491,6 +576,19 @@ async function savePlayer() {
                 volume
             };
 
+            // Include advertised format if advanced formats enabled
+            if (advancedFormatsEnabled) {
+                const form = document.getElementById('playerForm');
+                const originalFormat = form.dataset.originalFormat || 'flac-48000';
+                const currentFormat = document.getElementById('advertisedFormat').value || 'flac-48000';
+
+                // Only include if changed from original
+                if (currentFormat !== originalFormat) {
+                    // Send the specific format
+                    updatePayload.advertisedFormat = currentFormat;
+                }
+            }
+
             const response = await fetch(`./api/players/${encodeURIComponent(editingName)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -506,47 +604,60 @@ async function savePlayer() {
             const finalName = result.playerName || name;
             const wasRenamed = name !== editingName;
 
-            // Close modal and refresh
+            // Close modal and reset form
             bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
             document.getElementById('playerForm').reset();
             document.getElementById('initialVolumeValue').textContent = '75%';
-            await refreshStatus();
 
             // Show appropriate message based on changes
             if (result.needsRestart) {
                 if (wasRenamed) {
                     // For renames, offer to restart rather than auto-restart
                     // The name change is saved locally, but Music Assistant needs a restart to see it
+                    await refreshStatus(true);
                     showAlert(
                         `Player renamed to "${finalName}". Restart the player for the name to appear in Music Assistant.`,
                         'info',
                         8000 // Show for longer since it's actionable
                     );
                 } else {
-                    // For other changes requiring restart (e.g., server URL), auto-restart
+                    // For other changes requiring restart (e.g., server URL, format), auto-restart
                     const restartResponse = await fetch(`./api/players/${encodeURIComponent(finalName)}/restart`, {
                         method: 'POST'
                     });
                     if (!restartResponse.ok) {
                         console.warn('Restart request failed, player may need manual restart');
                     }
+                    // Refresh status AFTER restart completes
+                    await refreshStatus(true);
                     showAlert(`Player "${finalName}" updated and restarted`, 'success');
                 }
             } else {
+                await refreshStatus(true);
                 showAlert(`Player "${finalName}" updated successfully`, 'success');
             }
         } else {
             // Add mode: Create new player
+            const payload = {
+                name,
+                device: device || null,
+                serverUrl: serverUrl || null,
+                volume,
+                persist: true
+            };
+
+            // Include advertised format if advanced formats enabled
+            if (advancedFormatsEnabled) {
+                const advertisedFormat = document.getElementById('advertisedFormat').value;
+                if (advertisedFormat) {
+                    payload.advertisedFormat = advertisedFormat;
+                }
+            }
+
             const response = await fetch('./api/players', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name,
-                    device: device || null,
-                    serverUrl: serverUrl || null,
-                    volume,
-                    persist: true
-                })
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -558,7 +669,7 @@ async function savePlayer() {
             bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
             document.getElementById('playerForm').reset();
             document.getElementById('initialVolumeValue').textContent = '75%';
-            await refreshStatus();
+            await refreshStatus(true);
 
             showAlert(`Player "${name}" created successfully`, 'success');
         }
@@ -1188,8 +1299,15 @@ function showPrompt(title, label, defaultValue = '', placeholder = '') {
 // ========== Stats for Nerds ==========
 let statsInterval = null;
 let currentStatsPlayer = null;
+let isStatsFetching = false;
 
 function openStatsForNerds(playerName) {
+    // Clear any existing interval first to prevent multiple polling loops
+    if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
+    }
+
     currentStatsPlayer = playerName;
 
     // Update player name in modal header
@@ -1204,7 +1322,7 @@ function openStatsForNerds(playerName) {
 
     // Start polling
     fetchAndRenderStats();
-    statsInterval = setInterval(fetchAndRenderStats, 500);
+    statsInterval = setInterval(fetchAndRenderStats, 2000);
 
     // Stop polling when modal closes
     document.getElementById('statsForNerdsModal').addEventListener('hidden.bs.modal', () => {
@@ -1216,7 +1334,9 @@ function openStatsForNerds(playerName) {
 
 async function fetchAndRenderStats() {
     if (!currentStatsPlayer) return;
+    if (isStatsFetching) return; // Prevent overlapping requests
 
+    isStatsFetching = true;
     try {
         const response = await fetch(`./api/players/${encodeURIComponent(currentStatsPlayer)}/stats`);
         if (!response.ok) {
@@ -1233,6 +1353,8 @@ async function fetchAndRenderStats() {
                 <p class="text-muted mb-0">Failed to load stats</p>
             </div>
         `;
+    } finally {
+        isStatsFetching = false;
     }
 }
 
@@ -1257,6 +1379,12 @@ function renderStatsPanel(stats) {
                 <span class="stats-label">Output</span>
                 <span class="stats-value info">${escapeHtml(stats.audioFormat.outputFormat)}</span>
             </div>
+            ${stats.audioFormat.hardwareFormat ? `
+            <div class="stats-row">
+                <span class="stats-label">Hardware</span>
+                <span class="stats-value info">${escapeHtml(stats.audioFormat.hardwareFormat)} ${stats.audioFormat.hardwareSampleRate}Hz ${stats.audioFormat.hardwareBitDepth}-bit</span>
+            </div>
+            ` : ''}
         </div>
 
         <!-- Sync Status Section -->
