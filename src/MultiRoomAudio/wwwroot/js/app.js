@@ -1300,6 +1300,7 @@ function showPrompt(title, label, defaultValue = '', placeholder = '') {
 let statsInterval = null;
 let currentStatsPlayer = null;
 let isStatsFetching = false;
+let cachedHardwareInfo = null; // Cache hardware format info (static during playback)
 
 function openStatsForNerds(playerName) {
     // Clear any existing interval first to prevent multiple polling loops
@@ -1309,6 +1310,7 @@ function openStatsForNerds(playerName) {
     }
 
     currentStatsPlayer = playerName;
+    cachedHardwareInfo = null; // Clear cache - will be populated on first fetch
 
     // Update player name in modal header
     const playerNameSpan = document.getElementById('statsPlayerName');
@@ -1350,6 +1352,23 @@ async function fetchAndRenderStats() {
             throw new Error('Failed to fetch stats');
         }
         const stats = await response.json();
+
+        // Cache hardware info on first fetch (static during playback)
+        if (!cachedHardwareInfo && stats.audioFormat) {
+            cachedHardwareInfo = {
+                hardwareFormat: stats.audioFormat.hardwareFormat,
+                hardwareSampleRate: stats.audioFormat.hardwareSampleRate,
+                hardwareBitDepth: stats.audioFormat.hardwareBitDepth
+            };
+        }
+
+        // Use cached hardware info for rendering
+        if (cachedHardwareInfo && stats.audioFormat) {
+            stats.audioFormat.hardwareFormat = cachedHardwareInfo.hardwareFormat;
+            stats.audioFormat.hardwareSampleRate = cachedHardwareInfo.hardwareSampleRate;
+            stats.audioFormat.hardwareBitDepth = cachedHardwareInfo.hardwareBitDepth;
+        }
+
         renderStatsPanel(stats);
     } catch (error) {
         console.error('Error fetching stats:', error);
