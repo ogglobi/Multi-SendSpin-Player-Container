@@ -1,10 +1,13 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-e246637
+## Development Build: sha-73e1490
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #114 from scyto/dev
+- Fix volume sync: use SendPlayerStateAsync to update MA state
+- Fix Kestrel address override warning in Docker
 - Merge pull request #112 from scyto/dev
 - Fix mute state not echoing back to MA server
 - Promote mute and volume sync logs from debug to info level
@@ -12,9 +15,6 @@
 - Fix mute sync: echo state back to MA and add GroupState debug logging
 - Fix mute state not syncing: update Player.IsMuted after pipeline mute
 - Add mute button to player card with bidirectional MA sync
-- Merge pull request #111 from scyto/dev
-- Refactor stats panel to update values incrementally instead of full DOM rebuild
-- Cache hardware info in frontend on first stats fetch
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
