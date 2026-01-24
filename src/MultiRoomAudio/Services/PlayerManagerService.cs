@@ -1173,7 +1173,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             try
             {
                 await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
-                _logger.LogDebug("MUTE [StateEcho] Player '{Name}': synced {State} to server",
+                _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server",
                     name, muted ? "muted" : "unmuted");
             }
             catch (Exception ex)
@@ -1704,7 +1704,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             if (args.NewState == ConnectionState.Connected)
             {
                 context.ConnectedAt = DateTime.UtcNow;
-                _logger.LogDebug("VOLUME [GracePeriod] Player '{Name}': grace period started for {Duration}s",
+                _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': grace period started for {Duration}s",
                     name, VolumeGracePeriod.TotalSeconds);
                 _ = PushVolumeToServerAsync(name, context);
             }
@@ -1849,7 +1849,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         return (_, group) =>
         {
             // Log all GroupState events for debugging sync issues
-            _logger.LogDebug(
+            _logger.LogInformation(
                 "GROUPSTATE Player '{Name}': received vol={ServerVol}% muted={ServerMuted} (local vol={LocalVol}% muted={LocalMuted})",
                 name, group.Volume, group.Muted, context.Config.Volume, context.Player.IsMuted);
 
@@ -1877,7 +1877,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                         try
                         {
                             await context.Client.SetVolumeAsync(context.Config.Volume);
-                            _logger.LogDebug("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% back to MA",
+                            _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% back to MA",
                                 name, context.Config.Volume);
                         }
                         catch (Exception ex)
@@ -1906,7 +1906,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     try
                     {
                         await context.Client.SendPlayerStateAsync(serverVolume, context.Player.IsMuted);
-                        _logger.LogDebug("VOLUME [StateEcho] Player '{Name}': echoed client/state with {Volume}%",
+                        _logger.LogInformation("VOLUME [StateEcho] Player '{Name}': echoed client/state with {Volume}%",
                             name, serverVolume);
                     }
                     catch (Exception ex)
@@ -1936,7 +1936,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     try
                     {
                         await context.Client.SendPlayerStateAsync(context.Config.Volume, group.Muted);
-                        _logger.LogDebug("MUTE [StateEcho] Player '{Name}': echoed {State} to server",
+                        _logger.LogInformation("MUTE [StateEcho] Player '{Name}': echoed {State} to server",
                             name, group.Muted ? "muted" : "unmuted");
                     }
                     catch (Exception ex)
