@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-eef4c9e
+## Development Build: sha-53fa442
 
 **Current Dev Build Changes** (recent)
 
+- Add mute button to player card with bidirectional MA sync
 - Refactor stats panel to update values incrementally instead of full DOM rebuild
 - Cache hardware info in frontend on first stats fetch
 - Cache device info to remove pactl from stats hot path
@@ -14,7 +15,6 @@
 - Merge pull request #107 from scyto/ftdi-clean
 - Fix FTDI OpenByPathHash crash: use single context for enumeration and open
 - Use USB path-based IDs for all FTDI boards (multi-board support)
-- Add Denkovi 4/8 channel relay board support with model-specific UI
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
