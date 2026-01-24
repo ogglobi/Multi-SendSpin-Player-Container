@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-56817c2
+## Development Build: sha-2d5c27b
 
 **Current Dev Build Changes** (recent)
 
+- Fix Kestrel address override warning in Docker
 - Fix mute state not echoing back to MA server
 - Promote mute and volume sync logs from debug to info level
 - Fix LOG_LEVEL env var not working due to appsettings.json override
@@ -14,7 +15,6 @@
 - Refactor stats panel to update values incrementally instead of full DOM rebuild
 - Cache hardware info in frontend on first stats fetch
 - Cache device info to remove pactl from stats hot path
-- Fix whitespace formatting in PlayerStatsMapper
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
