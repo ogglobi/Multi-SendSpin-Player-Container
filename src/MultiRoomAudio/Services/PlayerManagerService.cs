@@ -1165,6 +1165,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             name, muted ? "muted" : "unmuted");
 
         context.Pipeline.SetMuted(muted);
+        context.Player.IsMuted = muted;
 
         // Sync mute state to Music Assistant server (bidirectional sync)
         FireAndForget(async () =>
@@ -1922,6 +1923,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     group.Muted ? "muted" : "unmuted");
 
                 context.Pipeline.SetMuted(group.Muted);
+                context.Player.IsMuted = group.Muted;
                 _ = BroadcastStatusAsync();
             }
         };
