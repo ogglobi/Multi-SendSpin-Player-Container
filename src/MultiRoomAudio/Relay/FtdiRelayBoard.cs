@@ -466,23 +466,26 @@ public sealed class FtdiRelayBoard : IRelayBoard
                 return true;
             }
 
-            IntPtr ctx = IntPtr.Zero;
             IntPtr devList = IntPtr.Zero;
 
             try
             {
-                ctx = LibFtdi.ftdi_new();
-                if (ctx == IntPtr.Zero)
+                // Use a single context for both enumeration and opening
+                // (device pointers from enumeration are only valid for the same context)
+                _context = LibFtdi.ftdi_new();
+                if (_context == IntPtr.Zero)
                 {
-                    _logger?.LogError("Failed to create FTDI context for enumeration");
+                    _logger?.LogError("Failed to create FTDI context");
                     return false;
                 }
 
                 // Enumerate all FTDI devices to find the one with matching path hash
-                int count = LibFtdi.ftdi_usb_find_all(ctx, ref devList, FTDI_VENDOR_ID, FT245RL_PRODUCT_ID);
+                int count = LibFtdi.ftdi_usb_find_all(_context, ref devList, FTDI_VENDOR_ID, FT245RL_PRODUCT_ID);
                 if (count <= 0)
                 {
                     _logger?.LogWarning("No FTDI devices found when looking for path hash {Hash}", pathHash);
+                    LibFtdi.ftdi_free(_context);
+                    _context = IntPtr.Zero;
                     return false;
                 }
 
@@ -512,19 +515,17 @@ public sealed class FtdiRelayBoard : IRelayBoard
                 if (matchingDev == IntPtr.Zero)
                 {
                     _logger?.LogWarning("No FTDI device found with path hash {Hash}", pathHash);
+                    LibFtdi.ftdi_list_free(ref devList);
+                    LibFtdi.ftdi_free(_context);
+                    _context = IntPtr.Zero;
                     return false;
                 }
 
-                // Create a new context for the actual connection
-                _context = LibFtdi.ftdi_new();
-                if (_context == IntPtr.Zero)
-                {
-                    _logger?.LogError("Failed to create FTDI context for connection");
-                    return false;
-                }
-
-                // Open the device by its libusb device pointer
+                // Open the device by its libusb device pointer (same context used for enumeration)
                 int result = LibFtdi.ftdi_usb_open_dev(_context, matchingDev);
+                LibFtdi.ftdi_list_free(ref devList);
+                devList = IntPtr.Zero;
+
                 if (result < 0)
                 {
                     _logger?.LogError("Failed to open FTDI device by path hash {Hash}: error {Result} - {Error}",
@@ -546,24 +547,16 @@ public sealed class FtdiRelayBoard : IRelayBoard
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Exception opening FTDI device by path hash '{Hash}'", pathHash);
+                if (devList != IntPtr.Zero)
+                {
+                    LibFtdi.ftdi_list_free(ref devList);
+                }
                 if (_context != IntPtr.Zero)
                 {
                     LibFtdi.ftdi_free(_context);
                     _context = IntPtr.Zero;
                 }
                 return false;
-            }
-            finally
-            {
-                // Free the enumeration resources (but NOT the device we're using)
-                if (devList != IntPtr.Zero && ctx != IntPtr.Zero)
-                {
-                    LibFtdi.ftdi_list_free(ref devList);
-                }
-                if (ctx != IntPtr.Zero)
-                {
-                    LibFtdi.ftdi_free(ctx);
-                }
             }
         }
     }
