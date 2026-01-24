@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-ec2dfa8
+## Development Build: sha-56817c2
 
 **Current Dev Build Changes** (recent)
 
+- Fix mute state not echoing back to MA server
 - Promote mute and volume sync logs from debug to info level
 - Fix LOG_LEVEL env var not working due to appsettings.json override
 - Fix mute sync: echo state back to MA and add GroupState debug logging
@@ -14,7 +15,6 @@
 - Cache hardware info in frontend on first stats fetch
 - Cache device info to remove pactl from stats hot path
 - Fix whitespace formatting in PlayerStatsMapper
-- Merge branch 'dev' of https://github.com/chrisuthe/Multi-SendSpin-Player-Container into dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
