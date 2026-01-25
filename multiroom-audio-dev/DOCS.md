@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-241755a
+## Development Build: sha-ed0b2f0
 
 **Current Dev Build Changes** (recent)
 
+- Add mono output mode for remap sinks
 - Add AI agent guidelines to CLAUDE.md
 - Filter remap sinks from wizard master device dropdown
 - Add testing guidelines to CLAUDE.md
@@ -14,7 +15,6 @@
 - Merge pull request #115 from scyto/dev
 - Fix local volume changes not updating MA UI
 - Fix volume control: player is now authoritative for its own volume
-- Merge pull request #114 from scyto/dev
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
