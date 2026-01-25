@@ -497,8 +497,8 @@ async function openEditPlayerModal(playerName) {
         // Populate form with current values
         document.getElementById('playerName').value = player.name;
         document.getElementById('serverUrl').value = player.serverUrl || '';
-        document.getElementById('initialVolume').value = player.volume;
-        document.getElementById('initialVolumeValue').textContent = player.volume + '%';
+        document.getElementById('initialVolume').value = player.startupVolume;
+        document.getElementById('initialVolumeValue').textContent = player.startupVolume + '%';
 
         // Set device dropdown
         await refreshDevices();
@@ -572,8 +572,9 @@ async function savePlayer() {
             const updatePayload = {
                 name: name !== editingName ? name : undefined,  // Only include if changed
                 device: device || '',  // Empty string = default device
-                serverUrl: serverUrl || '',  // Empty string = mDNS discovery
-                volume
+                serverUrl: serverUrl || ''  // Empty string = mDNS discovery
+                // Note: volume is NOT included here - we update startup volume separately
+                // so it doesn't affect current playback
             };
 
             // Include advertised format if advanced formats enabled
@@ -603,6 +604,16 @@ async function savePlayer() {
             const result = await response.json();
             const finalName = result.playerName || name;
             const wasRenamed = name !== editingName;
+
+            // Update startup volume separately (doesn't affect current playback)
+            const startupVolumeResponse = await fetch(`./api/players/${encodeURIComponent(finalName)}/startup-volume`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ volume })
+            });
+            if (!startupVolumeResponse.ok) {
+                console.warn('Failed to update startup volume');
+            }
 
             // Close modal and reset form
             bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
