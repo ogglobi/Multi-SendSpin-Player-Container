@@ -80,7 +80,8 @@ public record AudioDevice(
     string? Alias = null,
     bool Hidden = false,
     string[]? ChannelMap = null,  // Channel names in device order, e.g., ["front-left", "front-right", "rear-left", ...]
-    string? SampleFormat = null   // PulseAudio sample format, e.g., "s16le", "s24le", "s32le", "float32le"
+    string? SampleFormat = null,  // PulseAudio sample format, e.g., "s16le", "s24le", "s32le", "float32le"
+    int? CardIndex = null         // PulseAudio card index this device belongs to (from alsa.card or device.card property)
 )
 {
     /// <summary>

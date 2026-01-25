@@ -2436,18 +2436,64 @@ async function importSelectedSinks() {
 
 let soundCardsModal = null;
 let soundCards = [];
+let soundCardDevices = []; // Devices associated with sound cards
+let pendingDeviceAliases = {}; // Track pending alias changes: { deviceId: newAlias }
 
 // Open the sound cards configuration modal
 async function openSoundCardsModal() {
     if (!soundCardsModal) {
         soundCardsModal = new bootstrap.Modal(document.getElementById('soundCardsModal'));
+        // Save aliases when modal is closed
+        document.getElementById('soundCardsModal').addEventListener('hidden.bs.modal', saveDeviceAliases);
     }
 
+    // Clear pending aliases when opening
+    pendingDeviceAliases = {};
     soundCardsModal.show();
     await loadSoundCards();
 }
 
-// Load sound cards from API
+// Mark a device alias as changed (called from input onchange)
+function markDeviceAliasChanged(input) {
+    const deviceId = input.dataset.deviceId;
+    const originalAlias = input.dataset.originalAlias;
+    const newAlias = input.value.trim();
+
+    // Only track if the alias actually changed
+    if (newAlias !== originalAlias) {
+        pendingDeviceAliases[deviceId] = newAlias;
+    } else {
+        delete pendingDeviceAliases[deviceId];
+    }
+}
+
+// Save all pending device aliases using existing device alias API
+async function saveDeviceAliases() {
+    const entries = Object.entries(pendingDeviceAliases);
+    if (entries.length === 0) {
+        return;
+    }
+
+    for (const [deviceId, alias] of entries) {
+        try {
+            await fetch(`./api/devices/${encodeURIComponent(deviceId)}/alias`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alias: alias || null })
+            });
+        } catch (error) {
+            console.error(`Failed to save alias for device ${deviceId}:`, error);
+        }
+    }
+
+    // Clear pending after save
+    pendingDeviceAliases = {};
+
+    // Refresh global devices so hardware dropdowns show updated aliases
+    await refreshDevices();
+}
+
+// Load sound cards and their associated devices from API
 async function loadSoundCards() {
     const container = document.getElementById('soundCardsContainer');
     container.innerHTML = `
@@ -2460,13 +2506,24 @@ async function loadSoundCards() {
     `;
 
     try {
-        const response = await fetch('./api/cards');
-        if (!response.ok) {
+        // Fetch both cards and devices in parallel
+        const [cardsResponse, devicesResponse] = await Promise.all([
+            fetch('./api/cards'),
+            fetch('./api/devices')
+        ]);
+
+        if (!cardsResponse.ok) {
             throw new Error('Failed to load sound cards');
         }
+        if (!devicesResponse.ok) {
+            throw new Error('Failed to load devices');
+        }
 
-        const data = await response.json();
-        soundCards = data.cards || [];
+        const cardsData = await cardsResponse.json();
+        const devicesData = await devicesResponse.json();
+
+        soundCards = cardsData.cards || [];
+        soundCardDevices = devicesData.devices || [];
 
         renderSoundCards();
     } catch (error) {
@@ -2522,15 +2579,27 @@ function renderSoundCards() {
         const busIcon = getBusTypeIcon(busType);
         const busLabel = getBusTypeLabel(busType);
 
+        // Find the device associated with this card using cardIndex (1:1 relationship)
+        const device = soundCardDevices.find(d => d.cardIndex === card.index);
+        const deviceAlias = device?.alias || '';
+        const deviceId = device?.id || '';
+
         return `
             <div class="card mb-3" id="settings-card-${card.index}">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
+                        <div class="flex-grow-1">
                             <h6 class="mb-1">
                                 <i class="${busIcon} text-primary me-2" title="${busLabel}"></i>
                                 ${escapeHtml(card.description || card.name)}
                             </h6>
+                            <input type="text" class="form-control form-control-sm card-alias-input"
+                                   placeholder="Add alias (e.g., Living Room DAC)"
+                                   value="${escapeHtml(deviceAlias)}"
+                                   data-device-id="${escapeHtml(deviceId)}"
+                                   data-original-alias="${escapeHtml(deviceAlias)}"
+                                   ${deviceId ? '' : 'disabled title="No device found for this card"'}
+                                   onchange="markDeviceAliasChanged(this)">
                             <small class="text-muted">${escapeHtml(card.driver)}</small>
                         </div>
                         <span class="badge bg-secondary" id="settings-card-status-${card.index}">

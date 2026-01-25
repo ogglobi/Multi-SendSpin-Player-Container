@@ -333,6 +333,7 @@ public class MockHardwareConfigService
                 ProductId = "a170",
                 BusPath = "/devices/pci0000:00/0000:00:1f.3/sound/card0",
                 Index = 0,
+                CardIndex = 0,
                 IsDefault = true,
                 MaxChannels = 2
             },
@@ -346,6 +347,7 @@ public class MockHardwareConfigService
                 ProductId = "8275",
                 BusPath = "/devices/pci0000:00/0000:00:1c.4/0000:05:04.0/sound/card1",
                 Index = 1,
+                CardIndex = 1,
                 MaxChannels = 8
             },
             // Schiit Modi 3 USB DAC
@@ -359,6 +361,7 @@ public class MockHardwareConfigService
                 BusPath = "/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0/sound/card2",
                 Serial = "0001",
                 Index = 2,
+                CardIndex = 2,
                 MaxChannels = 2
             },
             // Focusrite Scarlett 2i2 USB audio interface
@@ -372,6 +375,7 @@ public class MockHardwareConfigService
                 BusPath = "/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0/sound/card3",
                 Serial = "Y7XXXXXX00XXXX",
                 Index = 3,
+                CardIndex = 3,
                 MaxChannels = 2
             },
             // JBL Flip 5 Bluetooth speaker
@@ -382,6 +386,7 @@ public class MockHardwareConfigService
                 Description = "JBL Flip 5",
                 Serial = "00:1A:7D:DA:71:13",
                 Index = 4,
+                CardIndex = 4,
                 MaxChannels = 2
             },
             // Sony WH-1000XM4 Bluetooth headphones
@@ -392,6 +397,7 @@ public class MockHardwareConfigService
                 Description = "WH-1000XM4",
                 Serial = "38:18:4C:E9:85:B2",
                 Index = 5,
+                CardIndex = 5,
                 MaxChannels = 2
             },
             // NVIDIA HDMI audio (PCI device - GPU)
@@ -404,6 +410,7 @@ public class MockHardwareConfigService
                 ProductId = "0fb9",
                 BusPath = "/devices/pci0000:00/0000:00:01.0/0000:01:00.1/sound/card6",
                 Index = 6,
+                CardIndex = 6,
                 MaxChannels = 2
             }
         };

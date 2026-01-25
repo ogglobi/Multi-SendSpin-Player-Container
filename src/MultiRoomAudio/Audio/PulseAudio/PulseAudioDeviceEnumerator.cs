@@ -216,6 +216,22 @@ public static partial class PulseAudioDeviceEnumerator
         // Extract stable device identifiers from Properties section
         var identifiers = ParseDeviceIdentifiers(block);
 
+        // Extract card index from alsa.card or device.card property
+        int? cardIndex = null;
+        var alsaCardMatch = AlsaCardRegex().Match(block);
+        if (alsaCardMatch.Success)
+        {
+            cardIndex = int.Parse(alsaCardMatch.Groups[1].Value);
+        }
+        else
+        {
+            var deviceCardMatch = DeviceCardRegex().Match(block);
+            if (deviceCardMatch.Success)
+            {
+                cardIndex = int.Parse(deviceCardMatch.Groups[1].Value);
+            }
+        }
+
         var isDefault = sinkName.Equals(defaultSink, StringComparison.OrdinalIgnoreCase);
 
         return new AudioDevice(
@@ -229,7 +245,8 @@ public static partial class PulseAudioDeviceEnumerator
             IsDefault: isDefault,
             Identifiers: identifiers,
             ChannelMap: channelMap,
-            SampleFormat: sampleFormat
+            SampleFormat: sampleFormat,
+            CardIndex: cardIndex
         );
     }
 
@@ -297,4 +314,11 @@ public static partial class PulseAudioDeviceEnumerator
 
     [GeneratedRegex(@"alsa\.long_card_name\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
     private static partial Regex AlsaLongCardNameRegex();
+
+    // Regex patterns for card index (links device to sound card)
+    [GeneratedRegex(@"alsa\.card\s*=\s*""(\d+)""", RegexOptions.Multiline)]
+    private static partial Regex AlsaCardRegex();
+
+    [GeneratedRegex(@"device\.card\s*=\s*""(\d+)""", RegexOptions.Multiline)]
+    private static partial Regex DeviceCardRegex();
 }

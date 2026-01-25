@@ -87,6 +87,12 @@ public class MockAudioDeviceConfig
     /// PulseAudio device index.
     /// </summary>
     public int Index { get; set; }
+
+    /// <summary>
+    /// Card index this device belongs to.
+    /// Links the device to a MockAudioCardConfig by its Index.
+    /// </summary>
+    public int? CardIndex { get; set; }
 }
 
 /// <summary>

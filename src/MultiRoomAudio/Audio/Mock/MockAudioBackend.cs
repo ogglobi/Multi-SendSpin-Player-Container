@@ -230,8 +230,10 @@ public class MockAudioBackend : IBackend
 
         return deviceConfigs.Select(config =>
         {
-            // Find the corresponding card by index
-            var card = cards.FirstOrDefault(c => c.Index == config.Index);
+            // Find the corresponding card by CardIndex
+            var card = config.CardIndex.HasValue
+                ? cards.FirstOrDefault(c => c.Index == config.CardIndex.Value)
+                : null;
             var channelCount = card != null
                 ? GetChannelCountForProfile(card.ActiveProfile)
                 : config.MaxChannels;
@@ -268,7 +270,8 @@ public class MockAudioBackend : IBackend
                     VendorId: config.VendorId,
                     ProductId: config.ProductId,
                     AlsaLongCardName: config.Description
-                )
+                ),
+                CardIndex: config.CardIndex
             );
         }).ToList();
     }
