@@ -1691,7 +1691,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// <item>PipelineState - tracks playback state (Playing/Buffering/Idle)</item>
     /// <item>PipelineError - handles pipeline errors with auto-stop</item>
     /// <item>PlayerError - handles audio errors with auto-stop</item>
-    /// <item>GroupState - handles server volume changes with grace period</item>
+    /// <item>GroupState - logs group average volume (display only, SDK 5.4.0)</item>
+    /// <item>PlayerState - handles server volume/mute commands with grace period (SDK 5.4.0)</item>
     /// </list>
     /// </remarks>
     private void WireEvents(string name, PlayerContext context)
