@@ -27,7 +27,7 @@ Transform a single Docker host with multiple USB audio devices into a multi-room
 - **Reference Add-ons:**
   - [home-assistant/addons/vlc](https://github.com/home-assistant/addons/tree/master/vlc) - Official VLC add-on (audio player pattern)
 - **SDK Documentation:**
-  - SendSpin.SDK v5.2.0 - Sendspin protocol handling
+  - SendSpin.SDK v6.0.0 - Sendspin protocol handling
 
 ---
 
@@ -268,7 +268,7 @@ squeezelite-docker/
 ## NuGet Packages
 
 ```xml
-<PackageReference Include="SendSpin.SDK" Version="5.2.0" />
+<PackageReference Include="SendSpin.SDK" Version="6.0.0" />
 <PackageReference Include="YamlDotNet" Version="16.3.0" />
 <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.2.0" />
 <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.22" />
