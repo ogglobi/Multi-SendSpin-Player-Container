@@ -12,6 +12,8 @@ using Sendspin.SDK.Connection;
 using Sendspin.SDK.Discovery;
 using Sendspin.SDK.Models;
 using Sendspin.SDK.Synchronization;
+// Alias to disambiguate from MultiRoomAudio.Models.PlayerState (lifecycle enum)
+using SdkPlayerState = Sendspin.SDK.Models.PlayerState;
 using static MultiRoomAudio.Utilities.BackgroundTaskExecutor;
 
 namespace MultiRoomAudio.Services;
@@ -193,13 +195,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     /// <param name="state">The player state to check.</param>
     /// <returns>True if the player is in an active state.</returns>
-    private static bool IsPlayerInActiveState(PlayerState state)
+    private static bool IsPlayerInActiveState(Models.PlayerState state)
     {
-        return state == PlayerState.Starting ||
-               state == PlayerState.Connecting ||
-               state == PlayerState.Connected ||
-               state == PlayerState.Playing ||
-               state == PlayerState.Buffering;
+        return state == Models.PlayerState.Starting ||
+               state == Models.PlayerState.Connecting ||
+               state == Models.PlayerState.Connected ||
+               state == Models.PlayerState.Playing ||
+               state == Models.PlayerState.Buffering;
     }
 
     /// <summary>
@@ -288,6 +290,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         try
         {
+            // Prevent feedback loop with PlayerStateChanged handler
+            context.IsUpdatingFromServer = true;
             _logger.LogInformation("VOLUME [PushToServer] Player '{Name}': {Volume}%",
                 name, context.Config.Volume);
             await context.Client.SetVolumeAsync(context.Config.Volume);
@@ -295,6 +299,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to push volume to server for player '{Name}'", name);
+        }
+        finally
+        {
+            context.IsUpdatingFromServer = false;
         }
     }
 
@@ -323,7 +331,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         AudioDevice? CachedDevice = null
     )
     {
-        public PlayerState State { get; set; } = PlayerState.Created;
+        public Models.PlayerState State { get; set; } = Models.PlayerState.Created;
         public string? ErrorMessage { get; set; }
         public DateTime? ConnectedAt { get; set; }
         public int InitialVolume { get; init; } // Store initial volume to detect resets
@@ -336,6 +344,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         public EventHandler<AudioPipelineError>? PipelineErrorHandler { get; set; }
         public EventHandler<AudioPlayerError>? PlayerErrorHandler { get; set; }
         public EventHandler<GroupState>? GroupStateHandler { get; set; }
+        // SDK 5.4.0: Handler for individual player volume/mute commands
+        public EventHandler<SdkPlayerState>? PlayerStateHandler { get; set; }
+        // Flag to prevent feedback loops when updating server
+        public bool IsUpdatingFromServer { get; set; }
     }
 
     /// <summary>
@@ -567,7 +579,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             if (_players.TryGetValue(playerConfig.Name, out var context))
             {
                 // Queue for reconnection if player is in error state and never connected
-                if (context.State == PlayerState.Error && context.ConnectedAt == null)
+                if (context.State == Models.PlayerState.Error && context.ConnectedAt == null)
                 {
                     _logger.LogWarning(
                         "Player '{PlayerName}' failed to connect during autostart (mDNS discovery failed), queuing for reconnection",
@@ -710,7 +722,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 components.DeviceCapabilities,
                 cachedDevice)
             {
-                State = PlayerState.Created,
+                State = Models.PlayerState.Created,
                 InitialVolume = request.Volume
             };
 
@@ -779,7 +791,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             Roles = new List<string> { "controller@v1", "player@v1", "metadata@v1" },
             AudioFormats = audioFormats,
             BufferCapacity = ServerAnnouncedBufferCapacityBytes,
-            InitialVolume = request.Volume
+            InitialVolume = request.Volume,
+            InitialMuted = false // Players start unmuted
         };
 
         // Create clock synchronizer
@@ -1042,8 +1055,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 // Check if it's pending reconnection
                 var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
                 var state = isPendingReconnection && !reconnectState!.WasUserStopped
-                    ? PlayerState.Reconnecting
-                    : PlayerState.Error;
+                    ? Models.PlayerState.Reconnecting
+                    : Models.PlayerState.Error;
                 var errorMessage = isPendingReconnection && !reconnectState!.WasUserStopped
                     ? $"Reconnecting... (attempt {reconnectState.RetryCount})"
                     : "Player not running. Device may be unavailable or misconfigured.";
@@ -1136,9 +1149,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             {
                 try
                 {
+                    // Prevent feedback loop with PlayerStateChanged handler
+                    context.IsUpdatingFromServer = true;
                     // Command MA to update its displayed volume
                     await context.Client.SetVolumeAsync(volume);
-                    // Echo our full state back to MA
+                    // SDK 5.4.0 auto-acknowledges, but we still echo state for full sync
                     await context.Client.SendPlayerStateAsync(volume, context.Player.IsMuted);
                     _logger.LogInformation("VOLUME [Sync] Player '{Name}': sent {Volume}% to MA",
                         name, volume);
@@ -1146,6 +1161,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Failed to sync volume for '{Name}'", name);
+                }
+                finally
+                {
+                    context.IsUpdatingFromServer = false;
                 }
             }, $"Volume sync for '{name}'", _logger);
         }
@@ -1178,6 +1197,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         {
             try
             {
+                // Prevent feedback loop with PlayerStateChanged handler
+                context.IsUpdatingFromServer = true;
                 await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
                 context.LastConfirmedMuted = muted;
                 _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server",
@@ -1186,6 +1207,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to sync mute state for '{Name}'", name);
+            }
+            finally
+            {
+                context.IsUpdatingFromServer = false;
             }
         }, $"Mute state sync for '{name}'", _logger);
 
@@ -1232,9 +1257,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return null;
 
         // If already running, just return current state
-        if (context.State == PlayerState.Playing || context.State == PlayerState.Connected ||
-            context.State == PlayerState.Buffering || context.State == PlayerState.Connecting ||
-            context.State == PlayerState.Starting)
+        if (context.State == Models.PlayerState.Playing || context.State == Models.PlayerState.Connected ||
+            context.State == Models.PlayerState.Buffering || context.State == Models.PlayerState.Connecting ||
+            context.State == Models.PlayerState.Starting)
         {
             _logger.LogDebug("Player '{Name}' is already running (state={State})", name, context.State);
             return CreateResponse(name, context);
@@ -1265,7 +1290,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
 
         // Already stopped?
-        if (context.State == PlayerState.Stopped)
+        if (context.State == Models.PlayerState.Stopped)
         {
             _logger.LogDebug("Player '{Name}' is already stopped", name);
             return true;
@@ -1276,7 +1301,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         try
         {
             context.Cts.Cancel();
-            context.State = PlayerState.Stopped;
+            context.State = Models.PlayerState.Stopped;
 
             // Stop pipeline and disconnect, but don't remove from dictionary
             try
@@ -1307,7 +1332,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error stopping player '{Name}'", name);
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = ex.Message;
 
             _ = BroadcastStatusAsync();
@@ -1547,7 +1572,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // This should not normally be reached since ConnectPlayerAsync has its own error handling,
             // but we catch here as a safety net to ensure no exceptions are lost
             _logger.LogError(ex, "Unhandled exception during player '{Name}' connection", name);
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = ex.Message;
             _ = BroadcastStatusAsync();
         }
@@ -1613,7 +1638,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     {
         try
         {
-            context.State = PlayerState.Starting;
+            context.State = Models.PlayerState.Starting;
             _ = BroadcastStatusAsync();
 
             // Discover server if URL not provided
@@ -1629,12 +1654,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
 
             // Connect
-            context.State = PlayerState.Connecting;
+            context.State = Models.PlayerState.Connecting;
             _ = BroadcastStatusAsync();
 
             await context.Client.ConnectAsync(serverUri!, ct);
 
-            context.State = PlayerState.Connected;
+            context.State = Models.PlayerState.Connected;
             context.ConnectedAt = DateTime.UtcNow;
             _ = BroadcastStatusAsync();
 
@@ -1650,7 +1675,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to connect player '{Name}'", name);
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = ex.Message;
             _ = BroadcastStatusAsync();
         }
@@ -1677,6 +1702,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         context.PipelineErrorHandler = CreatePipelineErrorHandler(name, context);
         context.PlayerErrorHandler = CreatePlayerErrorHandler(name, context);
         context.GroupStateHandler = CreateGroupStateHandler(name, context);
+        // SDK 5.4.0: PlayerStateChanged for individual player volume/mute commands
+        context.PlayerStateHandler = CreatePlayerStateHandler(name, context);
 
         // Subscribe to events
         context.Client.ConnectionStateChanged += context.ConnectionStateHandler;
@@ -1684,6 +1711,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         context.Pipeline.ErrorOccurred += context.PipelineErrorHandler;
         context.Player.ErrorOccurred += context.PlayerErrorHandler;
         context.Client.GroupStateChanged += context.GroupStateHandler;
+        // SDK 5.4.0: Subscribe to PlayerStateChanged
+        context.Client.PlayerStateChanged += context.PlayerStateHandler;
     }
 
     /// <summary>
@@ -1701,8 +1730,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
             context.State = args.NewState switch
             {
-                ConnectionState.Connected => PlayerState.Connected,
-                ConnectionState.Disconnected => PlayerState.Stopped,
+                ConnectionState.Connected => Models.PlayerState.Connected,
+                ConnectionState.Disconnected => Models.PlayerState.Stopped,
                 _ => context.State
             };
 
@@ -1718,8 +1747,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
             // Handle disconnection - queue for reconnection if appropriate
             if (args.NewState == ConnectionState.Disconnected &&
-                previousState != PlayerState.Stopped &&  // Not user-stopped
-                previousState != PlayerState.Error)       // Not already errored
+                previousState != Models.PlayerState.Stopped &&  // Not user-stopped
+                previousState != Models.PlayerState.Error)       // Not already errored
             {
                 _logger.LogWarning("Player '{Name}' disconnected unexpectedly, queuing for reconnection", name);
 
@@ -1762,11 +1791,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             var previousState = context.State;
 
             if (state == AudioPipelineState.Playing)
-                context.State = PlayerState.Playing;
+                context.State = Models.PlayerState.Playing;
             else if (state == AudioPipelineState.Buffering)
-                context.State = PlayerState.Buffering;
+                context.State = Models.PlayerState.Buffering;
             else if (state == AudioPipelineState.Idle)
-                context.State = PlayerState.Connected;
+                context.State = Models.PlayerState.Connected;
             else
             {
                 // Log unknown states so we can track SDK changes
@@ -1785,10 +1814,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Deactivate when transitioning TO a stopped state (Idle/Stopping) from active
             var stateStr = state.ToString();
             var isActiveState = state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering;
-            var wasInactiveState = previousState != PlayerState.Playing && previousState != PlayerState.Buffering;
+            var wasInactiveState = previousState != Models.PlayerState.Playing && previousState != Models.PlayerState.Buffering;
             var isStoppedState = state == AudioPipelineState.Idle ||
                                  stateStr.Equals("Stopping", StringComparison.OrdinalIgnoreCase);
-            var wasActiveState = previousState == PlayerState.Playing || previousState == PlayerState.Buffering;
+            var wasActiveState = previousState == Models.PlayerState.Playing || previousState == Models.PlayerState.Buffering;
 
             if (isActiveState && wasInactiveState)
             {
@@ -1847,30 +1876,61 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
-    /// Creates handler for server volume changes (from Music Assistant UI, etc.).
-    /// Implements grace period logic to preserve startup volume for 5 seconds after connection.
+    /// Logs GroupState events for debugging.
+    /// SDK 5.4.0: GroupState now represents the average volume displayed to controllers,
+    /// NOT individual player volume commands. Volume control is handled by PlayerStateChanged.
     /// </summary>
     private EventHandler<GroupState> CreateGroupStateHandler(
         string name, PlayerContext context)
     {
         return (_, group) =>
         {
-            // Log all GroupState events for debugging sync issues
+            // SDK 5.4.0: GroupState represents average volume shown to controllers, not player commands
+            // Log for debugging but don't take action - PlayerStateChanged handles player control
+            _logger.LogDebug(
+                "GROUPSTATE Player '{Name}': group average vol={GroupVol}% muted={GroupMuted} (local vol={LocalVol}%)",
+                name, group.Volume, group.Muted, context.Config.Volume);
+        };
+    }
+
+    /// <summary>
+    /// Creates handler for server player-specific volume/mute commands (from Music Assistant UI, etc.).
+    /// This handler receives commands directed at this specific player, not group averages.
+    /// Implements grace period logic to preserve startup volume for 5 seconds after connection.
+    /// </summary>
+    /// <remarks>
+    /// SDK 5.4.0 change: PlayerStateChanged is for individual player commands.
+    /// GroupStateChanged now represents the average volume displayed to controllers.
+    /// SDK automatically acknowledges by sending client/state when applying commands.
+    /// </remarks>
+    private EventHandler<SdkPlayerState> CreatePlayerStateHandler(
+        string name, PlayerContext context)
+    {
+        return (_, playerState) =>
+        {
+            // Prevent feedback loops when we initiated the change
+            if (context.IsUpdatingFromServer)
+            {
+                _logger.LogDebug(
+                    "PLAYERSTATE Player '{Name}': ignoring echo (IsUpdatingFromServer=true)",
+                    name);
+                return;
+            }
+
             _logger.LogInformation(
-                "GROUPSTATE Player '{Name}': received vol={ServerVol}% muted={ServerMuted} (local vol={LocalVol}% muted={LocalMuted})",
-                name, group.Volume, group.Muted, context.Config.Volume, context.Player.IsMuted);
+                "PLAYERSTATE Player '{Name}': received vol={ServerVol}% muted={ServerMuted} (local vol={LocalVol}% muted={LocalMuted})",
+                name, playerState.Volume, playerState.Muted, context.Config.Volume, context.Player.IsMuted);
 
             // Clamp volume to valid range
-            var serverVolume = Math.Clamp(group.Volume, 0, 100);
+            var serverVolume = Math.Clamp(playerState.Volume, 0, 100);
 
             // Check if we're within the grace period after connection
             var isWithinGracePeriod = context.ConnectedAt.HasValue &&
                                      (DateTime.UtcNow - context.ConnectedAt.Value) < VolumeGracePeriod;
 
-            // Update volume if changed
+            // Handle volume changes
             if (serverVolume != context.Config.Volume)
             {
-                // During grace period, ignore MA's volume updates and push our startup volume back
                 if (isWithinGracePeriod)
                 {
                     var gracePeriodRemaining = VolumeGracePeriod - (DateTime.UtcNow - context.ConnectedAt!.Value);
@@ -1883,6 +1943,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     {
                         try
                         {
+                            context.IsUpdatingFromServer = true;
                             await context.Client.SetVolumeAsync(context.Config.Volume);
                             _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% back to MA",
                                 name, context.Config.Volume);
@@ -1890,6 +1951,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Failed to push startup volume for '{Name}'", name);
+                        }
+                        finally
+                        {
+                            context.IsUpdatingFromServer = false;
                         }
                     }, $"Grace period volume push for '{name}'", _logger);
 
@@ -1906,56 +1971,27 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 // Apply volume locally - player is authoritative for its own volume
                 context.Player.Volume = serverVolume / 100.0f;
 
-                // Send player state back to MA to update its stored preference
-                // This uses SendPlayerStateAsync which is fire-and-forget and doesn't trigger GroupStateChanged
-                FireAndForget(async () =>
-                {
-                    try
-                    {
-                        await context.Client.SendPlayerStateAsync(serverVolume, context.Player.IsMuted);
-                        _logger.LogInformation("VOLUME [StateEcho] Player '{Name}': echoed client/state with {Volume}%",
-                            name, serverVolume);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to echo player state for '{Name}'", name);
-                    }
-                }, $"Player state echo for '{name}'", _logger);
+                // Note: SDK 5.4.0 auto-acknowledges by sending client/state,
+                // so we don't need to call SendPlayerStateAsync manually
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
             }
 
-            // Handle mute state from server (bidirectional sync)
-            // Compare against LastConfirmedMuted, not Player.IsMuted, because the SDK
-            // updates Player.IsMuted when it receives the mute command BEFORE GroupState arrives.
-            // We need to echo back to confirm to the server that we processed the mute.
-            if (group.Muted != context.LastConfirmedMuted)
+            // Handle mute state from server
+            if (playerState.Muted != context.Player.IsMuted)
             {
                 _logger.LogInformation("MUTE [ServerSync] Player '{Name}': {OldState} -> {NewState}",
                     name,
-                    context.LastConfirmedMuted switch { true => "muted", false => "unmuted", null => "unknown" },
-                    group.Muted ? "muted" : "unmuted");
+                    context.Player.IsMuted ? "muted" : "unmuted",
+                    playerState.Muted ? "muted" : "unmuted");
 
-                // Update local state (may already be set by SDK, but ensure consistency)
-                context.Pipeline.SetMuted(group.Muted);
-                context.Player.IsMuted = group.Muted;
+                // Update local state
+                context.Pipeline.SetMuted(playerState.Muted);
+                context.Player.IsMuted = playerState.Muted;
+                context.LastConfirmedMuted = playerState.Muted;
 
-                // Echo mute state back to MA to confirm receipt (like we do for volume)
-                FireAndForget(async () =>
-                {
-                    try
-                    {
-                        await context.Client.SendPlayerStateAsync(context.Config.Volume, group.Muted);
-                        context.LastConfirmedMuted = group.Muted;
-                        _logger.LogInformation("MUTE [StateEcho] Player '{Name}': echoed {State} to server",
-                            name, group.Muted ? "muted" : "unmuted");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to echo mute state for '{Name}'", name);
-                    }
-                }, $"Mute state echo for '{name}'", _logger);
+                // Note: SDK 5.4.0 auto-acknowledges, no manual echo needed
 
                 _ = BroadcastStatusAsync();
             }
@@ -1969,6 +2005,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private void UnwireEvents(PlayerContext context)
     {
         // Unsubscribe in reverse order of subscription
+        // SDK 5.4.0: Unsubscribe PlayerStateChanged first (subscribed last)
+        if (context.PlayerStateHandler != null)
+        {
+            context.Client.PlayerStateChanged -= context.PlayerStateHandler;
+            context.PlayerStateHandler = null;
+        }
+
         if (context.GroupStateHandler != null)
         {
             context.Client.GroupStateChanged -= context.GroupStateHandler;
@@ -2167,7 +2210,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return;
 
         // Prevent re-entrancy if already stopping
-        if (context.State == PlayerState.Error || context.State == PlayerState.Stopped)
+        if (context.State == Models.PlayerState.Error || context.State == Models.PlayerState.Stopped)
         {
             _logger.LogDebug("Player '{Name}' already in {State} state, skipping internal stop", name, context.State);
             return;
@@ -2181,7 +2224,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         try
         {
             // Update state to error first
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = reason;
 
             // Stop the pipeline gracefully
