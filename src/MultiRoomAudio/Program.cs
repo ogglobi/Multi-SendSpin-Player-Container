@@ -52,6 +52,7 @@ if (logLevel > LogLevel.Debug)
     builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Warning);
     builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Information); // Keep "Now listening on" visible
     builder.Logging.AddFilter("System.Net.Http", LogLevel.Warning);
+    builder.Logging.AddFilter("Sendspin.SDK.Discovery", LogLevel.Critical); // SDK logs TaskCanceledException at Error during shutdown — noisy, our code already handles this
 }
 
 // Configure services
