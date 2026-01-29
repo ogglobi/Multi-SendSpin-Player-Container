@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-c64270c
+## Development Build: sha-56d3266
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #23 from scyto/feature/fix-haos-audio-crackling
+- Add full_access and additional capabilities for HAOS debugging
 - Merge pull request #22 from scyto/feature/fix-haos-audio-crackling
 - Merge upstream/dev: SDK 6.1.1, latency lock-in, HAOS env vars
 - Add latency lock-in to reduce sync corrections from PulseAudio jitter
@@ -13,8 +15,6 @@
 - Merge pull request #21 from scyto/feature/fix-haos-audio-crackling
 - Add diagnostic logging for abnormal PA latency
 - Align SyncToleranceMs with entry threshold (5→15ms)
-- Fix sync correction overshoot by detecting sign flip
-- Fix Stats for Nerds threshold display to show actual 15ms entry threshold
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
