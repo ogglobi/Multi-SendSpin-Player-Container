@@ -91,6 +91,13 @@ public class PulseAudioPlayer : IAudioPlayer
     private int _underflowCount;
     private ulong _lastMeasuredLatencyUs;
 
+    // Latency lock-in: collect samples during startup, then freeze to median
+    // This prevents PulseAudio measurement jitter from causing constant sync corrections
+    private volatile bool _latencyLocked;
+    private List<int>? _latencySamples;
+    private const int LatencyLockSampleCount = 100;  // ~1 second at 10ms callbacks
+    private const int LatencyLockWarmupSamples = 20; // Skip first 20 (~200ms) for warmup
+
     // Diagnostic counters for monitoring callback behavior
     private long _callbackCount;
     private long _silenceWriteCount;
@@ -118,8 +125,16 @@ public class PulseAudioPlayer : IAudioPlayer
 
     /// <summary>
     /// Gets the output latency in milliseconds, measured from write callbacks.
+    /// After the lock-in period (~1.2 seconds), this value freezes at the median
+    /// to prevent PulseAudio measurement jitter from causing constant sync corrections.
     /// </summary>
     public int OutputLatencyMs { get; private set; }
+
+    /// <summary>
+    /// Gets whether the output latency has stabilized and locked.
+    /// When true, OutputLatencyMs will no longer update until playback restarts.
+    /// </summary>
+    public bool IsLatencyLocked => _latencyLocked;
 
     public event EventHandler<AudioPlayerState>? StateChanged;
     public event EventHandler<AudioPlayerError>? ErrorOccurred;
@@ -471,6 +486,11 @@ public class PulseAudioPlayer : IAudioPlayer
 
         _sinkName = deviceId;
 
+        // Reset latency lock to re-learn for the new device
+        // Different audio devices have different latency characteristics
+        _latencyLocked = false;
+        _latencySamples = null;
+
         if (savedFormat != null)
         {
             try
@@ -599,6 +619,7 @@ public class PulseAudioPlayer : IAudioPlayer
             var newLatencyMs = (int)(latencyUs / 1000);
 
             // Log abnormally high latency (>1 second) - this indicates a problem
+            // that will cause clock sync issues (e.g., the 190-second latency bug on HAOS)
             if (newLatencyMs > 1000)
             {
                 if (!_hasLoggedHighLatency)
@@ -618,12 +639,39 @@ public class PulseAudioPlayer : IAudioPlayer
                 }
             }
 
-            // Hysteresis: Only update if change exceeds 5ms to avoid jitter in reported latency
-            if (Math.Abs(newLatencyMs - OutputLatencyMs) > 5)
+            if (!_latencyLocked)
             {
-                OutputLatencyMs = newLatencyMs;
-                _logger.LogDebug("Measured latency: {Latency}ms", newLatencyMs);
+                // During startup: collect samples for lock-in
+                // USB audio devices report jittery latency values (±25-50ms) due to
+                // PulseAudio's timer-based scheduling and USB isochronous transfer timing.
+                // We collect samples and lock to the median to avoid constant sync corrections.
+                _latencySamples ??= new List<int>(LatencyLockSampleCount + LatencyLockWarmupSamples);
+                _latencySamples.Add(newLatencyMs);
+
+                if (_latencySamples.Count >= LatencyLockSampleCount + LatencyLockWarmupSamples)
+                {
+                    // Discard warmup samples, compute median of the rest
+                    var stableSamples = _latencySamples.Skip(LatencyLockWarmupSamples).OrderBy(x => x).ToList();
+                    var median = stableSamples[stableSamples.Count / 2];
+
+                    OutputLatencyMs = median;
+                    _latencyLocked = true;
+                    _latencySamples = null; // Free memory
+
+                    _logger.LogInformation(
+                        "Latency locked at {Latency}ms (median of {Count} samples, range: {Min}-{Max}ms)",
+                        OutputLatencyMs, stableSamples.Count, stableSamples.First(), stableSamples.Last());
+                }
+                else
+                {
+                    // During collection: use current measurement (with hysteresis)
+                    if (Math.Abs(newLatencyMs - OutputLatencyMs) > 5)
+                    {
+                        OutputLatencyMs = newLatencyMs;
+                    }
+                }
             }
+            // After lock: OutputLatencyMs stays frozen, no updates
         }
         else if (_callbackCount % DiagnosticLogInterval == 0)
         {

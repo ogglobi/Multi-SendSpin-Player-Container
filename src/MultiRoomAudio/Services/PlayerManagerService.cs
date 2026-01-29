@@ -135,15 +135,12 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         // Standard startup grace period
         StartupGracePeriodMicroseconds = 500_000,
 
-        // SYNC FIX: Set to 0 to use SDK default behavior for precise timing.
-        // A large grace window (e.g., 1 second) causes audio to play early because
-        // the SDK starts playback immediately when samples are scheduled within the
-        // grace window, rather than waiting for the scheduled time.
-        //
-        // NOTE: If playback fails to start (chicken-and-egg problem where buffer
-        // fills but scheduled time never arrives), consider a small non-zero value
-        // like 50_000 (50ms) instead of removing entirely.
-        ScheduledStartGraceWindowMicroseconds = 0,  // Use SDK default for accurate sync
+        // Grace window for scheduled start time - allows playback to begin when
+        // within this threshold of the scheduled time. Without a grace window,
+        // micro-jitter in timing can cause the "scheduled start not reached"
+        // issue where playback never starts because it's always "just barely"
+        // in the future.
+        ScheduledStartGraceWindowMicroseconds = 10_000,  // 10ms (SDK default)
     };
 
     /// <summary>

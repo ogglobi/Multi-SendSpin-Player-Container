@@ -17,6 +17,30 @@ echo "========================================="
 if [ -f "/data/options.json" ] || [ -n "$SUPERVISOR_TOKEN" ]; then
     echo "Detected HAOS add-on mode - using system PulseAudio"
 
+    # Read options from HAOS options.json and export as environment variables
+    if [ -f "/data/options.json" ]; then
+        # Log level
+        LOG_LEVEL=$(cat /data/options.json | grep -o '"log_level"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+        if [ -n "$LOG_LEVEL" ]; then
+            export LOG_LEVEL
+            echo "Log level: $LOG_LEVEL"
+        fi
+
+        # Mock hardware
+        MOCK_HARDWARE=$(cat /data/options.json | grep -o '"mock_hardware"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/.*:[[:space:]]*//')
+        if [ "$MOCK_HARDWARE" = "true" ]; then
+            export MOCK_HARDWARE=true
+            echo "Mock hardware: enabled"
+        fi
+
+        # Advanced formats
+        ENABLE_ADVANCED_FORMATS=$(cat /data/options.json | grep -o '"enable_advanced_formats"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/.*:[[:space:]]*//')
+        if [ "$ENABLE_ADVANCED_FORMATS" = "true" ]; then
+            export ENABLE_ADVANCED_FORMATS=true
+            echo "Advanced formats: enabled"
+        fi
+    fi
+
     # HAOS supervisor mounts:
     # - /etc/pulse/client.conf (contains default-server pointing to /run/audio)
     # - /run/audio (the PulseAudio socket directory)

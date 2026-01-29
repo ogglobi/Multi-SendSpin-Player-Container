@@ -107,6 +107,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     // Entry threshold matches SDK Tier 3 boundary (15ms) - below this the CLI uses smooth rate
     // adjustment which is imperceptible. We don't have rate adjustment, so we avoid correcting
     // small errors entirely since frame drop/insert is audible.
+    // Also tolerates PulseAudio latency measurement jitter on HAOS.
     private const long EntryThresholdMicroseconds = 15_000;  // 15ms - start correcting
     private const long ExitThresholdMicroseconds = 3_000;     // 3ms - stop correcting
 
