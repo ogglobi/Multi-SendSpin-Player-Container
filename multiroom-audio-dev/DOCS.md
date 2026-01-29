@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-0a9be78
+## Development Build: sha-d278cad
 
 **Current Dev Build Changes** (recent)
 
-- Add robust reconnection with mDNS watch and WaitingForServer state
-- Merge pull request #122 from scyto/fix/cleanup-stale-sdk-comments
-- Clean up stale SDK version comments and add GroupId to diagnostics
-- Merge pull request #121 from scyto/dev
-- removed stale comment
-- Fix volume delta bug during seek/skip for grouped players
-- Update SendSpin.SDK from 5.4.1 to 6.0.0
-- Update to 5.4.1 attempt to fix volume issues so @Scyto doesn't send me angry emojis
-- Merge pull request #118 from scyto/dev
-- Fix startup volume being overwritten by current volume in edit modal
+- Merge pull request #125 from scyto/feature/handle-all-pipeline-states
+- Merge pull request #124 from chrisuthe/feature/graceful-start-stop-and-disconnects
+- Update SendSpin.SDK package version to 6.0.1
+- Merge pull request #123 from scyto/dev
+- Downgrade expected PulseAudio disconnect logs from warning to debug
+- Handle all SDK pipeline states instead of logging warnings
+- Suppress noisy SDK mDNS errors and improve connection failure logging
+- Log mDNS discovery failures as warnings instead of errors
+- Serve web UI before any service initialization and speed up reconnection
+- Defer startup orchestration until Kestrel is listening
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
