@@ -1211,6 +1211,9 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         // 4. Broadcast status update to all clients
         _ = BroadcastStatusAsync();
 
+        // 5. Persist volume to config so it survives restarts
+        _config.UpdatePlayerField(name, cfg => cfg.Volume = volume, save: true);
+
         return Task.FromResult(true);
     }
 
@@ -2063,6 +2066,9 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
+
+                // Persist volume to config so it survives restarts
+                _config.UpdatePlayerField(name, cfg => cfg.Volume = serverVolume, save: true);
             }
 
             // Handle mute state from server
