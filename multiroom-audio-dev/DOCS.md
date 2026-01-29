@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-ae089eb
+## Development Build: sha-6eca5ea
 
 **Current Dev Build Changes** (recent)
 
+- Add latency lock-in to reduce sync corrections from PulseAudio jitter
 - Expose HAOS add-on options as environment variables
 - Update SDK to 6.1.1 and fix scheduled start timing issue
 - Merge pull request #125 from scyto/feature/handle-all-pipeline-states
@@ -14,7 +15,6 @@
 - Downgrade expected PulseAudio disconnect logs from warning to debug
 - Handle all SDK pipeline states instead of logging warnings
 - Suppress noisy SDK mDNS errors and improve connection failure logging
-- Log mDNS discovery failures as warnings instead of errors
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
