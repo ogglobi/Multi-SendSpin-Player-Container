@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-fb07873
+## Development Build: sha-1b65f21
 
 **Current Dev Build Changes** (recent)
 
+- Add anti-oscillation debounce to sync correction
 - Update stats display to match 15ms correction threshold
 - Add latency lock-in to reduce sync corrections from PulseAudio jitter
 - Expose HAOS add-on options as environment variables
@@ -14,7 +15,6 @@
 - Update SendSpin.SDK package version to 6.0.1
 - Merge pull request #123 from scyto/dev
 - Downgrade expected PulseAudio disconnect logs from warning to debug
-- Handle all SDK pipeline states instead of logging warnings
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
