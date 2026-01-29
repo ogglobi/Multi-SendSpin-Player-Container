@@ -57,13 +57,15 @@ public class PulseAudioPlayer : IAudioPlayer
 
     /// <summary>
     /// Target buffer size in milliseconds. PulseAudio will request ~this much audio.
+    /// Increased from 50ms to 100ms for better tolerance of HAOS VM scheduling jitter.
     /// </summary>
-    private const int BufferMs = 50;
+    private const int BufferMs = 100;
 
     /// <summary>
     /// Initial latency estimate before real measurements are available.
+    /// Should be slightly higher than BufferMs to account for PA internal processing.
     /// </summary>
-    private const int InitialLatencyEstimateMs = 70;
+    private const int InitialLatencyEstimateMs = 120;
 
     /// <summary>
     /// Frames to request per write. At 48kHz, 1024 frames = ~21ms.

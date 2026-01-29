@@ -58,8 +58,8 @@ namespace MultiRoomAudio.Audio;
 ///     Positive error means playback is behind; negative means it's ahead.
 ///   </description></item>
 ///   <item><description>
-///     If error is within the deadband (+/- 5ms), no correction is applied. This prevents
-///     unnecessary processing when sync is acceptable.
+///     Uses hysteresis to prevent oscillation: enters correction mode when error exceeds 15ms,
+///     exits when error drops below 3ms. This prevents rapid switching between drop/insert.
 ///   </description></item>
 ///   <item><description>
 ///     Beyond the deadband, we apply correction by dropping or inserting frames:
@@ -69,8 +69,8 @@ namespace MultiRoomAudio.Audio;
 ///     </list>
 ///   </description></item>
 ///   <item><description>
-///     Correction rate is proportional to error magnitude. Larger errors trigger more
-///     frequent corrections (every 10-500 frames depending on error size).
+///     Correction rate matches the SDK's TimedAudioBuffer.UpdateCorrectionRate() formula:
+///     larger errors trigger more frequent corrections, capped at 4% of sample rate.
 ///   </description></item>
 ///   <item><description>
 ///     To minimize audible artifacts, corrections use linear interpolation:
@@ -103,12 +103,20 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     private readonly int _channels;
     private readonly int _sampleRate;
 
-    // Correction threshold - within 5ms is acceptable, beyond that we correct
-    private const long CorrectionThresholdMicroseconds = 5_000;  // 5ms deadband
+    // Correction thresholds with hysteresis to prevent oscillation.
+    // Entry threshold matches SDK Tier 3 boundary (15ms) - below this the CLI uses smooth rate
+    // adjustment which is imperceptible. We don't have rate adjustment, so we avoid correcting
+    // small errors entirely since frame drop/insert is audible.
+    private const long EntryThresholdMicroseconds = 15_000;  // 15ms - start correcting
+    private const long ExitThresholdMicroseconds = 3_000;     // 3ms - stop correcting
 
-    // Correction rate limits (frames between corrections)
-    private const int MinCorrectionInterval = 10;   // Most aggressive: correct every 10 frames
-    private const int MaxCorrectionInterval = 500;  // Most gentle: correct every 500 frames
+    // Correction rate constants matching SDK's TimedAudioBuffer.UpdateCorrectionRate()
+    private const double CorrectionTargetSeconds = 2.0;  // Time to eliminate error (CLI default)
+    private const double MaxSpeedCorrection = 0.04;      // 4% max correction rate (CLI default)
+
+    // State machine for correction mode - prevents oscillation between drop/insert
+    private enum CorrectionMode { Idle, Dropping, Inserting }
+    private CorrectionMode _currentMode = CorrectionMode.Idle;
 
     // Frame tracking for corrections
     private int _framesSinceLastCorrection;
@@ -117,6 +125,10 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     // Debug logging rate limiter
     private long _lastDebugLogTime;
     private const long DebugLogIntervalMicroseconds = 1_000_000; // 1 second
+
+    // Overrun check rate limiter - avoid GetStats() lock acquisition in audio hot path
+    private long _lastOverrunCheckTime;
+    private const long OverrunCheckIntervalMicroseconds = 1_000_000; // 1 second
 
     // Diagnostic counters for tracking buffer behavior
     private long _totalReads;
@@ -270,7 +282,12 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         }
 
         // Check for overruns (SDK dropping samples due to buffer full)
-        CheckForOverruns();
+        // Rate-limited to avoid GetStats() lock acquisition in audio hot path
+        if (currentTime - _lastOverrunCheckTime >= OverrunCheckIntervalMicroseconds)
+        {
+            _lastOverrunCheckTime = currentTime;
+            CheckForOverruns();
+        }
 
         // Always return requested count to keep audio output happy
         return count;
@@ -278,27 +295,35 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
 
     /// <summary>
     /// Calculates the correction interval based on sync error magnitude.
-    /// Larger errors result in more frequent corrections.
+    /// Uses the same formula as SDK's TimedAudioBuffer.UpdateCorrectionRate() for consistency.
     /// </summary>
     /// <param name="absErrorMicroseconds">Absolute sync error in microseconds.</param>
     /// <returns>Number of frames between corrections.</returns>
-    private static int CalculateCorrectionInterval(long absErrorMicroseconds)
+    private int CalculateCorrectionInterval(long absErrorMicroseconds)
     {
-        // Formula: interval = 500000 / absError
-        // At 10ms (10000μs): 500000/10000 = 50 frames
-        // At 50ms (50000μs): 500000/50000 = 10 frames
-        // At 5ms (5000μs): 500000/5000 = 100 frames
-        if (absErrorMicroseconds <= 0)
+        // Match SDK's UpdateCorrectionRate() calculation:
+        // 1. Convert error to frames: framesError = absError * sampleRate / 1_000_000
+        // 2. Calculate corrections per second to eliminate error in CorrectionTargetSeconds
+        // 3. Cap at MaxSpeedCorrection * sampleRate
+        // 4. Convert to interval: sampleRate / correctionsPerSec
+        // 5. Minimum interval = channels * 10 (matches SDK)
+        var framesError = absErrorMicroseconds * _sampleRate / 1_000_000.0;
+        var desiredCorrectionsPerSec = framesError / CorrectionTargetSeconds;
+        var maxCorrectionsPerSec = (double)_sampleRate * MaxSpeedCorrection;
+        var actualCorrectionsPerSec = Math.Min(desiredCorrectionsPerSec, maxCorrectionsPerSec);
+
+        if (actualCorrectionsPerSec <= 0)
         {
-            return MaxCorrectionInterval;
+            return 500; // Very gentle correction
         }
 
-        var interval = (int)(500_000 / absErrorMicroseconds);
-        return Math.Clamp(interval, MinCorrectionInterval, MaxCorrectionInterval);
+        var interval = (int)((double)_sampleRate / actualCorrectionsPerSec);
+        return Math.Max(interval, _channels * 10);  // Min interval matches SDK
     }
 
     /// <summary>
     /// Applies sync correction with interpolation to minimize audible artifacts.
+    /// Uses a hysteresis state machine to prevent oscillation between dropping and inserting.
     /// Uses 3-point weighted interpolation when sufficient lookahead is available in the input buffer,
     /// falling back to 2-point linear interpolation otherwise.
     /// </summary>
@@ -309,10 +334,42 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         var syncError = _buffer.SmoothedSyncErrorMicroseconds;
         var absError = Math.Abs((long)syncError);
 
-        // No correction needed if within deadband
-        if (absError < CorrectionThresholdMicroseconds)
+        // Update state machine with hysteresis to prevent oscillation.
+        // Transitions: Idle→Dropping, Idle→Inserting, Dropping→Idle, Inserting→Idle
+        // Direct Dropping↔Inserting transitions are NOT allowed (must go through Idle)
+        switch (_currentMode)
         {
-            // Just copy input to output
+            case CorrectionMode.Idle:
+                if (syncError > EntryThresholdMicroseconds)
+                {
+                    _currentMode = CorrectionMode.Dropping;
+                }
+                else if (syncError < -EntryThresholdMicroseconds)
+                {
+                    _currentMode = CorrectionMode.Inserting;
+                }
+                break;
+
+            case CorrectionMode.Dropping:
+                // Exit to Idle when error is well within acceptable range
+                if (absError < ExitThresholdMicroseconds)
+                {
+                    _currentMode = CorrectionMode.Idle;
+                }
+                break;
+
+            case CorrectionMode.Inserting:
+                // Exit to Idle when error is well within acceptable range
+                if (absError < ExitThresholdMicroseconds)
+                {
+                    _currentMode = CorrectionMode.Idle;
+                }
+                break;
+        }
+
+        // If in Idle mode, just copy input to output (no correction)
+        if (_currentMode == CorrectionMode.Idle)
+        {
             var toCopy = Math.Min(inputCount, output.Length);
             input.AsSpan(0, toCopy).CopyTo(output);
 
@@ -327,8 +384,6 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
 
         // Calculate correction rate based on error magnitude
         var correctionInterval = CalculateCorrectionInterval(absError);
-        var shouldDrop = syncError > 0;  // Positive = behind, need to drop
-        var shouldInsert = syncError < 0; // Negative = ahead, need to insert
 
         // Process frame by frame
         var inputPos = 0;
@@ -342,7 +397,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
             _framesSinceLastCorrection++;
 
             // Check if we should DROP a frame (read two, output one interpolated)
-            if (shouldDrop && _framesSinceLastCorrection >= correctionInterval)
+            if (_currentMode == CorrectionMode.Dropping && _framesSinceLastCorrection >= correctionInterval)
             {
                 _framesSinceLastCorrection = 0;
 
@@ -387,7 +442,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
             }
 
             // Check if we should INSERT a frame (output interpolated without consuming)
-            if (shouldInsert && _framesSinceLastCorrection >= correctionInterval)
+            if (_currentMode == CorrectionMode.Inserting && _framesSinceLastCorrection >= correctionInterval)
             {
                 _framesSinceLastCorrection = 0;
 
@@ -568,6 +623,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         _lastOutputFrame = null;
         _totalDropped = 0;
         _totalInserted = 0;
+        _currentMode = CorrectionMode.Idle;
         _hasLoggedOverrunStart = false;  // Allow ERROR level logging on next overrun
     }
 }
