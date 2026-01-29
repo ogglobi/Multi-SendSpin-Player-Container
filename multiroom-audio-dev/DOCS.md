@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-f66d0ef
+## Development Build: sha-fad0505
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #21 from scyto/feature/fix-haos-audio-crackling
+- Add diagnostic logging for abnormal PA latency
+- Align SyncToleranceMs with entry threshold (5→15ms)
+- Fix sync correction overshoot by detecting sign flip
+- Fix Stats for Nerds threshold display to show actual 15ms entry threshold
 - Merge pull request #20 from scyto/feature/fix-haos-audio-crackling
 - custom repository for haos
 - Fix audio crackling on HAOS by reducing hot path overhead and adding correction hysteresis
 - Merge pull request #125 from scyto/feature/handle-all-pipeline-states
 - Merge pull request #124 from chrisuthe/feature/graceful-start-stop-and-disconnects
-- Update SendSpin.SDK package version to 6.0.1
-- Merge pull request #123 from scyto/dev
-- Downgrade expected PulseAudio disconnect logs from warning to debug
-- Handle all SDK pipeline states instead of logging warnings
-- Suppress noisy SDK mDNS errors and improve connection failure logging
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
