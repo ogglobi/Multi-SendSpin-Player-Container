@@ -21,10 +21,17 @@ usb: true
 devices:
   - "/dev/snd:/dev/snd"
 
+# Full system access (matching squeezelite for debugging)
+# TODO: Remove once we identify minimum required permissions
+full_access: true
+
 # Permissions for audio processing
 privileged:
   - SYS_NICE
-apparmor: true
+  - SYS_ADMIN   # Broad system admin (squeezelite uses this)
+  - SYS_PTRACE  # Process tracing (squeezelite uses this)
+  - IPC_LOCK    # Lock memory pages - prevents swap, critical for RT audio
+apparmor: false  # Disabled with full_access
 
 # Storage mapping
 map:
