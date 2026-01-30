@@ -104,12 +104,11 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     private readonly int _sampleRate;
 
     // Correction thresholds with hysteresis to prevent oscillation.
-    // Entry threshold set high (50ms) to tolerate VM jitter - on Proxmox VMs,
-    // pa_stream_get_latency() returns noisy values (±20-50ms). Lower thresholds
-    // cause oscillating corrections that produce audible warbling.
-    // Exit threshold wider (10ms) for stability once corrections stop.
-    private const long EntryThresholdMicroseconds = 50_000;  // 50ms - only correct large drift
-    private const long ExitThresholdMicroseconds = 10_000;   // 10ms - wider exit band
+    // Entry threshold controls max sync drift before correction kicks in.
+    // Exit threshold controls when correction stops (must reach this to exit).
+    // Latency lock-in helps by freezing PA latency measurement, reducing jitter.
+    private const long EntryThresholdMicroseconds = 30_000;  // 30ms - tighter sync for multi-room
+    private const long ExitThresholdMicroseconds = 8_000;    // 8ms exit band
 
     // Correction rate constants matching SDK's TimedAudioBuffer.UpdateCorrectionRate()
     private const double CorrectionTargetSeconds = 2.0;  // Time to eliminate error (CLI default)
