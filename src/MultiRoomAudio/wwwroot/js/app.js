@@ -1806,7 +1806,11 @@ function renderStatsPanel(stats) {
                     <span class="stats-label">Mode</span>
                     <span id="stats-correction-mode" class="stats-value"></span>
                 </div>
-                <div class="stats-row">
+                <div class="stats-row" id="stats-ratio-row" style="display: none;">
+                    <span class="stats-label">Resample Ratio</span>
+                    <span id="stats-resample-ratio" class="stats-value info"></span>
+                </div>
+                <div class="stats-row" id="stats-threshold-row">
                     <span class="stats-label">Threshold</span>
                     <span id="stats-threshold" class="stats-value"></span>
                 </div>
@@ -1950,8 +1954,22 @@ function renderStatsPanel(stats) {
         stats.buffer.overruns > 0 ? 'warning' : 'good');
 
     // Sync Correction
+    const isAdaptive = stats.correction.mode === 'Adaptive';
     updateStatsValueWithClass('stats-correction-mode', stats.correction.mode, getCorrectionModeClass(stats.correction.mode));
-    updateStatsValue('stats-threshold', `${stats.correction.thresholdMs}ms`);
+
+    // Show resample ratio for Adaptive mode, hide threshold
+    const ratioRow = document.getElementById('stats-ratio-row');
+    const thresholdRow = document.getElementById('stats-threshold-row');
+    if (isAdaptive && stats.correction.resampleRatio != null) {
+        ratioRow.style.display = '';
+        thresholdRow.style.display = 'none';
+        updateStatsValue('stats-resample-ratio', formatResampleRatio(stats.correction.resampleRatio));
+    } else {
+        ratioRow.style.display = 'none';
+        thresholdRow.style.display = '';
+        updateStatsValue('stats-threshold', `${stats.correction.thresholdMs}ms`);
+    }
+
     updateStatsValueWithClass('stats-frames-dropped', formatSampleCount(stats.correction.framesDropped),
         stats.correction.framesDropped > 0 ? 'warning' : '');
     updateStatsValueWithClass('stats-frames-inserted', formatSampleCount(stats.correction.framesInserted),
@@ -2036,6 +2054,7 @@ function getSyncErrorClass(errorMs) {
 function getCorrectionModeClass(mode) {
     switch (mode) {
         case 'None': return 'good';
+        case 'Adaptive': return 'info';
         case 'Dropping': return 'warning';
         case 'Inserting': return 'warning';
         default: return '';
@@ -2053,6 +2072,14 @@ function getBufferStateClass(state) {
 function formatUs(us) {
     if (Math.abs(us) < 1000) return us.toFixed(0) + 'us';
     return (us / 1000).toFixed(2) + 'ms';
+}
+
+function formatResampleRatio(ratio) {
+    // Show the ratio with ppm deviation from 1.0
+    // E.g., 1.0005 -> "1.0005 (+500 ppm)" or 0.9995 -> "0.9995 (-500 ppm)"
+    const ppm = (ratio - 1.0) * 1_000_000;
+    const ppmStr = ppm >= 0 ? `+${ppm.toFixed(0)}` : ppm.toFixed(0);
+    return `${ratio.toFixed(6)} (${ppmStr} ppm)`;
 }
 
 // ============================================

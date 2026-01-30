@@ -144,6 +144,15 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     };
 
     /// <summary>
+    /// Whether to use adaptive resampling for clock drift compensation.
+    /// Set USE_ADAPTIVE_RESAMPLING=true to enable libsamplerate-based adaptive resampling
+    /// which spreads corrections across every sample for inaudible adjustment.
+    /// Default is false (use frame drop/insert correction).
+    /// </summary>
+    private static readonly bool UseAdaptiveResampling =
+        string.Equals(Environment.GetEnvironmentVariable("USE_ADAPTIVE_RESAMPLING"), "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Timeout for mDNS server discovery.
     /// </summary>
     private static readonly TimeSpan MdnsDiscoveryTimeout = TimeSpan.FromSeconds(5);
@@ -402,6 +411,20 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         _triggerService = triggerService;
         _serverDiscovery = new MdnsServerDiscovery(
             loggerFactory.CreateLogger<MdnsServerDiscovery>());
+
+        // Log which sync correction mode is in use
+        if (UseAdaptiveResampling)
+        {
+            _logger.LogInformation(
+                "Sync correction mode: ADAPTIVE RESAMPLING (libsamplerate). " +
+                "Corrections spread across every sample for inaudible adjustment.");
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Sync correction mode: Frame drop/insert with interpolation. " +
+                "Set USE_ADAPTIVE_RESAMPLING=true to use adaptive resampling.");
+        }
     }
 
     /// <summary>
@@ -843,6 +866,17 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             playerFactory: () => player,
             sourceFactory: (buffer, timeFunc) =>
             {
+                // Use adaptive resampling if enabled via USE_ADAPTIVE_RESAMPLING env var.
+                // Adaptive resampling spreads corrections across every sample for inaudible
+                // adjustment, which works better on VMs with timing jitter.
+                if (UseAdaptiveResampling)
+                {
+                    return new AdaptiveResampledAudioSource(
+                        buffer,
+                        timeFunc,
+                        _loggerFactory.CreateLogger<AdaptiveResampledAudioSource>());
+                }
+
                 return new BufferedAudioSampleSource(
                     buffer,
                     timeFunc,
