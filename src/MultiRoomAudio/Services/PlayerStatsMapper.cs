@@ -18,9 +18,9 @@ internal static class PlayerStatsMapper
 {
     /// <summary>
     /// Sync error tolerance in milliseconds. Errors below this are considered "in sync".
-    /// Matches the entry threshold in BufferedAudioSampleSource (30ms).
+    /// Matches the entry threshold in BufferedAudioSampleSource (35ms).
     /// </summary>
-    private const double SyncToleranceMs = 30.0;
+    private const double SyncToleranceMs = 35.0;
 
     /// <summary>
     /// Builds a complete stats response from pipeline and clock synchronizer data.
@@ -185,7 +185,7 @@ internal static class PlayerStatsMapper
             Mode: correctionMode,
             FramesDropped: framesDropped,
             FramesInserted: framesInserted,
-            ThresholdMs: 30  // Entry threshold with hysteresis (exits at 8ms)
+            ThresholdMs: 35  // Entry threshold with hysteresis (exits at 10ms)
         );
     }
 

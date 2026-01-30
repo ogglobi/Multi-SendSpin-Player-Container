@@ -107,8 +107,8 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     // Entry threshold controls max sync drift before correction kicks in.
     // Exit threshold controls when correction stops (must reach this to exit).
     // Latency lock-in helps by freezing PA latency measurement, reducing jitter.
-    private const long EntryThresholdMicroseconds = 30_000;  // 30ms - tighter sync for multi-room
-    private const long ExitThresholdMicroseconds = 8_000;    // 8ms exit band
+    private const long EntryThresholdMicroseconds = 35_000;  // 35ms - balance between sync and VM jitter tolerance
+    private const long ExitThresholdMicroseconds = 10_000;   // 10ms exit band
 
     // Correction rate constants matching SDK's TimedAudioBuffer.UpdateCorrectionRate()
     private const double CorrectionTargetSeconds = 2.0;  // Time to eliminate error (CLI default)
