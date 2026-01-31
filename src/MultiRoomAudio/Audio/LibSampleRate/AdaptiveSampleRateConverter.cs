@@ -25,31 +25,30 @@ public sealed class AdaptiveSampleRateConverter : IDisposable
     /// <summary>
     /// Time constant for error correction in seconds.
     /// Higher values = smoother corrections but slower convergence.
-    /// 2.0 seconds is a good balance for audio sync.
+    /// 10.0 seconds provides stability on jittery systems like PulseAudio.
     /// </summary>
-    private const double CorrectionTimeSeconds = 2.0;
+    private const double CorrectionTimeSeconds = 10.0;
 
     /// <summary>
-    /// Maximum deviation from 1.0 ratio (±1% = 10,000 ppm).
+    /// Maximum deviation from 1.0 ratio (±0.5% = 5,000 ppm).
     /// This limits how fast we can speed up or slow down.
-    /// Real clock drift is typically 1-100 ppm, so 1% is very generous.
+    /// Real clock drift is typically 1-100 ppm, so 0.5% is generous.
     /// </summary>
-    private const double MaxRatioDeviation = 0.01;
+    private const double MaxRatioDeviation = 0.005;
 
     /// <summary>
     /// Low-pass filter coefficient for smoothing ratio changes.
-    /// Higher values (0.1-0.5) = more responsive but potentially jittery.
-    /// Lower values (0.01-0.05) = smoother but slower to react.
-    /// 0.05 provides good smoothing while still tracking drift.
+    /// Lower values provide stronger damping to prevent oscillation.
+    /// 0.02 takes ~50 calls (~1s) to converge, providing good stability.
     /// </summary>
-    private const double RatioSmoothingFactor = 0.05;
+    private const double RatioSmoothingFactor = 0.02;
 
     /// <summary>
     /// Deadband in microseconds - don't adjust ratio for very small errors.
     /// This prevents over-correction for measurement noise.
-    /// 1000us = 1ms deadband.
+    /// 5000us = 5ms deadband - ignores typical PulseAudio jitter (1-3ms).
     /// </summary>
-    private const long DeadbandMicroseconds = 1000;
+    private const long DeadbandMicroseconds = 5000;
 
     // Current state
     private double _currentRatio = 1.0;
