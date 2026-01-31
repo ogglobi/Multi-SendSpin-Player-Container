@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-67c8995
+## Development Build: sha-6246610
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #133 from scyto/fix-card-index-mismatch-clean
+- Fix card index mismatch causing wrong device names in UI
 - Merge pull request #130 from scyto/ui-cleanup
 - Add Sink:/Device: prefix to device dropdown
 - Fix Codex review issues for device dropdown handling
@@ -13,8 +15,6 @@
 - Add anti-oscillation debounce to sync correction
 - Update stats display to match 15ms correction threshold
 - Add latency lock-in to reduce sync corrections from PulseAudio jitter
-- Expose HAOS add-on options as environment variables
-- Update SDK to 6.1.1 and fix scheduled start timing issue
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
