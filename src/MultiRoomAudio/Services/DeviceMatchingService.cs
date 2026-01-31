@@ -14,6 +14,13 @@ public class DeviceMatchingService
     private readonly BackendFactory _backend;
     private readonly CustomSinksService _customSinks;
 
+    // Device enumeration cache to avoid running pactl on every page load
+    // This prevents audio underflows when grouped players are active
+    private List<AudioDevice>? _cachedDevices;
+    private DateTime _cacheExpiry = DateTime.MinValue;
+    private readonly object _cacheLock = new();
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(10);
+
     public DeviceMatchingService(
         ILogger<DeviceMatchingService> logger,
         ConfigurationService config,
@@ -323,45 +330,78 @@ public class DeviceMatchingService
     /// <summary>
     /// Get all output devices enriched with their aliases and hidden status.
     /// Includes both hardware devices and custom sinks.
+    /// Results are cached for 10 seconds to avoid running pactl on every page load,
+    /// which can cause audio underflows when grouped players are active.
     /// Custom sinks take precedence over raw hardware devices with the same ID to avoid duplicates.
     /// </summary>
     public IEnumerable<AudioDevice> GetEnrichedDevices()
     {
-        // Get custom sinks first to build exclusion set
-        var customSinksResponse = _customSinks.GetAllSinks();
-        var loadedCustomSinks = customSinksResponse.Sinks
-            .Where(sink => sink.State == CustomSinkState.Loaded && !string.IsNullOrEmpty(sink.PulseAudioSinkName))
-            .ToList();
+        lock (_cacheLock)
+        {
+            var now = DateTime.UtcNow;
+            if (_cachedDevices != null && now < _cacheExpiry)
+            {
+                _logger.LogDebug("Returning cached device list ({Count} devices)", _cachedDevices.Count);
+                return _cachedDevices;
+            }
 
-        // Build set of PulseAudio sink names that belong to custom sinks
-        var customSinkIds = loadedCustomSinks
-            .Select(sink => sink.PulseAudioSinkName!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // Cache miss - enumerate devices
+            _logger.LogDebug("Device cache miss, enumerating devices via pactl");
 
-        // Get hardware devices, excluding any that are custom sinks (to avoid duplicates)
-        var hardwareDevices = _backend.GetOutputDevices()
-            .Where(device => !customSinkIds.Contains(device.Id))
-            .Select(EnrichWithConfig);
+            // Get custom sinks first to build exclusion set
+            var customSinksResponse = _customSinks.GetAllSinks();
+            var loadedCustomSinks = customSinksResponse.Sinks
+                .Where(sink => sink.State == CustomSinkState.Loaded && !string.IsNullOrEmpty(sink.PulseAudioSinkName))
+                .ToList();
 
-        // Convert custom sinks to AudioDevice format
-        var customSinkDevices = loadedCustomSinks
-            .Select(sink => new AudioDevice(
-                Index: -1,  // Custom sinks don't have an index
-                Id: sink.PulseAudioSinkName!,
-                Name: sink.Name,
-                MaxChannels: sink.Channels ?? 2,  // Default to stereo if not specified
-                DefaultSampleRate: 48000,  // Standard sample rate for custom sinks
-                DefaultLowLatencyMs: 0,
-                DefaultHighLatencyMs: 0,
-                IsDefault: false,
-                Capabilities: null,
-                Identifiers: null,
-                Alias: sink.Description,  // Use description as alias (null if not set)
-                Hidden: false,
-                SinkType: sink.Type.ToString()  // "Combine" or "Remap"
-            ));
+            // Build set of PulseAudio sink names that belong to custom sinks
+            var customSinkIds = loadedCustomSinks
+                .Select(sink => sink.PulseAudioSinkName!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Combine and return: hardware devices first, then custom sinks
-        return hardwareDevices.Concat(customSinkDevices);
+            // Get hardware devices, excluding any that are custom sinks (to avoid duplicates)
+            var hardwareDevices = _backend.GetOutputDevices()
+                .Where(device => !customSinkIds.Contains(device.Id))
+                .Select(EnrichWithConfig);
+
+            // Convert custom sinks to AudioDevice format
+            var customSinkDevices = loadedCustomSinks
+                .Select(sink => new AudioDevice(
+                    Index: -1,  // Custom sinks don't have an index
+                    Id: sink.PulseAudioSinkName!,
+                    Name: sink.Name,
+                    MaxChannels: sink.Channels ?? 2,  // Default to stereo if not specified
+                    DefaultSampleRate: 48000,  // Standard sample rate for custom sinks
+                    DefaultLowLatencyMs: 0,
+                    DefaultHighLatencyMs: 0,
+                    IsDefault: false,
+                    Capabilities: null,
+                    Identifiers: null,
+                    Alias: sink.Description,  // Use description as alias (null if not set)
+                    Hidden: false,
+                    SinkType: sink.Type.ToString()  // "Combine" or "Remap"
+                ));
+
+            // Combine and cache: hardware devices first, then custom sinks
+            _cachedDevices = hardwareDevices.Concat(customSinkDevices).ToList();
+            _cacheExpiry = now + CacheTtl;
+
+            return _cachedDevices;
+        }
+    }
+
+    /// <summary>
+    /// Invalidates the device cache, forcing the next GetEnrichedDevices call
+    /// to re-enumerate devices via pactl.
+    /// Call this when devices might have changed (refresh button, sink creation/deletion).
+    /// </summary>
+    public void InvalidateDeviceCache()
+    {
+        lock (_cacheLock)
+        {
+            _cachedDevices = null;
+            _cacheExpiry = DateTime.MinValue;
+            _logger.LogDebug("Device cache invalidated");
+        }
     }
 }
