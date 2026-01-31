@@ -755,7 +755,7 @@ async function refreshFormats() {
     }
 }
 
-async function refreshDevices() {
+async function refreshDevices(currentDeviceId = null) {
     try {
         // Fetch devices, cards, and sinks in parallel
         const [devicesResponse, cardsResponse, sinksResponse] = await Promise.all([
@@ -798,7 +798,10 @@ async function refreshDevices() {
         // Filter devices for player creation:
         // - Exclude devices with hidden = true (manually hidden via wizard)
         // - Exclude devices that are remap masters (auto-hidden)
+        // - But always include currentDeviceId if provided (for edit mode)
         const visibleDevices = devices.filter(device => {
+            // Always include current device when editing
+            if (currentDeviceId && device.id === currentDeviceId) return true;
             // Filter out manually hidden devices
             if (device.hidden) return false;
             // Filter out remap master sinks
@@ -825,6 +828,11 @@ async function refreshDevices() {
                     displayName = device.alias ? `${cardName} (${device.alias})` : cardName;
                 }
                 if (device.isDefault) displayName += ' (default)';
+                // Mark hidden/remap devices when shown for edit
+                if (currentDeviceId && device.id === currentDeviceId) {
+                    if (device.hidden) displayName += ' (hidden)';
+                    else if (remapMasterSinks.has(device.id)) displayName += ' (remap master)';
+                }
                 option.textContent = displayName;
                 select.appendChild(option);
             });
@@ -889,8 +897,8 @@ async function openEditPlayerModal(playerName) {
         document.getElementById('initialVolume').value = player.startupVolume;
         document.getElementById('initialVolumeValue').textContent = player.startupVolume + '%';
 
-        // Set device dropdown
-        await refreshDevices();
+        // Set device dropdown (pass current device to include it even if hidden/remap master)
+        await refreshDevices(player.device);
         const audioDeviceSelect = document.getElementById('audioDevice');
         if (player.device) {
             audioDeviceSelect.value = player.device;
@@ -3370,6 +3378,9 @@ async function toggleDeviceHidden(deviceId, hidden, cardIndex) {
         if (device) {
             device.hidden = hidden;
         }
+
+        // Refresh global devices array so sink/player creation modals reflect the change
+        await refreshDevices();
 
         showAlert(hidden ? 'Device hidden' : 'Device visible', 'success', 2000);
     } catch (error) {
