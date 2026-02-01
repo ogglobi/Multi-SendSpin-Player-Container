@@ -1206,7 +1206,9 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                     DeviceCapabilities: null,
                     IsPendingReconnection: isPendingReconnection,
                     ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
-                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
+                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+                    AdvertisedFormat: config.AdvertisedFormat,
+                    CurrentTrack: null
                 ));
             }
         }
@@ -2279,7 +2281,26 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             IsPendingReconnection: isPendingReconnection,
             ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
             NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
-            AdvertisedFormat: context.Config.AdvertisedFormat
+            AdvertisedFormat: context.Config.AdvertisedFormat,
+            CurrentTrack: GetTrackInfo(context.Client.CurrentGroup?.Metadata)
+        );
+    }
+
+    /// <summary>
+    /// Converts SDK TrackMetadata to our TrackInfo model.
+    /// </summary>
+    private static TrackInfo? GetTrackInfo(Sendspin.SDK.Models.TrackMetadata? metadata)
+    {
+        if (metadata == null || string.IsNullOrEmpty(metadata.Title))
+            return null;
+
+        return new TrackInfo(
+            Title: metadata.Title,
+            Artist: metadata.Artist,
+            Album: metadata.Album,
+            ArtworkUrl: metadata.ArtworkUrl,
+            DurationSeconds: metadata.Duration,
+            PositionSeconds: metadata.Position
         );
     }
 

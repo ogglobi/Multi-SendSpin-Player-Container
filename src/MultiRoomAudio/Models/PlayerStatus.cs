@@ -44,7 +44,8 @@ public record PlayerResponse(
     bool IsPendingReconnection = false,
     int? ReconnectionAttempts = null,
     DateTime? NextReconnectionAttempt = null,
-    string? AdvertisedFormat = null
+    string? AdvertisedFormat = null,
+    TrackInfo? CurrentTrack = null
 );
 
 /// <summary>
@@ -56,6 +57,18 @@ public record PlayerMetrics(
     long SamplesPlayed,
     long Underruns,
     long Overruns
+);
+
+/// <summary>
+/// Current track information from Music Assistant.
+/// </summary>
+public record TrackInfo(
+    string? Title,
+    string? Artist,
+    string? Album,
+    string? ArtworkUrl,
+    double? DurationSeconds,
+    double? PositionSeconds
 );
 
 /// <summary>

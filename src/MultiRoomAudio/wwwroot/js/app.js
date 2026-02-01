@@ -1393,6 +1393,19 @@ async function showPlayerStats(name) {
                 </table>
             </div>
         </div>
+        ${player.currentTrack?.title ? `
+        <div class="now-playing-section mt-3 p-3 bg-dark rounded">
+            <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-music me-1"></i>Now Playing</h6>
+            <div class="d-flex align-items-center">
+                ${player.currentTrack.artworkUrl ? `<img src="${escapeHtml(player.currentTrack.artworkUrl)}" class="rounded me-3" style="width: 60px; height: 60px; object-fit: cover;" alt="Album art">` : ''}
+                <div>
+                    <div class="fw-semibold">${escapeHtml(player.currentTrack.title)}</div>
+                    ${player.currentTrack.artist ? `<div class="text-muted small">${escapeHtml(player.currentTrack.artist)}</div>` : ''}
+                    ${player.currentTrack.album ? `<div class="text-muted small">${escapeHtml(player.currentTrack.album)}</div>` : ''}
+                </div>
+            </div>
+        </div>
+        ` : ''}
         <h6 class="text-muted text-uppercase small mt-3">Delay Offset</h6>
         <p class="text-muted small mb-2">
             <i class="fas fa-info-circle me-1"></i>
