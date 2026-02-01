@@ -266,13 +266,22 @@ public static partial class PulseAudioCardEnumerator
     }
 
     /// <summary>
-    /// Gets all sink names belonging to a specific card.
+    /// Gets all sink names belonging to a specific card by matching device identifiers.
+    /// Uses name-based matching instead of index-based matching for reliability.
     /// </summary>
-    /// <param name="cardIndex">The card index to find sinks for.</param>
+    /// <param name="cardName">The card name (e.g., "alsa_card.pci-0000_01_00.0").</param>
     /// <returns>List of sink names belonging to the card.</returns>
-    public static List<string> GetSinksByCard(int cardIndex)
+    public static List<string> GetSinksByCard(string cardName)
     {
         var sinks = new List<string>();
+
+        // Extract identifier from card name (e.g., "alsa_card.pci-0000_01_00.0" → "pci-0000_01_00.0")
+        var identifier = cardName.Replace("alsa_card.", "");
+        if (string.IsNullOrEmpty(identifier))
+        {
+            _logger?.LogWarning("Could not extract identifier from card name '{CardName}'", cardName);
+            return sinks;
+        }
 
         try
         {
@@ -288,28 +297,21 @@ public static partial class PulseAudioCardEnumerator
                 if (!nameMatch.Success)
                     continue;
 
-                var cardMatch = Regex.Match(block, @"alsa\.card\s*=\s*""(\d+)""");
-                if (!cardMatch.Success)
-                {
-                    cardMatch = Regex.Match(block, @"device\.card\s*=\s*""(\d+)""");
-                }
+                var sinkName = nameMatch.Groups[1].Value.Trim();
 
-                if (!cardMatch.Success)
-                    continue;
-
-                if (int.TryParse(cardMatch.Groups[1].Value, out var sinkCard) && sinkCard == cardIndex)
+                // Match by identifier in sink name (e.g., "alsa_output.pci-0000_01_00.0.analog-stereo")
+                if (sinkName.Contains(identifier, StringComparison.OrdinalIgnoreCase))
                 {
-                    var sinkName = nameMatch.Groups[1].Value.Trim();
                     sinks.Add(sinkName);
-                    _logger?.LogDebug("Found sink '{Sink}' belonging to card {Card}", sinkName, cardIndex);
+                    _logger?.LogDebug("Found sink '{Sink}' belonging to card '{Card}'", sinkName, cardName);
                 }
             }
 
-            _logger?.LogDebug("Found {Count} sinks for card {Card}", sinks.Count, cardIndex);
+            _logger?.LogDebug("Found {Count} sinks for card '{Card}' (identifier: {Identifier})", sinks.Count, cardName, identifier);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to enumerate sinks for card {Card}", cardIndex);
+            _logger?.LogError(ex, "Failed to enumerate sinks for card '{Card}'", cardName);
         }
 
         return sinks;

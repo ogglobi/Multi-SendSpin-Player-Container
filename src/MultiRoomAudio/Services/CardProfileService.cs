@@ -388,8 +388,8 @@ public class CardProfileService
             muted ? "muted" : "unmuted");
 
         var sinks = _environment.IsMockHardware
-            ? MockCardEnumerator.GetSinksByCard(card.Index)
-            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+            ? MockCardEnumerator.GetSinksByCard(card.Name)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Name);
         if (sinks.Count == 0)
         {
             return new CardMuteResponse(false, $"No sinks found for card '{card.Name}'.", CardOperationStatus.Error, card.Name);
@@ -503,8 +503,8 @@ public class CardProfileService
 
         // Get all sinks for this card
         var sinks = _environment.IsMockHardware
-            ? MockCardEnumerator.GetSinksByCard(card.Index)
-            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+            ? MockCardEnumerator.GetSinksByCard(card.Name)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Name);
         if (sinks.Count == 0)
         {
             return new CardMaxVolumeResponse(false, $"No sinks found for card '{card.Name}'.", card.Name);
@@ -840,8 +840,8 @@ public class CardProfileService
     private bool? GetCardMuteState(PulseAudioCard card)
     {
         var sinks = _environment.IsMockHardware
-            ? MockCardEnumerator.GetSinksByCard(card.Index)
-            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+            ? MockCardEnumerator.GetSinksByCard(card.Name)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Name);
         if (sinks.Count == 0)
         {
             return null;
@@ -883,8 +883,8 @@ public class CardProfileService
     private int? GetCardMaxVolume(PulseAudioCard card)
     {
         var sinks = _environment.IsMockHardware
-            ? MockCardEnumerator.GetSinksByCard(card.Index)
-            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+            ? MockCardEnumerator.GetSinksByCard(card.Name)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Name);
         if (sinks.Count == 0)
         {
             return null;
@@ -937,8 +937,8 @@ public class CardProfileService
 
         var desiredMuted = config?.BootMuted ?? false;
         var sinks = _environment.IsMockHardware
-            ? MockCardEnumerator.GetSinksByCard(card.Index)
-            : PulseAudioCardEnumerator.GetSinksByCard(card.Index);
+            ? MockCardEnumerator.GetSinksByCard(card.Name)
+            : PulseAudioCardEnumerator.GetSinksByCard(card.Name);
         var previousState = logBootAction ? GetCardMuteState(card) : null;
         foreach (var sinkName in sinks)
         {

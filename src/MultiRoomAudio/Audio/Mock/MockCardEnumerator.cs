@@ -133,11 +133,12 @@ public static class MockCardEnumerator
     }
 
     /// <summary>
-    /// Gets all sink names belonging to a specific card.
+    /// Gets all sink names belonging to a specific card by matching device identifiers.
     /// </summary>
-    public static List<string> GetSinksByCard(int cardIndex)
+    public static List<string> GetSinksByCard(string cardName)
     {
-        var config = GetCardConfigs().FirstOrDefault(c => c.Index == cardIndex);
+        var config = GetCardConfigs().FirstOrDefault(c =>
+            c.Name.Equals(cardName, StringComparison.OrdinalIgnoreCase));
         if (config == null)
             return new List<string>();
 
