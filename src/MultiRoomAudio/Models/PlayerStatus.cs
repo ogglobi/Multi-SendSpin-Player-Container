@@ -27,6 +27,8 @@ public record PlayerResponse(
     string? Device,
     string ClientId,
     string? ServerUrl,
+    string? ServerName,        // Friendly name from MA (e.g., "Music Assistant")
+    string? ConnectedAddress,  // IP:port we connected to (e.g., "192.168.1.50:8095")
     int Volume,
     int StartupVolume,
     bool IsMuted,
