@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-6246610
+## Development Build: sha-10c89f0
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #134 from scyto/fix-header-button-white
+- Fix header dropdown buttons turning white when active
 - Merge pull request #133 from scyto/fix-card-index-mismatch-clean
 - Fix card index mismatch causing wrong device names in UI
 - Merge pull request #130 from scyto/ui-cleanup
@@ -13,8 +15,6 @@
 - Unify device hiding and rename Sound Card to Audio Device
 - Persist volume changes to survive container restarts
 - Add anti-oscillation debounce to sync correction
-- Update stats display to match 15ms correction threshold
-- Add latency lock-in to reduce sync corrections from PulseAudio jitter
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
