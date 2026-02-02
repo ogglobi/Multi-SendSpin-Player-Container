@@ -44,6 +44,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
 ARG TARGETARCH
 WORKDIR /src
+# Copy NuGet config and local packages (for pre-release SDK versions)
+COPY nuget.config .
+COPY packages/ packages/
 COPY src/MultiRoomAudio/MultiRoomAudio.csproj MultiRoomAudio/
 RUN dotnet restore "MultiRoomAudio/MultiRoomAudio.csproj"
 COPY src/MultiRoomAudio/ MultiRoomAudio/
