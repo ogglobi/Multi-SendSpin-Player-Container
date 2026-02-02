@@ -13,6 +13,7 @@ public class DeviceMatchingService
     private readonly ConfigurationService _config;
     private readonly BackendFactory _backend;
     private readonly CustomSinksService _customSinks;
+    private readonly AlsaCapabilityService _alsaCapabilities;
 
     // Device enumeration cache to avoid running pactl on every page load
     // This prevents audio underflows when grouped players are active
@@ -25,12 +26,14 @@ public class DeviceMatchingService
         ILogger<DeviceMatchingService> logger,
         ConfigurationService config,
         BackendFactory backend,
-        CustomSinksService customSinks)
+        CustomSinksService customSinks,
+        AlsaCapabilityService alsaCapabilities)
     {
         _logger = logger;
         _config = config;
         _backend = backend;
         _customSinks = customSinks;
+        _alsaCapabilities = alsaCapabilities;
     }
 
     /// <summary>
@@ -249,7 +252,7 @@ public class DeviceMatchingService
     }
 
     /// <summary>
-    /// Enrich an AudioDevice with its alias, hidden status, and custom sink name.
+    /// Enrich an AudioDevice with its alias, hidden status, custom sink name, and capabilities.
     /// </summary>
     public AudioDevice EnrichWithConfig(AudioDevice device)
     {
@@ -276,6 +279,25 @@ public class DeviceMatchingService
                 Alias = config.Alias,
                 Hidden = config.Hidden
             };
+        }
+
+        // Enrich with ALSA capabilities if we have an ALSA card index
+        if (device.CardIndex.HasValue && device.Capabilities == null)
+        {
+            var capsWithSource = _alsaCapabilities.GetCapabilities(
+                device.CardIndex.Value,
+                device.DefaultSampleRate,
+                device.BitDepth,
+                device.MaxChannels);
+
+            if (capsWithSource != null)
+            {
+                enriched = enriched with
+                {
+                    Capabilities = capsWithSource.Capabilities,
+                    CapabilitySource = capsWithSource.Source
+                };
+            }
         }
 
         return enriched;
