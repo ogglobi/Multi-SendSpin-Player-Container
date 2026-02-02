@@ -132,7 +132,12 @@ internal static class PlayerStatsMapper
             IsDriftReliable: clockStatus.IsDriftReliable,
             MeasurementCount: clockStatus.MeasurementCount,
             OutputLatencyMs: player.OutputLatencyMs,
-            StaticDelayMs: (int)clockSync.StaticDelayMs
+            StaticDelayMs: (int)clockSync.StaticDelayMs,
+            // SDK 6.2.0 RTT tracking
+            ExpectedRttMs: clockStatus.ExpectedRttMicroseconds / 1000.0,
+            RttUncertaintyMs: clockStatus.RttUncertaintyMicroseconds / 1000.0,
+            IsRttReliable: clockStatus.IsRttReliable,
+            NetworkChangeTriggerCount: clockStatus.NetworkChangeTriggerCount
         );
     }
 

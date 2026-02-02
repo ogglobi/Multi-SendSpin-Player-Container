@@ -62,7 +62,16 @@ public record ClockSyncStats(
     bool IsDriftReliable,
     int MeasurementCount,
     int OutputLatencyMs,
-    int StaticDelayMs
+    int StaticDelayMs,
+    // SDK 6.2.0 RTT tracking fields
+    /// <summary>Learned baseline network latency in milliseconds.</summary>
+    double? ExpectedRttMs = null,
+    /// <summary>Confidence in RTT estimate (lower = more confident).</summary>
+    double? RttUncertaintyMs = null,
+    /// <summary>True when RTT tracking has converged (5+ measurements, low uncertainty).</summary>
+    bool? IsRttReliable = null,
+    /// <summary>Number of RTT-based network change detection events.</summary>
+    int? NetworkChangeTriggerCount = null
 );
 
 /// <summary>
