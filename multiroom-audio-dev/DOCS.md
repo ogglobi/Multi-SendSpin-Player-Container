@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-86ae649
+## Development Build: sha-6543f98
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #139 from scyto/upstream-player-details-refactor
+- Fix ALSA capability service to use actual channel count
+- Fix Player Details to show Sink vs Device label correctly
+- Add ALSA capability service for hardware capabilities
+- Add Now Playing track info to Player Details modal
+- Fix receiving format display to use correct API response structure
+- Refactor Player Details modal and add device capabilities display
 - Merge pull request #136 from scyto/feature/flexible-player-names-upstream
 - Allow flexible player names with international character support
 - Merge pull request #135 from scyto/upstream-fix-card-name-matching
-- Fix MockAudioBackend to use name-based card matching
-- Fix card mute by using name-based sink matching
-- Merge pull request #134 from scyto/fix-header-button-white
-- Fix header dropdown buttons turning white when active
-- Merge pull request #133 from scyto/fix-card-index-mismatch-clean
-- Fix card index mismatch causing wrong device names in UI
-- Merge pull request #130 from scyto/ui-cleanup
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
