@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <!-- Core SDK for Sendspin protocol -->
-    <PackageReference Include="Sendspin.SDK" Version="6.3.1" />
+    <PackageReference Include="Sendspin.SDK" Version="6.3.2" />
     <PackageReference Include="System.IO.Ports" Version="10.0.2" />
 
     <!-- Configuration -->
