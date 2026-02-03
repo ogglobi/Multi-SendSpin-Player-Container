@@ -11,7 +11,9 @@ public record PlayerStatsResponse(
     ClockSyncStats ClockSync,
     ThroughputStats Throughput,
     SyncCorrectionStats Correction,
-    BufferDiagnostics Diagnostics
+    BufferDiagnostics Diagnostics,
+    /// <summary>Version of the Sendspin SDK.</summary>
+    string? SdkVersion = null
 );
 
 /// <summary>

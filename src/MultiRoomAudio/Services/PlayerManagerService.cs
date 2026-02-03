@@ -870,8 +870,13 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         var bufferedSourceLogger = new PlayerContextLogger<BufferedAudioSampleSource>(
             _loggerFactory.CreateLogger<BufferedAudioSampleSource>(), playerName);
 
-        // Create clock synchronizer
-        var clockSync = new KalmanClockSynchronizer(clockSyncLogger);
+        // Create clock synchronizer with SDK 6.2.0 enhanced tracking:
+        // - RTT tracking: learns expected network latency for smarter measurement weighting
+        // - Accel tracking: tracks drift acceleration for thermal/power state adaptation (helps VMs)
+        var clockSync = new KalmanClockSynchronizer(
+            clockSyncLogger,
+            enableRttTracking: true,
+            enableAccelTracking: true);
 
         // Create audio player using the appropriate backend
         var player = _backendFactory.CreatePlayer(request.Device, _loggerFactory);

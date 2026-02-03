@@ -652,6 +652,11 @@ h1, h2, h3, h4, h5, h6 {
 .stats-value.info { color: var(--accent-primary); }
 .stats-value.muted { color: var(--bs-secondary-color); }
 
+.stats-sdk-version {
+    font-size: 0.7em;
+    color: var(--bs-secondary-color);
+}
+
 .card-mute-toggle {
     background: #2b3139;
     border: 1px solid #4b5563;

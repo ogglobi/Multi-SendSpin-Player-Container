@@ -2016,6 +2016,18 @@ function renderStatsPanel(stats) {
                     <span class="stats-label">Static Delay</span>
                     <span id="stats-static-delay" class="stats-value"></span>
                 </div>
+                <div class="stats-row" id="stats-rtt-row" style="display: none;">
+                    <span class="stats-label">Expected RTT</span>
+                    <span id="stats-expected-rtt" class="stats-value"></span>
+                </div>
+                <div class="stats-row" id="stats-rtt-uncertainty-row" style="display: none;">
+                    <span class="stats-label">RTT Uncertainty</span>
+                    <span id="stats-rtt-uncertainty" class="stats-value"></span>
+                </div>
+                <div class="stats-row" id="stats-network-changes-row" style="display: none;">
+                    <span class="stats-label">Network Changes</span>
+                    <span id="stats-network-changes" class="stats-value"></span>
+                </div>
             </div>
 
             <!-- Throughput Section -->
@@ -2148,6 +2160,27 @@ function renderStatsPanel(stats) {
     updateStatsValue('stats-output-latency', `${stats.clockSync.outputLatencyMs}ms`);
     updateStatsValue('stats-static-delay', `${stats.clockSync.staticDelayMs}ms`);
 
+    // RTT tracking (SDK 6.2.0+) - show if RTT data is available
+    const rttRow = document.getElementById('stats-rtt-row');
+    const rttUncertaintyRow = document.getElementById('stats-rtt-uncertainty-row');
+    const networkChangesRow = document.getElementById('stats-network-changes-row');
+    if (stats.clockSync.expectedRttMs != null && stats.clockSync.isRttReliable != null) {
+        rttRow.style.display = '';
+        rttUncertaintyRow.style.display = '';
+        networkChangesRow.style.display = '';
+        updateStatsValueWithClass('stats-expected-rtt',
+            `${stats.clockSync.expectedRttMs.toFixed(2)}ms ${stats.clockSync.isRttReliable ? '' : '(learning)'}`,
+            stats.clockSync.isRttReliable ? '' : 'muted');
+        updateStatsValue('stats-rtt-uncertainty', `±${stats.clockSync.rttUncertaintyMs.toFixed(2)}ms`);
+        updateStatsValueWithClass('stats-network-changes',
+            formatCount(stats.clockSync.networkChangeTriggerCount || 0),
+            (stats.clockSync.networkChangeTriggerCount || 0) > 0 ? 'warning' : '');
+    } else {
+        rttRow.style.display = 'none';
+        rttUncertaintyRow.style.display = 'none';
+        networkChangesRow.style.display = 'none';
+    }
+
     // Throughput
     updateStatsValue('stats-samples-written', formatSampleCount(stats.throughput.samplesWritten));
     updateStatsValue('stats-samples-read', formatSampleCount(stats.throughput.samplesRead));
@@ -2162,6 +2195,12 @@ function renderStatsPanel(stats) {
     updateStatsValueWithClass('stats-diag-dropped', formatSampleCount(stats.diagnostics.droppedOverflow),
         stats.diagnostics.droppedOverflow > 0 ? 'bad' : 'good');
     updateStatsValue('stats-smoothed-sync', formatUs(stats.diagnostics.smoothedSyncErrorUs));
+
+    // SDK Version (in header)
+    const sdkVersionEl = document.getElementById('statsSdkVersion');
+    if (sdkVersionEl) {
+        sdkVersionEl.textContent = stats.sdkVersion ? `SDK ${stats.sdkVersion}` : '';
+    }
 }
 
 // Helper to update a stats value by ID

@@ -1,3 +1,4 @@
+using System.Reflection;
 using MultiRoomAudio.Models;
 using Sendspin.SDK.Audio;
 using Sendspin.SDK.Models;
@@ -20,6 +21,28 @@ internal static class PlayerStatsMapper
     /// Must match CorrectionThresholdMicroseconds in BufferedAudioSampleSource.
     /// </summary>
     private const double SyncToleranceMs = 15.0;
+
+    /// <summary>
+    /// Cached SDK version string (lazy-loaded once).
+    /// </summary>
+    private static readonly Lazy<string> SdkVersionLazy = new(() =>
+    {
+        try
+        {
+            var sdkAssembly = typeof(KalmanClockSynchronizer).Assembly;
+            var version = sdkAssembly.GetName().Version;
+            return version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "Unknown";
+        }
+        catch
+        {
+            return "Unknown";
+        }
+    });
+
+    /// <summary>
+    /// Gets the Sendspin SDK version string.
+    /// </summary>
+    public static string SdkVersion => SdkVersionLazy.Value;
 
     /// <summary>
     /// Builds a complete stats response from pipeline and clock synchronizer data.
@@ -56,7 +79,8 @@ internal static class PlayerStatsMapper
             ClockSync: BuildClockSyncStats(clockStatus, player, clockSync),
             Throughput: BuildThroughputStats(bufferStats),
             Correction: BuildSyncCorrectionStats(bufferStats, resampleRatio),
-            Diagnostics: BuildBufferDiagnostics(bufferStats, pipelineState)
+            Diagnostics: BuildBufferDiagnostics(bufferStats, pipelineState),
+            SdkVersion: SdkVersion
         );
     }
 
