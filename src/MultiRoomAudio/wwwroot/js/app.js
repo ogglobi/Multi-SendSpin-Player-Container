@@ -1906,8 +1906,34 @@ function renderStatsPanel(stats) {
     const body = document.getElementById('statsForNerdsBody');
 
     // First render: create the full structure with IDs
+    // Note: innerHTML used here with static template strings (no user input) - safe
     if (!statsPanelInitialized) {
         body.innerHTML = `
+            <!-- Hero Section: At-a-glance health indicator -->
+            <div class="stats-hero" id="stats-hero">
+                <div class="stats-hero-status">
+                    <div class="stats-hero-indicator" id="stats-hero-indicator"></div>
+                    <div class="stats-hero-text">
+                        <span class="stats-hero-label" id="stats-hero-label">Checking...</span>
+                        <span class="stats-hero-detail" id="stats-hero-detail"></span>
+                    </div>
+                </div>
+                <div class="stats-hero-metrics">
+                    <div class="stats-hero-metric">
+                        <span class="stats-hero-metric-value" id="stats-hero-sync"></span>
+                        <span class="stats-hero-metric-label">Sync</span>
+                    </div>
+                    <div class="stats-hero-metric">
+                        <span class="stats-hero-metric-value" id="stats-hero-buffer"></span>
+                        <span class="stats-hero-metric-label">Buffer</span>
+                    </div>
+                    <div class="stats-hero-metric">
+                        <span class="stats-hero-metric-value" id="stats-hero-timing"></span>
+                        <span class="stats-hero-metric-label">Timing</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Identity Section (debug info moved from Player Details) -->
             <div class="stats-section">
                 <div class="stats-section-header">Identity</div>
@@ -2033,6 +2059,10 @@ function renderStatsPanel(stats) {
                     <span class="stats-label">Static Delay</span>
                     <span id="stats-static-delay" class="stats-value"></span>
                 </div>
+                <div class="stats-row">
+                    <span class="stats-label">Timing Source</span>
+                    <span id="stats-timing-source" class="stats-value"></span>
+                </div>
             </div>
 
             <!-- Throughput Section -->
@@ -2083,6 +2113,9 @@ function renderStatsPanel(stats) {
     }
 
     // Update values only (no DOM structure changes)
+
+    // Hero Section: At-a-glance health indicator
+    updateHeroSection(stats);
 
     // Client ID from player object (not from stats API)
     const player = players[currentStatsPlayer];
@@ -2160,6 +2193,9 @@ function renderStatsPanel(stats) {
     updateStatsValue('stats-measurements', formatCount(stats.clockSync.measurementCount));
     updateStatsValue('stats-output-latency', `${stats.clockSync.outputLatencyMs}ms`);
     updateStatsValue('stats-static-delay', `${stats.clockSync.staticDelayMs}ms`);
+    updateStatsValueWithClass('stats-timing-source',
+        getTimingSourceLabel(stats.clockSync.timingSource),
+        getTimingSourceClass(stats.clockSync.timingSource));
 
     // Throughput
     updateStatsValue('stats-samples-written', formatSampleCount(stats.throughput.samplesWritten));
@@ -2236,6 +2272,104 @@ function getBufferStateClass(state) {
 function formatUs(us) {
     if (Math.abs(us) < 1000) return us.toFixed(0) + 'us';
     return (us / 1000).toFixed(2) + 'ms';
+}
+
+// Timing source helpers
+function getTimingSourceLabel(source) {
+    switch (source) {
+        case 'audio-clock': return 'Audio Clock';
+        case 'monotonic': return 'Monotonic';
+        case 'wall-clock': return 'Wall Clock';
+        default: return source || 'Unknown';
+    }
+}
+
+function getTimingSourceClass(source) {
+    switch (source) {
+        case 'audio-clock': return 'good';      // Best - hardware timing
+        case 'monotonic': return 'warning';     // Fallback - filtered system timer
+        case 'wall-clock': return 'bad';        // Worst - unstable, VM-vulnerable
+        default: return 'muted';
+    }
+}
+
+// Hero section update logic
+function updateHeroSection(stats) {
+    const indicator = document.getElementById('stats-hero-indicator');
+    const label = document.getElementById('stats-hero-label');
+    const detail = document.getElementById('stats-hero-detail');
+    const heroSync = document.getElementById('stats-hero-sync');
+    const heroBuffer = document.getElementById('stats-hero-buffer');
+    const heroTiming = document.getElementById('stats-hero-timing');
+
+    if (!indicator || !label) return;
+
+    // Determine overall health based on key metrics
+    const syncError = Math.abs(stats.sync.syncErrorMs);
+    const isPlaying = stats.sync.isPlaybackActive;
+    const isSynced = stats.clockSync.isSynchronized;
+    const hasUnderruns = stats.buffer.underruns > 0;
+    const hasOverflow = stats.throughput.samplesDroppedOverflow > 0;
+    const correctionMode = stats.correction.mode;
+    const timingSource = stats.clockSync.timingSource;
+
+    let health = 'good';
+    let healthLabel = 'Healthy';
+    let healthDetail = '';
+
+    if (!isPlaying) {
+        health = 'idle';
+        healthLabel = 'Idle';
+        healthDetail = 'Not playing';
+    } else if (!isSynced) {
+        health = 'warning';
+        healthLabel = 'Syncing';
+        healthDetail = 'Clock synchronization in progress';
+    } else if (syncError > 50) {
+        health = 'bad';
+        healthLabel = 'Out of Sync';
+        healthDetail = `Sync error: ${formatMs(stats.sync.syncErrorMs)}`;
+    } else if (hasOverflow) {
+        health = 'bad';
+        healthLabel = 'Overflow';
+        healthDetail = 'Buffer overflow - samples dropped';
+    } else if (hasUnderruns) {
+        health = 'warning';
+        healthLabel = 'Underruns';
+        healthDetail = 'Audio underruns detected';
+    } else if (correctionMode !== 'None') {
+        health = 'warning';
+        healthLabel = 'Correcting';
+        healthDetail = correctionMode === 'Dropping' ? 'Dropping frames (behind)' : 'Inserting frames (ahead)';
+    } else if (syncError > 15) {
+        health = 'warning';
+        healthLabel = 'Drifting';
+        healthDetail = `Sync error: ${formatMs(stats.sync.syncErrorMs)}`;
+    } else if (timingSource === 'wall-clock') {
+        health = 'warning';
+        healthLabel = 'Degraded';
+        healthDetail = 'Using wall clock (VM timer issues)';
+    }
+
+    // Update hero indicator
+    indicator.className = 'stats-hero-indicator ' + health;
+    label.textContent = healthLabel;
+    label.className = 'stats-hero-label ' + health;
+    detail.textContent = healthDetail;
+
+    // Update quick metrics
+    if (heroSync) {
+        heroSync.textContent = formatMs(stats.sync.syncErrorMs);
+        heroSync.className = 'stats-hero-metric-value ' + getSyncErrorClass(stats.sync.syncErrorMs);
+    }
+    if (heroBuffer) {
+        heroBuffer.textContent = `${stats.buffer.bufferedMs}ms`;
+        heroBuffer.className = 'stats-hero-metric-value';
+    }
+    if (heroTiming) {
+        heroTiming.textContent = getTimingSourceLabel(timingSource);
+        heroTiming.className = 'stats-hero-metric-value ' + getTimingSourceClass(timingSource);
+    }
 }
 
 // ============================================

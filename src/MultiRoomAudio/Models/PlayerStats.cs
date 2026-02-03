@@ -62,7 +62,9 @@ public record ClockSyncStats(
     bool IsDriftReliable,
     int MeasurementCount,
     int OutputLatencyMs,
-    int StaticDelayMs
+    int StaticDelayMs,
+    /// <summary>Active timing source: "audio-clock", "monotonic", or "wall-clock".</summary>
+    string TimingSource = "unknown"
 );
 
 /// <summary>

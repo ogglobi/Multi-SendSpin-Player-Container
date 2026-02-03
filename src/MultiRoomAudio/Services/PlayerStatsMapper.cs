@@ -51,7 +51,7 @@ internal static class PlayerStatsMapper
             AudioFormat: BuildAudioFormatStats(inputFormat, outputFormat, device),
             Sync: BuildSyncStats(bufferStats),
             Buffer: BuildBufferStats(bufferStats),
-            ClockSync: BuildClockSyncStats(clockStatus, player, clockSync),
+            ClockSync: BuildClockSyncStats(clockStatus, player, clockSync, bufferStats),
             Throughput: BuildThroughputStats(bufferStats),
             Correction: BuildSyncCorrectionStats(bufferStats),
             Diagnostics: BuildBufferDiagnostics(bufferStats, pipelineState)
@@ -118,7 +118,8 @@ internal static class PlayerStatsMapper
     private static ClockSyncStats BuildClockSyncStats(
         ClockSyncStatus clockStatus,
         IAudioPlayer player,
-        IClockSynchronizer clockSync)
+        IClockSynchronizer clockSync,
+        AudioBufferStats? bufferStats)
     {
         // Note: Use Player.OutputLatencyMs directly instead of Pipeline.DetectedOutputLatencyMs
         // because the pipeline's value may not reflect real-time measurements from pa_stream_get_latency()
@@ -130,7 +131,8 @@ internal static class PlayerStatsMapper
             IsDriftReliable: clockStatus.IsDriftReliable,
             MeasurementCount: clockStatus.MeasurementCount,
             OutputLatencyMs: player.OutputLatencyMs,
-            StaticDelayMs: (int)clockSync.StaticDelayMs
+            StaticDelayMs: (int)clockSync.StaticDelayMs,
+            TimingSource: bufferStats?.TimingSourceName ?? "unknown"
         );
     }
 
