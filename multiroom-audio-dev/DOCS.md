@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-6543f98
+## Development Build: sha-80c4511
 
 **Current Dev Build Changes** (recent)
 
+- Bump SDK to Attempt Monotonic Timer Fix
 - Merge pull request #139 from scyto/upstream-player-details-refactor
 - Fix ALSA capability service to use actual channel count
 - Fix Player Details to show Sink vs Device label correctly
@@ -14,7 +15,6 @@
 - Refactor Player Details modal and add device capabilities display
 - Merge pull request #136 from scyto/feature/flexible-player-names-upstream
 - Allow flexible player names with international character support
-- Merge pull request #135 from scyto/upstream-fix-card-name-matching
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
