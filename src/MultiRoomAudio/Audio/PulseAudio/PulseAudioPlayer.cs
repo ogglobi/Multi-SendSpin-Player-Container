@@ -154,19 +154,33 @@ public class PulseAudioPlayer : IAudioPlayer
     /// </returns>
     public long? GetAudioClockMicroseconds()
     {
-        // Early exit if not in a valid state for timing queries
-        if (!_isPlaying || _disposed || _stream == IntPtr.Zero || _mainloop == IntPtr.Zero)
+        // THREAD SAFETY: Capture handles under lock to prevent race condition.
+        // The SDK calls this from its timing thread while playback may be stopping
+        // on another thread. Without the lock, _mainloop could become IntPtr.Zero
+        // after the null check but before ThreadedMainloopLock(), causing a segfault.
+        IntPtr mainloop;
+        IntPtr stream;
+
+        lock (_lock)
         {
-            return null;
+            // Early exit if not in a valid state for timing queries
+            if (!_isPlaying || _disposed || _stream == IntPtr.Zero || _mainloop == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            // Capture handles while holding _lock - these won't change while we hold the lock
+            mainloop = _mainloop;
+            stream = _stream;
         }
 
-        // Query pa_stream_get_time() with mainloop lock.
-        // This returns the playback time in the sound card's clock domain.
-        ThreadedMainloopLock(_mainloop);
+        // Now safe to use the captured handles - they were valid when we checked
+        // and CleanupResources() acquires _lock before clearing them.
+        ThreadedMainloopLock(mainloop);
         try
         {
             // StreamGetTime returns 0 on success, negative on error
-            if (StreamGetTime(_stream, out var timeUs) == 0)
+            if (StreamGetTime(stream, out var timeUs) == 0)
             {
                 return (long)timeUs;
             }
@@ -176,7 +190,7 @@ public class PulseAudioPlayer : IAudioPlayer
         }
         finally
         {
-            ThreadedMainloopUnlock(_mainloop);
+            ThreadedMainloopUnlock(mainloop);
         }
     }
 
