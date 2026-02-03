@@ -1,10 +1,11 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-b32b2c0
+## Development Build: sha-412b62a
 
 **Current Dev Build Changes** (recent)
 
+- Fix audio clock offset causing players to be ahead of other players
 - Bump SendSpin.SDK to 6.3.5 to fix timer jump warnings
 - Add SDK version and server time to Stats for Nerds
 - Woops, SDK Fix.
@@ -14,7 +15,6 @@
 - Add sync architecture documentation
 - Bump Sendspin.SDK to 6.3.2 for timing source visibility
 - Add server-side log download endpoint to export all logs
-- Bump Sendspin.SDK to 6.3.1 for sync correction logging
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
