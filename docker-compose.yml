@@ -19,24 +19,33 @@ services:
     #   - /dev/snd:/dev/snd
     #
     # For USB RELAY BOARDS (12V trigger control):
-    #   Both FTDI and USB HID relay boards require USB passthrough:
+    #   USB HID relay boards need both USB bus (discovery) and hidraw (control):
+    #   - /dev/bus/usb:/dev/bus/usb    # Required: device discovery
+    #   - /dev/hidraw0:/dev/hidraw0    # Required: relay control (one per board)
+    #   - /dev/hidraw1:/dev/hidraw1    # Add more as needed
+    #
+    #   FTDI relay boards need USB bus only:
     #   - /dev/bus/usb:/dev/bus/usb
     #
-    # You can also pass through specific devices only:
-    #   - /dev/hidraw0:/dev/hidraw0   # Specific HID relay board
-    #   - /dev/bus/usb/001/002:/dev/bus/usb/001/002  # Specific USB device
+    #   Modbus/CH340 relay boards need the serial port:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
     #
     # devices:
     #   - /dev/snd:/dev/snd
     #   - /dev/bus/usb:/dev/bus/usb
+    #   - /dev/hidraw0:/dev/hidraw0
+    #   - /dev/hidraw1:/dev/hidraw1
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
 
     volumes:
       # Persistent configuration storage
       - ./config:/app/config
       - ./logs:/app/logs
-      # Pass through ALSA configuration (optional typically used when you have a custom config)
+      # Device capability detection (sample rates, bit depths, channels)
+      - /proc/asound:/host/asound:ro
+      # Pass through ALSA configuration (optional, typically used when you have a custom config)
       - /usr/share/alsa:/usr/share/alsa:ro
-      - /etc/asound.conf:/etc/asound.conf:ro
+      # - /etc/asound.conf:/etc/asound.conf:ro
     environment:
       - PULSE_SERVER=unix:/run/user/1000/pulse/native
       - DISPLAY=${DISPLAY}

@@ -20,6 +20,7 @@ usb: true
 # Explicit device mapping for audio access
 devices:
   - "/dev/snd:/dev/snd"
+  - "/proc/asound:/host/asound:ro"
 
 # Permissions for audio processing
 privileged:
@@ -40,15 +41,11 @@ panel_title: Multi-Room Audio
 # User-configurable options
 options:
   log_level: info
-  mock_hardware: false
-  enable_advanced_formats: false
   relay_serial_port: null
   relay_devices: []
 
 schema:
   log_level: list(debug|info|warning|error)
-  mock_hardware: bool
-  enable_advanced_formats: bool
   relay_serial_port: device(subsystem=tty)?
   relay_devices:
     - str?

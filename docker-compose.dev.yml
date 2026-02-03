@@ -14,6 +14,18 @@ services:
       - ./logs:/app/logs
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      # ============================================
+      # Development/Testing Options
+      # ============================================
+      # Uncomment as needed:
+      #
+      # - MOCK_HARDWARE=true        # Simulate audio devices and relay boards without hardware
+      # - LOG_LEVEL=debug           # Verbose logging
+      # - ENABLE_ADVANCED_FORMATS=true  # Show format selection UI
+      #
+      # PulseAudio sample rate/format (applied at container startup):
+      # - PA_SAMPLE_RATE=192000     # Default: 48000
+      # - PA_SAMPLE_FORMAT=s32le    # Default: float32le (options: s16le, s24le, s32le, float32le)
     ports:
       - "8096:8096"
     # Override healthcheck for development
