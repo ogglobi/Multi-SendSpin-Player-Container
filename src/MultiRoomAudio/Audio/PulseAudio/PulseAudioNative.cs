@@ -505,6 +505,21 @@ internal static class PulseAudioNative
     public static extern int StreamGetLatency(IntPtr stream, out ulong usec, out int negative);
 
     /// <summary>
+    /// Get the current playback time of the stream in microseconds.
+    /// </summary>
+    /// <param name="stream">The stream.</param>
+    /// <param name="usec">Output: playback time in microseconds (sound card clock domain).</param>
+    /// <returns>0 on success, negative on error.</returns>
+    /// <remarks>
+    /// This returns time in the sound card's clock domain, making it immune to VM
+    /// wall clock issues. The time is based on how much audio has actually been
+    /// played through the DAC, not wall clock time.
+    /// Requires PA_STREAM_AUTO_TIMING_UPDATE flag for automatic updates.
+    /// </remarks>
+    [DllImport(LibPulse, EntryPoint = "pa_stream_get_time")]
+    public static extern int StreamGetTime(IntPtr stream, out ulong usec);
+
+    /// <summary>
     /// Cork (pause) or uncork (resume) the stream.
     /// </summary>
     [DllImport(LibPulse, EntryPoint = "pa_stream_cork")]

@@ -133,6 +133,53 @@ public class PulseAudioPlayer : IAudioPlayer
     /// </summary>
     public bool IsLatencyLocked => _latencyLocked;
 
+    /// <summary>
+    /// Gets the current playback time from the PulseAudio stream in microseconds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This returns time in the sound card's clock domain via <c>pa_stream_get_time()</c>,
+    /// making it immune to VM wall clock issues. The time represents how much audio has
+    /// actually been played through the DAC.
+    /// </para>
+    /// <para>
+    /// Returns <c>null</c> when:
+    /// - Not currently playing
+    /// - Stream is not ready
+    /// - PulseAudio timing info is not available
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// Audio hardware clock time in microseconds, or <c>null</c> if not available.
+    /// </returns>
+    public long? GetAudioClockMicroseconds()
+    {
+        // Early exit if not in a valid state for timing queries
+        if (!_isPlaying || _disposed || _stream == IntPtr.Zero || _mainloop == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        // Query pa_stream_get_time() with mainloop lock.
+        // This returns the playback time in the sound card's clock domain.
+        ThreadedMainloopLock(_mainloop);
+        try
+        {
+            // StreamGetTime returns 0 on success, negative on error
+            if (StreamGetTime(_stream, out var timeUs) == 0)
+            {
+                return (long)timeUs;
+            }
+
+            // Timing info not available (PA_ERR_NODATA)
+            return null;
+        }
+        finally
+        {
+            ThreadedMainloopUnlock(_mainloop);
+        }
+    }
+
     public event EventHandler<AudioPlayerState>? StateChanged;
     public event EventHandler<AudioPlayerError>? ErrorOccurred;
 
