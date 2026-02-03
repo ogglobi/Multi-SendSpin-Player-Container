@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-80c4511
+## Development Build: sha-3e9b223
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #140 from scyto/bug/docs-revisions
+- Remove async from importSink (nothing is async) add logging via SDK 6.2.0-preview2
 - Bump SDK to Attempt Monotonic Timer Fix
+- docs: Add Docker dev builds guide and improve compose files
+- Add /proc/asound mount for device capability detection
+- docs: Add 5.0 release documentation and fix config options
 - Merge pull request #139 from scyto/upstream-player-details-refactor
 - Fix ALSA capability service to use actual channel count
 - Fix Player Details to show Sink vs Device label correctly
 - Add ALSA capability service for hardware capabilities
-- Add Now Playing track info to Player Details modal
-- Fix receiving format display to use correct API response structure
-- Refactor Player Details modal and add device capabilities display
-- Merge pull request #136 from scyto/feature/flexible-player-names-upstream
-- Allow flexible player names with international character support
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
