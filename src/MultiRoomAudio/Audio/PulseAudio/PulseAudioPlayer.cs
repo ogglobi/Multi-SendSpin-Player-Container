@@ -145,6 +145,12 @@ public class PulseAudioPlayer : IAudioPlayer
     public event EventHandler<AudioPlayerError>? ErrorOccurred;
 
     /// <summary>
+    /// Raised when output latency measurement stabilizes and locks.
+    /// The event argument is the locked latency in milliseconds.
+    /// </summary>
+    public event EventHandler<int>? LatencyLocked;
+
+    /// <summary>
     /// Initializes a new instance of the PulseAudioPlayer.
     /// </summary>
     /// <param name="logger">Logger for diagnostic output.</param>
@@ -643,6 +649,9 @@ public class PulseAudioPlayer : IAudioPlayer
                     _logger.LogInformation(
                         "Latency locked at {Latency}ms (median of {Count} samples, range: {Min}-{Max}ms)",
                         OutputLatencyMs, stableSamples.Count, stableSamples.First(), stableSamples.Last());
+
+                    // Notify listeners so they can calibrate the SDK buffer
+                    LatencyLocked?.Invoke(this, median);
                 }
                 else
                 {

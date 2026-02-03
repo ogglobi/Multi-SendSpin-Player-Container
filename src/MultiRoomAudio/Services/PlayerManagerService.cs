@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using MultiRoomAudio.Audio;
+using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Exceptions;
 using MultiRoomAudio.Hubs;
 using MultiRoomAudio.Logging;
@@ -346,7 +347,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         CancellationTokenSource Cts,
         DeviceCapabilities? DeviceCapabilities = null,
         AudioDevice? CachedDevice = null,
-        AdaptiveSourceHolder? AdaptiveSourceHolder = null
+        AdaptiveSourceHolder? AdaptiveSourceHolder = null,
+        TimedAudioBufferHolder? BufferHolder = null
     )
     {
         public Models.PlayerState State { get; set; } = Models.PlayerState.Created;
@@ -364,6 +366,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         public EventHandler<GroupState>? GroupStateHandler { get; set; }
         // SDK 5.4.0: Handler for individual player volume/mute commands
         public EventHandler<SdkPlayerState>? PlayerStateHandler { get; set; }
+        // Handler for PulseAudioPlayer latency lock (calibrates SDK buffer)
+        public EventHandler<int>? LatencyLockedHandler { get; set; }
         // Flag to prevent feedback loops when updating server
         public bool IsUpdatingFromServer { get; set; }
     }
@@ -391,7 +395,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         SendspinConnection Connection,
         ISendspinClient Client,
         DeviceCapabilities? DeviceCapabilities,
-        AdaptiveSourceHolder? AdaptiveSourceHolder = null
+        AdaptiveSourceHolder? AdaptiveSourceHolder = null,
+        TimedAudioBufferHolder? BufferHolder = null
     );
 
     /// <summary>
@@ -402,6 +407,15 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     private class AdaptiveSourceHolder
     {
         public AdaptiveResampledAudioSource? Source { get; set; }
+    }
+
+    /// <summary>
+    /// Holder to capture the TimedAudioBuffer reference from the factory closure.
+    /// Needed to set CalibratedStartupLatencyMicroseconds when output latency is measured.
+    /// </summary>
+    private class TimedAudioBufferHolder
+    {
+        public ITimedAudioBuffer? Buffer { get; set; }
     }
 
     public PlayerManagerService(
@@ -779,7 +793,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                 cts,
                 components.DeviceCapabilities,
                 cachedDevice,
-                components.AdaptiveSourceHolder)
+                components.AdaptiveSourceHolder,
+                components.BufferHolder)
             {
                 State = Models.PlayerState.Created,
                 InitialVolume = request.Volume
@@ -881,8 +896,9 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         // Create audio player using the appropriate backend
         var player = _backendFactory.CreatePlayer(request.Device, _loggerFactory);
 
-        // Use a holder to capture adaptive source from closure (closure runs later when pipeline starts)
+        // Use holders to capture objects from closures (closures run later when pipeline starts)
         var adaptiveSourceHolder = new AdaptiveSourceHolder();
+        var bufferHolder = new TimedAudioBufferHolder();
 
         // Create audio pipeline with proper factories
         var decoderFactory = new AudioDecoderFactory();
@@ -898,6 +914,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                     bufferCapacityMs: LocalBufferCapacityMs,
                     syncOptions: PulseAudioSyncOptions);
                 buffer.TargetBufferMilliseconds = PlaybackStartThresholdMs;
+                // Capture buffer for latency calibration when PulseAudioPlayer locks
+                bufferHolder.Buffer = buffer;
                 return buffer;
             },
             playerFactory: () => player,
@@ -956,7 +974,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             connection,
             client,
             deviceCapabilities,
-            adaptiveSourceHolder);
+            adaptiveSourceHolder,
+            bufferHolder);
     }
 
     /// <summary>
@@ -1877,6 +1896,26 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         context.Client.GroupStateChanged += context.GroupStateHandler;
         // SDK 5.4.0: Subscribe to PlayerStateChanged
         context.Client.PlayerStateChanged += context.PlayerStateHandler;
+
+        // PulseAudioPlayer latency calibration: when output latency locks (~1.2s after start),
+        // set CalibratedStartupLatencyMicroseconds so the SDK backdates its playback anchor.
+        // This compensates for the ~150-200ms PulseAudio output buffer and prevents sync error drift.
+        if (context.Player is PulseAudioPlayer pulsePlayer && context.BufferHolder != null)
+        {
+            context.LatencyLockedHandler = (_, lockedLatencyMs) =>
+            {
+                var buffer = context.BufferHolder.Buffer;
+                if (buffer != null)
+                {
+                    var latencyMicroseconds = lockedLatencyMs * 1000L;
+                    buffer.CalibratedStartupLatencyMicroseconds = latencyMicroseconds;
+                    _logger.LogInformation(
+                        "Player '{Name}': calibrated SDK buffer with {LatencyMs}ms output latency",
+                        name, lockedLatencyMs);
+                }
+            };
+            pulsePlayer.LatencyLocked += context.LatencyLockedHandler;
+        }
     }
 
     /// <summary>
@@ -2180,7 +2219,15 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     private void UnwireEvents(PlayerContext context)
     {
         // Unsubscribe in reverse order of subscription
-        // SDK 5.4.0: Unsubscribe PlayerStateChanged first (subscribed last)
+
+        // Unsubscribe LatencyLocked handler (subscribed last)
+        if (context.LatencyLockedHandler != null && context.Player is PulseAudioPlayer pulsePlayer)
+        {
+            pulsePlayer.LatencyLocked -= context.LatencyLockedHandler;
+            context.LatencyLockedHandler = null;
+        }
+
+        // SDK 5.4.0: Unsubscribe PlayerStateChanged
         if (context.PlayerStateHandler != null)
         {
             context.Client.PlayerStateChanged -= context.PlayerStateHandler;
