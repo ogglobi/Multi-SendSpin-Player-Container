@@ -696,7 +696,11 @@ public class PulseAudioPlayer : IAudioPlayer
                 // Fire error event so PlayerManagerService can auto-stop the player.
                 // This handles device removal (USB unplug) - with DontMove flag, PA fails the
                 // stream instead of moving it to a fallback sink.
-                OnError($"Audio device lost: {errorMsg}");
+                // IMPORTANT: Must dispatch off the PA thread - this callback runs with the
+                // mainloop lock held, and the error handler will try to stop the player
+                // which needs to acquire the same lock, causing a deadlock.
+                var error = $"Audio device lost: {errorMsg}";
+                ThreadPool.QueueUserWorkItem(_ => OnError(error));
             }
         }
     }
