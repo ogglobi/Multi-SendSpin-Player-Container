@@ -750,6 +750,7 @@ async function refreshStatus(force = false) {
         }
 
         renderPlayers();
+        refreshSyncSummary();  // Update multi-room sync summary
     } catch (error) {
         console.error('Error refreshing status:', error);
 
@@ -1846,6 +1847,80 @@ function showPrompt(title, label, defaultValue = '', placeholder = '') {
             inputEl.select();
         });
     });
+}
+
+// ========== Multi-Room Sync Summary ==========
+
+async function refreshSyncSummary() {
+    try {
+        const response = await fetch('./api/players/sync/summary');
+        if (!response.ok) return;
+
+        const summary = await response.json();
+        renderSyncSummary(summary);
+    } catch (error) {
+        console.error('Error fetching sync summary:', error);
+    }
+}
+
+function renderSyncSummary(summary) {
+    const container = document.getElementById('sync-summary');
+    if (!container) return;
+
+    // Show only when 2+ players are playing
+    if (summary.playingCount < 2) {
+        container.classList.add('d-none');
+        return;
+    }
+
+    container.classList.remove('d-none');
+
+    // Update drift display
+    const driftEl = document.getElementById('sync-drift');
+    if (driftEl && summary.interPlayerDriftMs != null) {
+        const driftMs = summary.interPlayerDriftMs;
+        driftEl.textContent = `${driftMs.toFixed(1)}ms`;
+        // Color code: <15ms good, <30ms warning, >=30ms bad
+        if (driftMs < 15) {
+            driftEl.className = 'h5 mb-0 text-success';
+        } else if (driftMs < 30) {
+            driftEl.className = 'h5 mb-0 text-warning';
+        } else {
+            driftEl.className = 'h5 mb-0 text-danger';
+        }
+    } else if (driftEl) {
+        driftEl.textContent = '--';
+        driftEl.className = 'h5 mb-0';
+    }
+
+    // Update player count
+    const countEl = document.getElementById('sync-count');
+    if (countEl) {
+        countEl.textContent = `${summary.playingCount}`;
+    }
+
+    // Update mode
+    const modeEl = document.getElementById('sync-mode');
+    if (modeEl) {
+        modeEl.textContent = summary.correctionMode;
+        if (summary.correctionMode === 'Adaptive') {
+            modeEl.className = 'h5 mb-0 text-info';
+        } else {
+            modeEl.className = 'h5 mb-0';
+        }
+    }
+
+    // Update status text
+    const statusEl = document.getElementById('sync-status');
+    if (statusEl) {
+        if (summary.allWithinTolerance) {
+            statusEl.textContent = 'All players within sync tolerance';
+            statusEl.className = 'text-success';
+        } else {
+            statusEl.textContent = 'Some players correcting';
+            statusEl.className = 'text-warning';
+        }
+    }
 }
 
 // ========== Stats for Nerds ==========

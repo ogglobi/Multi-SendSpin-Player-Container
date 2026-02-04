@@ -2312,6 +2312,86 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             resampleRatio);
     }
 
+    /// <summary>
+    /// Gets a summary of sync status across all playing players.
+    /// Used by the UI to show inter-player drift.
+    /// </summary>
+    public SyncSummaryResponse GetSyncSummary()
+    {
+        var playingPlayers = _players.Values
+            .Where(p => p.State == Models.PlayerState.Playing)
+            .ToList();
+
+        if (playingPlayers.Count == 0)
+        {
+            return new SyncSummaryResponse(
+                PlayingCount: 0,
+                MinSyncErrorMs: null,
+                MaxSyncErrorMs: null,
+                InterPlayerDriftMs: null,
+                AllWithinTolerance: true,
+                CorrectionMode: UseAdaptiveResampling ? "Adaptive" : "Standard"
+            );
+        }
+
+        // Collect sync errors from all playing players
+        var syncErrors = new List<double>();
+        var hasAdaptive = false;
+        var hasStandard = false;
+
+        foreach (var context in playingPlayers)
+        {
+            var bufferStats = context.Pipeline.BufferStats;
+            if (bufferStats != null)
+            {
+                // Use smoothed sync error (what drives corrections)
+                var syncErrorMs = bufferStats.SyncErrorMicroseconds / 1000.0;
+                syncErrors.Add(syncErrorMs);
+            }
+
+            // Track correction modes
+            if (context.AdaptiveSourceHolder?.Source != null)
+                hasAdaptive = true;
+            else
+                hasStandard = true;
+        }
+
+        // Determine correction mode string
+        string correctionMode;
+        if (hasAdaptive && hasStandard)
+            correctionMode = "Mixed";
+        else if (hasAdaptive)
+            correctionMode = "Adaptive";
+        else
+            correctionMode = "Standard";
+
+        if (syncErrors.Count == 0)
+        {
+            return new SyncSummaryResponse(
+                PlayingCount: playingPlayers.Count,
+                MinSyncErrorMs: null,
+                MaxSyncErrorMs: null,
+                InterPlayerDriftMs: null,
+                AllWithinTolerance: true,
+                CorrectionMode: correctionMode
+            );
+        }
+
+        var minError = syncErrors.Min();
+        var maxError = syncErrors.Max();
+        var drift = syncErrors.Count >= 2 ? maxError - minError : (double?)null;
+        var allWithinTolerance = syncErrors.All(e => Math.Abs(e) <= 30.0);
+
+        return new SyncSummaryResponse(
+            PlayingCount: playingPlayers.Count,
+            MinSyncErrorMs: Math.Round(minError, 2),
+            MaxSyncErrorMs: Math.Round(maxError, 2),
+            InterPlayerDriftMs: drift.HasValue ? Math.Round(drift.Value, 2) : null,
+            AllWithinTolerance: allWithinTolerance,
+            CorrectionMode: correctionMode
+        );
+    }
+
     private static string GenerateClientId(string name)
     {
         // Use the ClientIdGenerator utility for consistent MD5-based IDs

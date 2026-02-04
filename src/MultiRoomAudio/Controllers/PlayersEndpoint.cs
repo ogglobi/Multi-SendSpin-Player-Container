@@ -130,6 +130,17 @@ public static class PlayersEndpoint
         .WithName("GetPlayerStats")
         .WithDescription("Get real-time audio diagnostics and sync metrics (Stats for Nerds)");
 
+        // GET /api/players/sync/summary - Get multi-room sync summary
+        group.MapGet("/sync/summary", (PlayerManagerService manager, ILoggerFactory loggerFactory) =>
+        {
+            var logger = loggerFactory.CreateLogger("PlayersEndpoint");
+            logger.LogDebug("API: GET /api/players/sync/summary");
+            var summary = manager.GetSyncSummary();
+            return Results.Ok(summary);
+        })
+        .WithName("GetSyncSummary")
+        .WithDescription("Get multi-room sync summary across all playing players");
+
         // POST /api/players - Create new player
         group.MapPost("/", async (
             PlayerCreateRequest request,
