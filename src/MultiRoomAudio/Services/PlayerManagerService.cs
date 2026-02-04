@@ -1940,7 +1940,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             if (args.NewState == ConnectionState.Disconnected &&
                 previousState != Models.PlayerState.Stopped &&  // Not user-stopped
                 previousState != Models.PlayerState.Error &&    // Not already errored
-                !_pendingReconnections.ContainsKey(name))        // Not already pending reconnection
+                !_pendingReconnections.ContainsKey(name) &&     // Not already pending server reconnection
+                !_devicePendingPlayers.ContainsKey(name))       // Not waiting for device reconnection
             {
                 _logger.LogWarning("Player '{Name}' disconnected unexpectedly, queuing for reconnection", name);
 
@@ -2114,9 +2115,9 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     private async Task QueueForDeviceReconnectionAsync(string name, PlayerContext context)
     {
         // Guard against double-handling (both pipeline and player error handlers may fire)
-        if (context.State == Models.PlayerState.WaitingForDevice)
+        if (_devicePendingPlayers.ContainsKey(name))
         {
-            _logger.LogDebug("Player '{Name}' already in WaitingForDevice state, skipping duplicate queue", name);
+            _logger.LogDebug("Player '{Name}' already queued for device reconnection, skipping duplicate", name);
             return;
         }
 
@@ -2134,17 +2135,27 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             ? _config.GetDeviceConfigBySinkName(context.Config.DeviceId)
             : null;
 
-        // Store for later matching when device reappears
+        // IMPORTANT: Add to device-pending queue FIRST, before any operations that might
+        // trigger other handlers. This prevents the connection state handler from
+        // queueing for server reconnection.
         _devicePendingPlayers[name] = new DevicePendingState(
             persistedConfig,
             deviceConfig,
             DateTime.UtcNow);
 
-        // Update player state for UI
-        context.State = Models.PlayerState.WaitingForDevice;
-        context.ErrorMessage = "Waiting for audio device to reconnect...";
+        _logger.LogInformation(
+            "Player '{Name}' queued for device reconnection. Device: {Device}, Identifiers: Serial={Serial}, BusPath={BusPath}",
+            name,
+            context.Config.DeviceId ?? "(default)",
+            deviceConfig?.Identifiers?.Serial ?? "(none)",
+            deviceConfig?.Identifiers?.BusPath ?? "(none)");
 
-        // Stop pipeline but keep player registered so it shows in UI
+        // Update player state for UI - show as Stopped with error message
+        // (not Reconnecting - we're waiting for the physical device, not the server)
+        context.State = Models.PlayerState.Stopped;
+        context.ErrorMessage = "Audio device disconnected. Will auto-restart when device is reconnected.";
+
+        // Stop the player properly
         try
         {
             await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
@@ -2164,13 +2175,6 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         }
 
         _ = BroadcastStatusAsync();
-
-        _logger.LogInformation(
-            "Player '{Name}' queued for device reconnection. Device: {Device}, Identifiers: Serial={Serial}, BusPath={BusPath}",
-            name,
-            context.Config.DeviceId ?? "(default)",
-            deviceConfig?.Identifiers?.Serial ?? "(none)",
-            deviceConfig?.Identifiers?.BusPath ?? "(none)");
     }
 
     /// <summary>
