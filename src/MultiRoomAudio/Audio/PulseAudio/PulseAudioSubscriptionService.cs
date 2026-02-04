@@ -194,11 +194,13 @@ public class PulseAudioSubscriptionService : IHostedService, IAsyncDisposable
     private void OnSubscriptionEvent(IntPtr context, uint eventType, uint index, IntPtr userdata)
     {
         // Extract the facility (what type of object) and event type (what happened)
-        var facility = (SubscriptionMask)(eventType & (uint)SubscriptionEventType.FacilityMask);
+        // NOTE: Use SubscriptionEventFacility (not SubscriptionMask) - PA uses different values
+        // for subscription masks vs event facilities!
+        var facility = (SubscriptionEventFacility)(eventType & (uint)SubscriptionEventType.FacilityMask);
         var type = (SubscriptionEventType)(eventType & (uint)SubscriptionEventType.TypeMask);
 
         // Only handle sink events
-        if (facility != SubscriptionMask.Sink)
+        if (facility != SubscriptionEventFacility.Sink)
             return;
 
         _logger.LogDebug("PulseAudio sink event: {EventType} index={Index}", type, index);

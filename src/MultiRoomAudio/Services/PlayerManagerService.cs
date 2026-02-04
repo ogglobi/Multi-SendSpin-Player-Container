@@ -2225,9 +2225,27 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         }
 
         // Get device configuration with identifiers for robust matching
-        var deviceConfig = !string.IsNullOrEmpty(context.Config.DeviceId)
-            ? _config.GetDeviceConfigBySinkName(context.Config.DeviceId)
-            : null;
+        // IMPORTANT: Get fresh identifiers from the backend (not saved config) because
+        // devices.yaml may not exist or may not have this device saved.
+        DeviceConfiguration? deviceConfig = null;
+        if (!string.IsNullOrEmpty(context.Config.DeviceId))
+        {
+            var currentDevice = _backendFactory.GetDevice(context.Config.DeviceId);
+            if (currentDevice?.Identifiers != null)
+            {
+                // Create a DeviceConfiguration with fresh identifiers from the live device
+                deviceConfig = new DeviceConfiguration
+                {
+                    LastKnownSinkName = currentDevice.Id,
+                    Identifiers = DeviceIdentifiersConfig.FromModel(currentDevice.Identifiers)
+                };
+            }
+            else
+            {
+                // Fallback to saved config if device already gone or has no identifiers
+                deviceConfig = _config.GetDeviceConfigBySinkName(context.Config.DeviceId);
+            }
+        }
 
         // IMPORTANT: Add to device-pending queue FIRST, before any operations that might
         // trigger other handlers. This prevents the connection state handler from
