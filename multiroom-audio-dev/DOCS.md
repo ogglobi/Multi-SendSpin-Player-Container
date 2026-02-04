@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-35b17e8
+## Development Build: sha-6e2da72
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #148 from scyto/bug/usb-unplug-wrong-device
+- Fix audio playing on wrong device when USB is unplugged
 - Merge pull request #147 from scyto/bug/usb-unplug-deadlock-upstream
 - Fix deadlock when USB audio device is unplugged
 - Merge pull request #143 from scyto/feature/sync-thresholds
@@ -13,8 +15,6 @@
 - Merge pull request #144 from scyto/bug/startup-overlay-race
 - Fix startup overlay stuck when SignalR connects after phases complete
 - Increase sync correction threshold from 15ms to 30ms
-- Increase PA write buffer to 128ms for VM compatibility
-- Fix audio clock baseline capture timing
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
