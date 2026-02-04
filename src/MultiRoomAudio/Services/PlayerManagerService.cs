@@ -98,7 +98,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     private record DevicePendingState(
         PlayerConfiguration Config,
         DeviceConfiguration? DeviceConfig,
-        DateTime LostAt
+        DateTime LostAt,
+        bool WasPlaying
     );
 
     #region Constants
@@ -2153,18 +2154,24 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             }
         }
 
+        // Check if player was playing before device loss (capture before we set state to Stopped)
+        var wasPlaying = context.State == Models.PlayerState.Playing ||
+                         context.State == Models.PlayerState.Buffering;
+
         // IMPORTANT: Add to device-pending queue FIRST, before any operations that might
         // trigger other handlers. This prevents the connection state handler from
         // queueing for server reconnection.
         _devicePendingPlayers[name] = new DevicePendingState(
             persistedConfig,
             deviceConfig,
-            DateTime.UtcNow);
+            DateTime.UtcNow,
+            wasPlaying);
 
         _logger.LogInformation(
-            "Player '{Name}' queued for device reconnection. Device: {Device}, Identifiers: Serial={Serial}, BusPath={BusPath}",
+            "Player '{Name}' queued for device reconnection. Device: {Device}, WasPlaying: {WasPlaying}, Identifiers: Serial={Serial}, BusPath={BusPath}",
             name,
             context.Config.DeviceId ?? "(default)",
+            wasPlaying,
             deviceConfig?.Identifiers?.Serial ?? "(none)",
             deviceConfig?.Identifiers?.BusPath ?? "(none)");
 
@@ -2266,7 +2273,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                     }
 
                     // Restart the player
-                    await RestartPlayerAfterDeviceReconnectAsync(name, state.Config, newSinkName);
+                    await RestartPlayerAfterDeviceReconnectAsync(name, state.Config, newSinkName, state.WasPlaying);
                 }
             }
             catch (Exception ex)
@@ -2279,10 +2286,15 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     /// <summary>
     /// Restarts a player after its audio device has reappeared.
     /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="config">Player configuration.</param>
+    /// <param name="newSinkName">The sink name of the reconnected device.</param>
+    /// <param name="wasPlaying">Whether the player was playing before device loss.</param>
     private async Task RestartPlayerAfterDeviceReconnectAsync(
         string name,
         PlayerConfiguration config,
-        string newSinkName)
+        string newSinkName,
+        bool wasPlaying)
     {
         try
         {
@@ -2305,19 +2317,40 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             await CreatePlayerAsync(request, CancellationToken.None);
 
             _logger.LogInformation("Player '{Name}' restarted after device reconnection", name);
+
+            // Resume playback if was playing before device loss
+            if (wasPlaying)
+            {
+                // Small delay to ensure player is fully connected before sending command
+                await Task.Delay(500);
+
+                if (_players.TryGetValue(name, out var newContext) && newContext.Client != null)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Player '{Name}' was playing before device loss, sending play command", name);
+                        await newContext.Client.SendCommandAsync("play");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send play command to resume playback for '{Name}'", name);
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to restart player '{Name}' after device reconnection", name);
 
-            // Re-queue for device reconnection on failure
+            // Re-queue for device reconnection on failure (preserve WasPlaying state)
             var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
             if (persistedConfig != null)
             {
                 _devicePendingPlayers[name] = new DevicePendingState(
                     persistedConfig,
                     null, // Device config may be stale
-                    DateTime.UtcNow);
+                    DateTime.UtcNow,
+                    wasPlaying);
             }
         }
     }
