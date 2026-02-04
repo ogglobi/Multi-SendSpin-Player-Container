@@ -604,6 +604,24 @@ internal static class PulseAudioNative
     }
 
     /// <summary>
+    /// Event facility values received in subscription callbacks.
+    /// IMPORTANT: These are DIFFERENT from SubscriptionMask values!
+    /// SubscriptionMask is for pa_context_subscribe(), this is for callback parsing.
+    /// </summary>
+    public enum SubscriptionEventFacility : uint
+    {
+        Sink = 0x0000,
+        Source = 0x0001,
+        SinkInput = 0x0002,
+        SourceOutput = 0x0003,
+        Module = 0x0004,
+        Client = 0x0005,
+        SampleCache = 0x0006,
+        Server = 0x0007,
+        Card = 0x0009
+    }
+
+    /// <summary>
     /// Callback for subscription events.
     /// </summary>
     /// <param name="context">The context.</param>
