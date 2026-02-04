@@ -2034,7 +2034,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Creates handler for pipeline errors (decoder failures, etc.).
-    /// Auto-stops the player to prevent resource waste.
+    /// Detects device loss errors and queues for device reconnection if possible.
     /// </summary>
     private EventHandler<AudioPipelineError> CreatePipelineErrorHandler(
         string name, PlayerContext context)
@@ -2045,11 +2045,27 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                 name, error.Message);
             context.ErrorMessage = error.Message;
 
-            // Auto-stop player on pipeline error to prevent resource waste
-            _logger.LogWarning("Auto-stopping player '{Name}' due to pipeline error", name);
-            FireAndForget(
-                StopPlayerInternalAsync(name, "Pipeline error: " + error.Message),
-                $"StopPlayerInternalAsync for '{name}' (pipeline error)", _logger);
+            // Check if this is a device loss error (USB unplug with DontMove flag)
+            var isDeviceLoss = error.Message.Contains("Audio device lost") ||
+                               error.Message.Contains("Entity killed") ||
+                               error.Message.Contains("No such entity");
+
+            if (isDeviceLoss && _subscriptionService != null)
+            {
+                // Queue for device reconnection instead of just stopping
+                _logger.LogWarning("Player '{Name}' lost audio device (pipeline), queuing for device reconnection", name);
+                FireAndForget(
+                    QueueForDeviceReconnectionAsync(name, context),
+                    $"QueueForDeviceReconnectionAsync for '{name}' (pipeline)", _logger);
+            }
+            else
+            {
+                // Auto-stop player on pipeline error to prevent resource waste
+                _logger.LogWarning("Auto-stopping player '{Name}' due to pipeline error", name);
+                FireAndForget(
+                    StopPlayerInternalAsync(name, "Pipeline error: " + error.Message),
+                    $"StopPlayerInternalAsync for '{name}' (pipeline error)", _logger);
+            }
         };
     }
 
@@ -2097,6 +2113,13 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     /// </summary>
     private async Task QueueForDeviceReconnectionAsync(string name, PlayerContext context)
     {
+        // Guard against double-handling (both pipeline and player error handlers may fire)
+        if (context.State == Models.PlayerState.WaitingForDevice)
+        {
+            _logger.LogDebug("Player '{Name}' already in WaitingForDevice state, skipping duplicate queue", name);
+            return;
+        }
+
         // Get persisted config for later restart
         var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
         if (persistedConfig == null)
