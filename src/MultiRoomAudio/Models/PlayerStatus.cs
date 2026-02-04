@@ -15,7 +15,12 @@ public enum PlayerState
     Stopped,
     Error,
     Reconnecting,
-    WaitingForServer
+    WaitingForServer,
+    /// <summary>
+    /// Player stopped due to audio device loss (USB unplug).
+    /// Waiting for the device to reconnect.
+    /// </summary>
+    WaitingForDevice
 }
 
 /// <summary>

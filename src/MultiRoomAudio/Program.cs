@@ -153,6 +153,9 @@ else
     // Relay hardware abstractions - real implementations
     builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayDeviceEnumerator, MultiRoomAudio.Relay.RealRelayDeviceEnumerator>();
     builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayBoardFactory, MultiRoomAudio.Relay.RealRelayBoardFactory>();
+    // PulseAudio subscription service for device auto-reconnect (monitors sink events)
+    builder.Services.AddSingleton<MultiRoomAudio.Audio.PulseAudio.PulseAudioSubscriptionService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<MultiRoomAudio.Audio.PulseAudio.PulseAudioSubscriptionService>());
 }
 builder.Services.AddSingleton<DefaultPaParser>();
 

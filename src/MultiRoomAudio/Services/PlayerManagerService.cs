@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using MultiRoomAudio.Audio;
 using MultiRoomAudio.Audio.LibSampleRate;
+using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Exceptions;
 using MultiRoomAudio.Hubs;
 using MultiRoomAudio.Logging;
@@ -79,6 +80,26 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     /// Lock for serializing mDNS discovery requests.
     /// </summary>
     private readonly SemaphoreSlim _discoveryLock = new(1, 1);
+
+    /// <summary>
+    /// PulseAudio subscription service for device change events (may be null on non-PA systems).
+    /// </summary>
+    private readonly PulseAudioSubscriptionService? _subscriptionService;
+
+    /// <summary>
+    /// Tracks players waiting for their audio device to reappear (USB reconnect).
+    /// Key: player name, Value: device identifiers for matching.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DevicePendingState> _devicePendingPlayers = new();
+
+    /// <summary>
+    /// State for a player waiting for device reconnection.
+    /// </summary>
+    private record DevicePendingState(
+        PlayerConfiguration Config,
+        DeviceConfiguration? DeviceConfig,
+        DateTime LostAt
+    );
 
     #region Constants
 
@@ -417,7 +438,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         IHubContext<PlayerStatusHub> hubContext,
         VolumeCommandRunner volumeRunner,
         BackendFactory backendFactory,
-        TriggerService triggerService)
+        TriggerService triggerService,
+        PulseAudioSubscriptionService? subscriptionService = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -427,6 +449,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         _volumeRunner = volumeRunner;
         _backendFactory = backendFactory;
         _triggerService = triggerService;
+        _subscriptionService = subscriptionService;
         _serverDiscovery = new MdnsServerDiscovery(
             loggerFactory.CreateLogger<MdnsServerDiscovery>());
 
@@ -442,6 +465,12 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             _logger.LogInformation(
                 "Sync correction mode: Frame drop/insert with interpolation. " +
                 "Set USE_ADAPTIVE_RESAMPLING=true to use adaptive resampling.");
+        }
+
+        // Subscribe to device change events for auto-reconnect
+        if (_subscriptionService != null)
+        {
+            _subscriptionService.SinkAppeared += OnSinkAppeared;
         }
     }
 
@@ -2026,7 +2055,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Creates handler for audio player errors (device unavailable, etc.).
-    /// Auto-stops the player to prevent resource waste.
+    /// Detects device loss errors and queues for device reconnection if possible.
     /// </summary>
     private EventHandler<AudioPlayerError> CreatePlayerErrorHandler(
         string name, PlayerContext context)
@@ -2037,13 +2066,218 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                 name, error.Message);
             context.ErrorMessage = error.Message;
 
-            // Auto-stop player on audio error (e.g., device unavailable)
-            _logger.LogWarning("Auto-stopping player '{Name}' due to audio error", name);
-            FireAndForget(
-                StopPlayerInternalAsync(name, "Audio error: " + error.Message),
-                $"StopPlayerInternalAsync for '{name}' (audio error)", _logger);
+            // Check if this is a device loss error (USB unplug with DontMove flag)
+            var isDeviceLoss = error.Message.Contains("Audio device lost") ||
+                               error.Message.Contains("No such entity");
+
+            if (isDeviceLoss && _subscriptionService != null)
+            {
+                // Queue for device reconnection instead of just stopping
+                _logger.LogWarning("Player '{Name}' lost audio device, queuing for device reconnection", name);
+                FireAndForget(
+                    QueueForDeviceReconnectionAsync(name, context),
+                    $"QueueForDeviceReconnectionAsync for '{name}'", _logger);
+            }
+            else
+            {
+                // Original behavior for non-device errors
+                _logger.LogWarning("Auto-stopping player '{Name}' due to audio error", name);
+                FireAndForget(
+                    StopPlayerInternalAsync(name, "Audio error: " + error.Message),
+                    $"StopPlayerInternalAsync for '{name}' (audio error)", _logger);
+            }
         };
     }
+
+    #region Device Auto-Reconnection
+
+    /// <summary>
+    /// Queues a player for automatic restart when its audio device reappears.
+    /// Called when a player loses its audio device (USB unplug).
+    /// </summary>
+    private async Task QueueForDeviceReconnectionAsync(string name, PlayerContext context)
+    {
+        // Get persisted config for later restart
+        var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
+        if (persistedConfig == null)
+        {
+            _logger.LogWarning("Player '{Name}' has no persisted config, cannot auto-restart on device reconnection", name);
+            await StopPlayerInternalAsync(name, "Device lost (no config for reconnect)");
+            return;
+        }
+
+        // Get device configuration with identifiers for robust matching
+        var deviceConfig = !string.IsNullOrEmpty(context.Config.DeviceId)
+            ? _config.GetDeviceConfigBySinkName(context.Config.DeviceId)
+            : null;
+
+        // Store for later matching when device reappears
+        _devicePendingPlayers[name] = new DevicePendingState(
+            persistedConfig,
+            deviceConfig,
+            DateTime.UtcNow);
+
+        // Update player state for UI
+        context.State = Models.PlayerState.WaitingForDevice;
+        context.ErrorMessage = "Waiting for audio device to reconnect...";
+
+        // Stop pipeline but keep player registered so it shows in UI
+        try
+        {
+            await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error stopping pipeline for '{Name}' after device loss", name);
+        }
+
+        try
+        {
+            await context.Client.DisconnectAsync("device_lost").WaitAsync(DisposalTimeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disconnecting client for '{Name}' after device loss", name);
+        }
+
+        _ = BroadcastStatusAsync();
+
+        _logger.LogInformation(
+            "Player '{Name}' queued for device reconnection. Device: {Device}, Identifiers: Serial={Serial}, BusPath={BusPath}",
+            name,
+            context.Config.DeviceId ?? "(default)",
+            deviceConfig?.Identifiers?.Serial ?? "(none)",
+            deviceConfig?.Identifiers?.BusPath ?? "(none)");
+    }
+
+    /// <summary>
+    /// Called when PulseAudio reports a new sink appeared (e.g., USB device plugged in).
+    /// Triggers check for device-pending players after a short delay.
+    /// </summary>
+    private void OnSinkAppeared(object? sender, SinkEventArgs args)
+    {
+        if (_devicePendingPlayers.IsEmpty)
+            return;
+
+        _logger.LogDebug("Sink appeared (index={Index}), checking {Count} device-pending players",
+            args.Index, _devicePendingPlayers.Count);
+
+        // Small delay to let PulseAudio fully register the new sink
+        Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            await CheckDevicePendingPlayersAsync();
+        });
+    }
+
+    /// <summary>
+    /// Checks all device-pending players to see if their device has reappeared.
+    /// Uses DeviceMatchingService for robust matching by serial/bus path.
+    /// </summary>
+    private async Task CheckDevicePendingPlayersAsync()
+    {
+        foreach (var (name, state) in _devicePendingPlayers.ToArray())
+        {
+            if (_disposed) break;
+
+            try
+            {
+                string? newSinkName = null;
+
+                if (state.DeviceConfig?.Identifiers != null)
+                {
+                    // Use DeviceMatchingService for robust matching by serial/bus path
+                    var deviceMatching = new DeviceMatchingService(
+                        _loggerFactory.CreateLogger<DeviceMatchingService>(),
+                        _config,
+                        _backendFactory,
+                        null!, // customSinks not needed for matching
+                        null!  // alsaCapabilities not needed for matching
+                    );
+
+                    newSinkName = deviceMatching.FindCurrentSinkName(state.DeviceConfig);
+                }
+                else if (!string.IsNullOrEmpty(state.Config.Device))
+                {
+                    // No device config with identifiers - try exact sink name match
+                    var device = _backendFactory.GetDevice(state.Config.Device);
+                    if (device != null)
+                        newSinkName = device.Id;
+                }
+
+                if (newSinkName != null)
+                {
+                    _logger.LogInformation(
+                        "Device reappeared for player '{Name}': {SinkName}. Restarting player.",
+                        name, newSinkName);
+
+                    // Remove from pending queue before restart
+                    _devicePendingPlayers.TryRemove(name, out _);
+
+                    // Update config if sink name changed
+                    if (state.Config.Device != newSinkName)
+                    {
+                        _config.UpdatePlayerField(name, cfg => cfg.Device = newSinkName, save: true);
+                    }
+
+                    // Restart the player
+                    await RestartPlayerAfterDeviceReconnectAsync(name, state.Config, newSinkName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error checking device-pending player '{Name}'", name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Restarts a player after its audio device has reappeared.
+    /// </summary>
+    private async Task RestartPlayerAfterDeviceReconnectAsync(
+        string name,
+        PlayerConfiguration config,
+        string newSinkName)
+    {
+        try
+        {
+            // First, fully remove and dispose the existing player context
+            await RemoveAndDisposePlayerAsync(name);
+
+            // Create fresh player with the (possibly updated) device
+            var request = new PlayerCreateRequest
+            {
+                Name = config.Name,
+                Device = newSinkName,
+                ClientId = ClientIdGenerator.Generate(config.Name),
+                ServerUrl = config.Server,
+                Volume = config.Volume ?? 100,
+                DelayMs = config.DelayMs,
+                AdvertisedFormat = config.AdvertisedFormat,
+                Persist = false // Already persisted
+            };
+
+            await CreatePlayerAsync(request, CancellationToken.None);
+
+            _logger.LogInformation("Player '{Name}' restarted after device reconnection", name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restart player '{Name}' after device reconnection", name);
+
+            // Re-queue for device reconnection on failure
+            var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
+            if (persistedConfig != null)
+            {
+                _devicePendingPlayers[name] = new DevicePendingState(
+                    persistedConfig,
+                    null, // Device config may be stale
+                    DateTime.UtcNow);
+            }
+        }
+    }
+
+    #endregion
 
     /// <summary>
     /// Handles GroupState events from the SDK.
@@ -2941,11 +3175,18 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             // Stop reconnection task
             _reconnectionCts?.Cancel();
             _pendingReconnections.Clear();
+            _devicePendingPlayers.Clear();
 
             // Take snapshot and clear while holding lock
             // This prevents race conditions with concurrent player operations
             contextsToDispose = _players.Values.ToList();
             _players.Clear();
+        }
+
+        // Unsubscribe from device change events
+        if (_subscriptionService != null)
+        {
+            _subscriptionService.SinkAppeared -= OnSinkAppeared;
         }
 
         // Stop mDNS watch outside lock
@@ -2989,11 +3230,18 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             // Stop reconnection task
             _reconnectionCts?.Cancel();
             _pendingReconnections.Clear();
+            _devicePendingPlayers.Clear();
 
             // Take snapshot and clear while holding lock
             // This prevents race conditions with concurrent player operations
             contextsToDispose = _players.Values.ToList();
             _players.Clear();
+        }
+
+        // Unsubscribe from device change events
+        if (_subscriptionService != null)
+        {
+            _subscriptionService.SinkAppeared -= OnSinkAppeared;
         }
 
         // Stop mDNS watch outside lock
