@@ -383,10 +383,13 @@ public class PulseAudioPlayer : IAudioPlayer
                     // InterpolateTiming + AutoTimingUpdate: Enable latency interpolation with automatic
                     // timing updates every 100ms, allowing accurate pa_stream_get_latency() calls.
                     // AdjustLatency: Tell PA to reconfigure hardware buffers to meet our target latency.
+                    // DontMove: Prevent PA from moving stream to fallback sink if target sink disappears.
+                    // This ensures player stops with error instead of continuing on wrong device.
                     var flags = StreamFlags.StartCorked |
                                 StreamFlags.InterpolateTiming |
                                 StreamFlags.AutoTimingUpdate |
-                                StreamFlags.AdjustLatency;
+                                StreamFlags.AdjustLatency |
+                                StreamFlags.DontMove;
 
                     if (StreamConnectPlayback(_stream, _sinkName, ref bufferAttr, flags, IntPtr.Zero, IntPtr.Zero) < 0)
                     {
@@ -679,11 +682,20 @@ public class PulseAudioPlayer : IAudioPlayer
             var errorMsg = _context != IntPtr.Zero ? GetContextError(_context) : "Unknown";
 
             if (state == StreamState.Terminated && (_disposed || !_isPlaying))
+            {
                 _logger.LogDebug("PulseAudio stream disconnected (expected): {State}. Sink: {Sink}",
                     state, _sinkName ?? "default");
+            }
             else
+            {
                 _logger.LogWarning("PulseAudio stream disconnected: {State}. Error: {Error}. Sink: {Sink}",
                     state, errorMsg, _sinkName ?? "default");
+
+                // Fire error event so PlayerManagerService can auto-stop the player.
+                // This handles device removal (USB unplug) - with DontMove flag, PA fails the
+                // stream instead of moving it to a fallback sink.
+                OnError($"Audio device lost: {errorMsg}");
+            }
         }
     }
 
