@@ -20,7 +20,7 @@ internal static class PlayerStatsMapper
     /// Sync error tolerance in milliseconds. Errors below this are considered "in sync".
     /// Must match CorrectionThresholdMicroseconds in BufferedAudioSampleSource.
     /// </summary>
-    private const double SyncToleranceMs = 15.0;
+    private const double SyncToleranceMs = 30.0;
 
     /// <summary>
     /// Builds a complete stats response from pipeline and clock synchronizer data.
