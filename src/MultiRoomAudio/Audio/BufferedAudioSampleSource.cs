@@ -102,6 +102,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     private readonly ILogger<BufferedAudioSampleSource>? _logger;
     private readonly int _channels;
     private readonly int _sampleRate;
+    private readonly bool _enableHotPathDiagnostics;
 
     // Correction threshold - within tolerance is acceptable, beyond that we correct.
     // Increased from 15ms to 30ms to tolerate VM scheduler jitter on USB passthrough audio.
@@ -179,10 +180,15 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     /// <param name="buffer">The timed audio buffer to read from.</param>
     /// <param name="getCurrentTimeMicroseconds">Function that returns current local time in microseconds.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
+    /// <param name="enableHotPathDiagnostics">
+    /// When true, runs CheckForOverruns() on every audio callback.
+    /// When false (default), skips hot path diagnostics for better performance.
+    /// </param>
     public BufferedAudioSampleSource(
         ITimedAudioBuffer buffer,
         Func<long> getCurrentTimeMicroseconds,
-        ILogger<BufferedAudioSampleSource>? logger = null)
+        ILogger<BufferedAudioSampleSource>? logger = null,
+        bool enableHotPathDiagnostics = false)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(getCurrentTimeMicroseconds);
@@ -192,6 +198,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         _logger = logger;
         _channels = buffer.Format.Channels;
         _sampleRate = buffer.Format.SampleRate;
+        _enableHotPathDiagnostics = enableHotPathDiagnostics;
 
         if (_channels <= 0)
         {
@@ -200,8 +207,8 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
 
         _logger?.LogInformation(
             "BufferedAudioSampleSource initialized: channels={Channels}, sampleRate={SampleRate}, " +
-            "interpolation=3-point weighted with 2-point fallback",
-            _channels, _sampleRate);
+            "interpolation=3-point weighted with 2-point fallback, hotPathDiagnostics={HotPath}",
+            _channels, _sampleRate, _enableHotPathDiagnostics);
     }
 
     /// <inheritdoc/>
@@ -280,7 +287,11 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         }
 
         // Check for overruns (SDK dropping samples due to buffer full)
-        CheckForOverruns();
+        // Only run in hot path if explicitly enabled - this calls GetStats() which has overhead
+        if (_enableHotPathDiagnostics)
+        {
+            CheckForOverruns();
+        }
 
         // Always return requested count to keep audio output happy
         return count;

@@ -17,6 +17,7 @@ public class EnvironmentService
     private readonly bool _isHaos;
     private readonly bool _isMockHardware;
     private readonly bool _enableAdvancedFormats;
+    private readonly bool _enableHotPathDiagnostics;
     private readonly string _configPath;
     private readonly string _logPath;
     private readonly Dictionary<string, JsonElement>? _haosOptions;
@@ -28,6 +29,7 @@ public class EnvironmentService
     private const string HaosSupervisorTokenEnv = "SUPERVISOR_TOKEN";
     private const string MockHardwareEnv = "MOCK_HARDWARE";
     private const string AdvancedFormatsEnv = "ENABLE_ADVANCED_FORMATS";
+    private const string HotPathDiagnosticsEnv = "ENABLE_HOT_PATH_DIAGNOSTICS";
 
     public EnvironmentService(ILogger<EnvironmentService> logger)
     {
@@ -99,6 +101,14 @@ public class EnvironmentService
         {
             _logger.LogInformation("ENABLE_ADVANCED_FORMATS mode enabled - per-player format selection available");
         }
+
+        // Detect hot path diagnostics flag
+        _enableHotPathDiagnostics = DetectHotPathDiagnostics();
+
+        if (_enableHotPathDiagnostics)
+        {
+            _logger.LogInformation("ENABLE_HOT_PATH_DIAGNOSTICS mode enabled - per-callback buffer checking active");
+        }
     }
 
     /// <summary>
@@ -117,6 +127,13 @@ public class EnvironmentService
     /// When true, the application exposes per-player format selection UI and API endpoints.
     /// </summary>
     public bool EnableAdvancedFormats => _enableAdvancedFormats;
+
+    /// <summary>
+    /// Whether hot path diagnostics are enabled (debug-only feature).
+    /// When true, CheckForOverruns() runs on every audio callback (~10ms).
+    /// When false (default), buffer health is checked periodically outside the hot path.
+    /// </summary>
+    public bool EnableHotPathDiagnostics => _enableHotPathDiagnostics;
 
     /// <summary>
     /// Current environment name ("haos" or "standalone").
@@ -418,6 +435,57 @@ public class EnvironmentService
         }
 
         // Default: disabled
+        return false;
+    }
+
+    private bool DetectHotPathDiagnostics()
+    {
+        // Check environment variable (works for both Docker and HAOS)
+        var hotPathValue = Environment.GetEnvironmentVariable(HotPathDiagnosticsEnv);
+        if (!string.IsNullOrEmpty(hotPathValue))
+        {
+            // Accept "true", "1", "yes" as truthy values (case-insensitive)
+            var isEnabled = hotPathValue.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                           hotPathValue == "1" ||
+                           hotPathValue.Equals("yes", StringComparison.OrdinalIgnoreCase);
+
+            if (isEnabled)
+            {
+                _logger.LogDebug("{EnvVar} detected: {Value}", HotPathDiagnosticsEnv, hotPathValue);
+                return true;
+            }
+            else
+            {
+                _logger.LogDebug("{EnvVar} set to {Value}, not enabling hot path diagnostics", HotPathDiagnosticsEnv, hotPathValue);
+            }
+        }
+        else
+        {
+            _logger.LogDebug("{EnvVar} environment variable not set", HotPathDiagnosticsEnv);
+        }
+
+        // Check HAOS options (for add-on UI toggle)
+        if (_isHaos && _haosOptions != null)
+        {
+            if (_haosOptions.TryGetValue("enable_hot_path_diagnostics", out var element))
+            {
+                try
+                {
+                    var haosValue = element.GetBoolean();
+                    if (haosValue)
+                    {
+                        _logger.LogDebug("Hot path diagnostics enabled via HAOS options (enable_hot_path_diagnostics: true)");
+                        return true;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    _logger.LogWarning("HAOS option 'enable_hot_path_diagnostics' is not a boolean value");
+                }
+            }
+        }
+
+        // Default: disabled (for production performance)
         return false;
     }
 }

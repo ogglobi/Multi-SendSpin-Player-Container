@@ -45,6 +45,7 @@ public sealed class AdaptiveResampledAudioSource : IAudioSampleSource, IDisposab
     private readonly int _channels;
     private readonly int _sampleRate;
     private readonly AdaptiveSampleRateConverter _resampler;
+    private readonly bool _enableHotPathDiagnostics;
 
     // Intermediate buffer for reading from SDK (before resampling)
     // We need slightly more input samples when ratio < 1.0 (speeding up = consuming more)
@@ -125,12 +126,17 @@ public sealed class AdaptiveResampledAudioSource : IAudioSampleSource, IDisposab
     /// <param name="logger">Optional logger for diagnostics.</param>
     /// <param name="getDriftRate">Optional function to get drift rate from Kalman filter for stable correction.</param>
     /// <param name="resamplerQuality">libsamplerate quality setting (default: SINC_MEDIUM_QUALITY).</param>
+    /// <param name="enableHotPathDiagnostics">
+    /// When true, runs CheckForOverruns() on every audio callback.
+    /// When false (default), skips hot path diagnostics for better performance.
+    /// </param>
     public AdaptiveResampledAudioSource(
         ITimedAudioBuffer buffer,
         Func<long> getCurrentTimeMicroseconds,
         ILogger<AdaptiveResampledAudioSource>? logger = null,
         Func<(double DriftPpm, bool IsReliable)>? getDriftRate = null,
-        int resamplerQuality = SampleRateInterop.ConverterType.SincMediumQuality)
+        int resamplerQuality = SampleRateInterop.ConverterType.SincMediumQuality,
+        bool enableHotPathDiagnostics = false)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(getCurrentTimeMicroseconds);
@@ -141,6 +147,7 @@ public sealed class AdaptiveResampledAudioSource : IAudioSampleSource, IDisposab
         _logger = logger;
         _channels = buffer.Format.Channels;
         _sampleRate = buffer.Format.SampleRate;
+        _enableHotPathDiagnostics = enableHotPathDiagnostics;
 
         if (_channels <= 0)
         {
@@ -274,7 +281,11 @@ public sealed class AdaptiveResampledAudioSource : IAudioSampleSource, IDisposab
         }
 
         // Check for overruns (SDK dropping samples due to buffer full)
-        CheckForOverruns();
+        // Only run in hot path if explicitly enabled - this calls GetStats() which has overhead
+        if (_enableHotPathDiagnostics)
+        {
+            CheckForOverruns();
+        }
 
         // Always return requested count to keep audio output happy
         return count;

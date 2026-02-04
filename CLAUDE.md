@@ -223,6 +223,7 @@ new ErrorResponse(false, "Error message")
 | `SUPERVISOR_TOKEN` | (HAOS only) | Auto-set by Home Assistant supervisor |
 | `MOCK_HARDWARE` | `false` | Enable mock relay boards for testing without hardware |
 | `ENABLE_ADVANCED_FORMATS` | `false` | Show format selection UI (dev-only). All players default to flac-48000 regardless. |
+| `ENABLE_HOT_PATH_DIAGNOSTICS` | `false` | Enable per-callback buffer diagnostics in audio hot path. Off by default for production performance. |
 
 **Audio Configuration Notes:**
 - `PA_SAMPLE_RATE` and `PA_SAMPLE_FORMAT` only apply in standalone Docker mode
