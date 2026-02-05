@@ -308,6 +308,13 @@ public class HidButtonService : IAsyncDisposable
 
                 var evt = ParseInputEvent(buffer);
 
+                // Log all key events for debugging (including release)
+                if (evt.Type == LinuxInputConstants.EV_KEY)
+                {
+                    _logger.LogDebug("HID event: type={Type} code={Code} value={Value} (device: {Device})",
+                        evt.Type, evt.Code, evt.Value, inputDevice);
+                }
+
                 // Only process key press events (not release or repeat)
                 if (evt.Type != LinuxInputConstants.EV_KEY || evt.Value != LinuxInputConstants.KEY_PRESSED)
                     continue;
@@ -360,11 +367,24 @@ public class HidButtonService : IAsyncDisposable
         switch (keyCode)
         {
             case LinuxInputConstants.KEY_MUTE:
-                // Toggle mute state
-                state.IsMuted = !state.IsMuted;
-                _logger.LogInformation("HID mute button pressed for player '{PlayerName}': {State}",
-                    playerName, state.IsMuted ? "muted" : "unmuted");
-                playerManager.SetMuted(playerName, state.IsMuted);
+                // Get current mute state from player (not our cached state, which may be stale)
+                var allPlayers = playerManager.GetAllPlayers();
+                var player = allPlayers.Players.FirstOrDefault(p =>
+                    p.Name.Equals(playerName, StringComparison.OrdinalIgnoreCase));
+
+                if (player == null)
+                {
+                    _logger.LogWarning("Player '{PlayerName}' not found for mute toggle", playerName);
+                    return;
+                }
+
+                // Toggle based on actual player state
+                var newMuteState = !player.IsMuted;
+                state.IsMuted = newMuteState; // Keep our cache in sync
+
+                _logger.LogInformation("HID mute button pressed for player '{PlayerName}': {State} (was {OldState})",
+                    playerName, newMuteState ? "muted" : "unmuted", player.IsMuted ? "muted" : "unmuted");
+                playerManager.SetMuted(playerName, newMuteState);
                 break;
 
             case LinuxInputConstants.KEY_VOLUMEUP:
