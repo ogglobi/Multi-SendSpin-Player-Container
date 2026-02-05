@@ -480,8 +480,8 @@ public class HidButtonService : IAsyncDisposable
                 // Apply volume change
                 await playerManager.ApplyHardwareVolumeChangeAsync(player.Name, volume);
 
-                // Apply mute change
-                playerManager.ApplyHardwareMuteChange(player.Name, muted);
+                // Apply mute change (use same path as UI mute for consistent behavior)
+                playerManager.SetMuted(player.Name, muted);
             }
             catch (Exception ex)
             {
