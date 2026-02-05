@@ -49,7 +49,8 @@ public class BackendFactory
             _logger.LogInformation("Initializing PulseAudio backend");
             _backend = new PulseAudioBackend(
                 loggerFactory.CreateLogger<PulseAudioBackend>(),
-                volumeRunner);
+                volumeRunner,
+                environment);
         }
 
         _logger.LogInformation("Audio backend: {Backend}", _backend.Name);

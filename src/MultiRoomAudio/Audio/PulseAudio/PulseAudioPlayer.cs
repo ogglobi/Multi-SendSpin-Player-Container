@@ -58,8 +58,11 @@ public class PulseAudioPlayer : IAudioPlayer
 
     /// <summary>
     /// Target buffer size in milliseconds. PulseAudio will request ~this much audio.
+    /// Configurable via PA_BUFFER_MS environment variable or HAOS options (default: 50ms).
+    /// For VM environments with USB passthrough, higher values (200-300ms) may be needed
+    /// to absorb timing jitter and prevent audio pops/crackles.
     /// </summary>
-    private const int BufferMs = 50;
+    private readonly int _bufferMs;
 
     /// <summary>
     /// Initial latency estimate before real measurements are available.
@@ -251,10 +254,15 @@ public class PulseAudioPlayer : IAudioPlayer
     /// <param name="sinkName">
     /// Optional PulseAudio sink name. If null, uses the default sink.
     /// </param>
-    public PulseAudioPlayer(ILogger<PulseAudioPlayer> logger, string? sinkName = null)
+    /// <param name="bufferMs">
+    /// PulseAudio buffer size in milliseconds. Higher values help absorb timing jitter.
+    /// Default: 50ms. For VMs with high jitter, try 200-300ms.
+    /// </param>
+    public PulseAudioPlayer(ILogger<PulseAudioPlayer> logger, string? sinkName = null, int bufferMs = 50)
     {
         _logger = logger;
         _sinkName = sinkName;
+        _bufferMs = Math.Clamp(bufferMs, 10, 2000);
     }
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
@@ -279,8 +287,8 @@ public class PulseAudioPlayer : IAudioPlayer
                 CleanupResources();
 
                 _logger.LogInformation(
-                    "Initializing PulseAudio player: {SampleRate}Hz, {Channels}ch, FLOAT32, sink: {Sink}",
-                    format.SampleRate, format.Channels, _sinkName ?? "default");
+                    "Initializing PulseAudio player: {SampleRate}Hz, {Channels}ch, FLOAT32, sink: {Sink}, buffer: {_bufferMs}ms",
+                    format.SampleRate, format.Channels, _sinkName ?? "default", _bufferMs);
 
                 // Create the threaded mainloop
                 _mainloop = ThreadedMainloopNew();
@@ -379,7 +387,7 @@ public class PulseAudioPlayer : IAudioPlayer
                     // Configure buffer attributes for low-latency playback.
                     // Per PulseAudio docs: set fields to uint.MaxValue (-1) to let PA choose defaults,
                     // except for the fields we want to control.
-                    var targetLatencyBytes = BytesForMs(ref sampleSpec, BufferMs);
+                    var targetLatencyBytes = BytesForMs(ref sampleSpec, _bufferMs);
                     var minReqBytes = BytesForMs(ref sampleSpec, 10); // Request callbacks every ~10ms
                     var bufferAttr = new BufferAttr
                     {

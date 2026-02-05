@@ -1,4 +1,5 @@
 using MultiRoomAudio.Models;
+using MultiRoomAudio.Services;
 using MultiRoomAudio.Utilities;
 using Sendspin.SDK.Audio;
 
@@ -12,15 +13,18 @@ public class PulseAudioBackend : IBackend
 {
     private readonly ILogger<PulseAudioBackend> _logger;
     private readonly VolumeCommandRunner _volumeRunner;
+    private readonly EnvironmentService _environment;
 
     public string Name => "pulse";
 
     public PulseAudioBackend(
         ILogger<PulseAudioBackend> logger,
-        VolumeCommandRunner volumeRunner)
+        VolumeCommandRunner volumeRunner,
+        EnvironmentService environment)
     {
         _logger = logger;
         _volumeRunner = volumeRunner;
+        _environment = environment;
 
         // Configure the device enumerator with a logger
         PulseAudioDeviceEnumerator.SetLogger(logger);
@@ -68,12 +72,13 @@ public class PulseAudioBackend : IBackend
 
     public IAudioPlayer CreatePlayer(string? deviceId, ILoggerFactory loggerFactory)
     {
-        _logger.LogDebug("Creating PulseAudio player for sink: {Sink} (float32 format, PulseAudio handles conversion)",
-            deviceId ?? "default");
+        _logger.LogDebug("Creating PulseAudio player for sink: {Sink} (float32 format, buffer: {BufferMs}ms)",
+            deviceId ?? "default", _environment.PaBufferMs);
 
         return new PulseAudioPlayer(
             loggerFactory.CreateLogger<PulseAudioPlayer>(),
-            deviceId);
+            deviceId,
+            _environment.PaBufferMs);
     }
 
     public async Task<bool> SetVolumeAsync(string? deviceId, int volume, CancellationToken cancellationToken = default)

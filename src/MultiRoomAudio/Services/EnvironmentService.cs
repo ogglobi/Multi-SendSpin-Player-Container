@@ -17,6 +17,7 @@ public class EnvironmentService
     private readonly bool _isHaos;
     private readonly bool _isMockHardware;
     private readonly bool _enableAdvancedFormats;
+    private readonly int _paBufferMs;
     private readonly string _configPath;
     private readonly string _logPath;
     private readonly Dictionary<string, JsonElement>? _haosOptions;
@@ -28,6 +29,8 @@ public class EnvironmentService
     private const string HaosSupervisorTokenEnv = "SUPERVISOR_TOKEN";
     private const string MockHardwareEnv = "MOCK_HARDWARE";
     private const string AdvancedFormatsEnv = "ENABLE_ADVANCED_FORMATS";
+    private const string PaBufferMsEnv = "PA_BUFFER_MS";
+    private const int PaBufferMsDefault = 50;
 
     public EnvironmentService(ILogger<EnvironmentService> logger)
     {
@@ -99,6 +102,15 @@ public class EnvironmentService
         {
             _logger.LogInformation("ENABLE_ADVANCED_FORMATS mode enabled - per-player format selection available");
         }
+
+        // Detect PulseAudio buffer size
+        _paBufferMs = DetectPaBufferMs();
+
+        if (_paBufferMs != PaBufferMsDefault)
+        {
+            _logger.LogInformation("PA_BUFFER_MS set to {BufferMs}ms (default: {Default}ms)",
+                _paBufferMs, PaBufferMsDefault);
+        }
     }
 
     /// <summary>
@@ -117,6 +129,13 @@ public class EnvironmentService
     /// When true, the application exposes per-player format selection UI and API endpoints.
     /// </summary>
     public bool EnableAdvancedFormats => _enableAdvancedFormats;
+
+    /// <summary>
+    /// PulseAudio buffer size in milliseconds.
+    /// Higher values help absorb timing jitter in VM environments with USB passthrough.
+    /// Default: 50ms. For VMs with high jitter, try 200-300ms.
+    /// </summary>
+    public int PaBufferMs => _paBufferMs;
 
     /// <summary>
     /// Current environment name ("haos" or "standalone").
@@ -419,5 +438,56 @@ public class EnvironmentService
 
         // Default: disabled
         return false;
+    }
+
+    private int DetectPaBufferMs()
+    {
+        // Check environment variable first (works for both Docker and HAOS)
+        var envValue = Environment.GetEnvironmentVariable(PaBufferMsEnv);
+        if (!string.IsNullOrEmpty(envValue))
+        {
+            if (int.TryParse(envValue, out var envMs) && envMs > 0)
+            {
+                var clamped = Math.Clamp(envMs, 10, 2000);
+                _logger.LogDebug("{EnvVar} detected: {Value}ms (clamped: {Clamped}ms)",
+                    PaBufferMsEnv, envValue, clamped);
+                return clamped;
+            }
+            else
+            {
+                _logger.LogWarning("{EnvVar} set to invalid value '{Value}', using default {Default}ms",
+                    PaBufferMsEnv, envValue, PaBufferMsDefault);
+            }
+        }
+        else
+        {
+            _logger.LogDebug("{EnvVar} environment variable not set", PaBufferMsEnv);
+        }
+
+        // Check HAOS options (for add-on UI configuration)
+        if (_isHaos && _haosOptions != null)
+        {
+            if (_haosOptions.TryGetValue("pa_buffer_ms", out var element))
+            {
+                try
+                {
+                    var haosValue = element.GetInt32();
+                    if (haosValue > 0)
+                    {
+                        var clamped = Math.Clamp(haosValue, 10, 2000);
+                        _logger.LogDebug("PA buffer size set via HAOS options: {Value}ms (clamped: {Clamped}ms)",
+                            haosValue, clamped);
+                        return clamped;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    _logger.LogWarning("HAOS option 'pa_buffer_ms' is not an integer value");
+                }
+            }
+        }
+
+        // Default
+        return PaBufferMsDefault;
     }
 }
