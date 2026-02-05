@@ -3479,7 +3479,7 @@ function renderSoundCards() {
                                disabled
                                onchange="toggleHidButtons('${escapeJsString(deviceId)}', this.checked, ${card.index})">
                         <label class="form-check-label small" for="settings-hid-buttons-${card.index}">
-                            Enable hardware volume/mute buttons
+                            Enable hardware volume/mute buttons (may not work with all devices)
                         </label>
                         <span id="settings-hid-buttons-status-${card.index}" class="text-muted small ms-1"></span>
                     </div>
