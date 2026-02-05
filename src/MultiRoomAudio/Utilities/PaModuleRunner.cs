@@ -352,6 +352,7 @@ public partial class PaModuleRunner : IPaModuleRunner
     /// <returns>Module index on success, null on failure.</returns>
     public async Task<int?> LoadMmkbdEvdevAsync(
         string inputDevice,
+        string sinkName,
         CancellationToken cancellationToken = default)
     {
         // Validate input device path - must be a device path
@@ -368,10 +369,17 @@ public partial class PaModuleRunner : IPaModuleRunner
             return null;
         }
 
-        // Check for dangerous characters
+        // Check for dangerous characters in device path
         if (inputDevice.IndexOfAny(DangerousChars) >= 0)
         {
             _logger.LogWarning("Input device path contains invalid characters: {Path}", inputDevice);
+            return null;
+        }
+
+        // Validate sink name
+        if (!ValidateName(sinkName, out var sinkError))
+        {
+            _logger.LogWarning("Invalid sink name for module-mmkbd-evdev: {Error}", sinkError);
             return null;
         }
 
@@ -380,10 +388,12 @@ public partial class PaModuleRunner : IPaModuleRunner
         {
             "load-module",
             "module-mmkbd-evdev",
-            $"device={inputDevice}"
+            $"device={inputDevice}",
+            $"sink={sinkName}"
         };
 
-        _logger.LogInformation("Loading module-mmkbd-evdev for input device '{Device}'", inputDevice);
+        _logger.LogInformation("Loading module-mmkbd-evdev for input device '{Device}' with sink '{Sink}'",
+            inputDevice, sinkName);
 
         var result = await RunPactlAsync(args.ToArray(), cancellationToken);
 

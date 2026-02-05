@@ -112,7 +112,7 @@ public class HidButtonService : IAsyncDisposable
                 {
                     try
                     {
-                        var moduleIndex = await _moduleRunner.LoadMmkbdEvdevAsync(inputDevice, cancellationToken);
+                        var moduleIndex = await _moduleRunner.LoadMmkbdEvdevAsync(inputDevice, sinkName, cancellationToken);
                         if (moduleIndex.HasValue)
                         {
                             var state = new HidButtonDeviceState
@@ -206,7 +206,7 @@ public class HidButtonService : IAsyncDisposable
         // Load the module
         try
         {
-            var moduleIndex = await _moduleRunner.LoadMmkbdEvdevAsync(inputDevice, cancellationToken);
+            var moduleIndex = await _moduleRunner.LoadMmkbdEvdevAsync(inputDevice, sinkName, cancellationToken);
             if (!moduleIndex.HasValue)
             {
                 return new HidButtonEnableResponse(

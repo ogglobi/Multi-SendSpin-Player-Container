@@ -34,9 +34,11 @@ public interface IPaModuleRunner
     /// Load module-mmkbd-evdev to capture HID volume/mute button events.
     /// </summary>
     /// <param name="inputDevice">Path to input device (e.g., /dev/input/by-id/...).</param>
+    /// <param name="sinkName">Name of the sink to control (e.g., alsa_output.usb-...).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Module index on success, null on failure.</returns>
     Task<int?> LoadMmkbdEvdevAsync(
         string inputDevice,
+        string sinkName,
         CancellationToken cancellationToken = default);
 }

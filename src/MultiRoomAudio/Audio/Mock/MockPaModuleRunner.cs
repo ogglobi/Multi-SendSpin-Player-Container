@@ -140,6 +140,7 @@ public class MockPaModuleRunner : IPaModuleRunner
 
     public Task<int?> LoadMmkbdEvdevAsync(
         string inputDevice,
+        string sinkName,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(inputDevice))
@@ -148,12 +149,18 @@ public class MockPaModuleRunner : IPaModuleRunner
             return Task.FromResult<int?>(null);
         }
 
+        if (string.IsNullOrWhiteSpace(sinkName))
+        {
+            _logger.LogWarning("Mock: Sink name cannot be empty");
+            return Task.FromResult<int?>(null);
+        }
+
         var moduleIndex = _nextModuleIndex++;
-        var module = new MockModule(moduleIndex, "module-mmkbd-evdev", inputDevice, null);
+        var module = new MockModule(moduleIndex, "module-mmkbd-evdev", inputDevice, sinkName);
         _modules[moduleIndex] = module;
 
-        _logger.LogInformation("Mock: Loaded module-mmkbd-evdev for '{Device}' with module index {Index}",
-            inputDevice, moduleIndex);
+        _logger.LogInformation("Mock: Loaded module-mmkbd-evdev for '{Device}' with sink '{Sink}' and module index {Index}",
+            inputDevice, sinkName, moduleIndex);
 
         return Task.FromResult<int?>(moduleIndex);
     }
