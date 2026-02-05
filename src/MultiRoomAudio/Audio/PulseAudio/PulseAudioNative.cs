@@ -416,26 +416,47 @@ internal static class PulseAudioNative
     #region Async API - Stream
 
     /// <summary>
+    /// Represents C's struct timeval (16 bytes on 64-bit Linux).
+    /// Used for timestamp field in pa_timing_info.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TimeVal
+    {
+        /// <summary>Seconds since Unix epoch (time_t).</summary>
+        public long TvSec;
+        /// <summary>Microseconds (suseconds_t).</summary>
+        public long TvUsec;
+    }
+
+    /// <summary>
     /// Timing information for a PulseAudio stream.
     /// Returned by pa_stream_get_timing_info().
     /// </summary>
     /// <remarks>
     /// This structure provides detailed timing diagnostics useful for debugging
     /// audio sync issues, especially in VM environments with USB passthrough.
+    ///
+    /// IMPORTANT: This struct must exactly match the memory layout of pa_timing_info
+    /// from PulseAudio's def.h. The first field is struct timeval (16 bytes), not a
+    /// single long. Padding fields are required for proper 8-byte alignment of the
+    /// 64-bit fields (SinkUsec, ReadIndex, etc.).
     /// </remarks>
     [StructLayout(LayoutKind.Sequential)]
     public struct TimingInfo
     {
         /// <summary>
-        /// Time when this timing info was generated (CLOCK_MONOTONIC microseconds).
+        /// Time when this timing info was generated (struct timeval).
         /// </summary>
-        public long Timestamp;
+        public TimeVal Timestamp;
 
         /// <summary>
         /// Non-zero if timing info is synchronized with the server.
         /// If zero, the values may not be reliable.
         /// </summary>
         public int Synchronized;
+
+        /// <summary>Padding for 8-byte alignment before SinkUsec.</summary>
+        private int _padding1;
 
         /// <summary>
         /// Time the sink has to play before reaching the current write index.
@@ -475,6 +496,9 @@ internal static class PulseAudioNative
         /// If set, timing data may be unreliable - common in VM environments.
         /// </summary>
         public int ReadIndexCorrupt;
+
+        /// <summary>Padding for 8-byte alignment before ReadIndex.</summary>
+        private int _padding2;
 
         /// <summary>
         /// Current read index (bytes consumed by sink/hardware).
