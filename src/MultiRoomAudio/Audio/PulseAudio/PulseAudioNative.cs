@@ -416,6 +416,88 @@ internal static class PulseAudioNative
     #region Async API - Stream
 
     /// <summary>
+    /// Timing information for a PulseAudio stream.
+    /// Returned by pa_stream_get_timing_info().
+    /// </summary>
+    /// <remarks>
+    /// This structure provides detailed timing diagnostics useful for debugging
+    /// audio sync issues, especially in VM environments with USB passthrough.
+    /// </remarks>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TimingInfo
+    {
+        /// <summary>
+        /// Time when this timing info was generated (CLOCK_MONOTONIC microseconds).
+        /// </summary>
+        public long Timestamp;
+
+        /// <summary>
+        /// Non-zero if timing info is synchronized with the server.
+        /// If zero, the values may not be reliable.
+        /// </summary>
+        public int Synchronized;
+
+        /// <summary>
+        /// Time the sink has to play before reaching the current write index.
+        /// This is the "sink latency" - how long audio sits in the hardware buffer.
+        /// </summary>
+        public ulong SinkUsec;
+
+        /// <summary>
+        /// Time the source has been running since last underflow (record only).
+        /// </summary>
+        public ulong SourceUsec;
+
+        /// <summary>
+        /// Time spent in transport (network/USB). For local playback, usually 0.
+        /// Non-zero values may indicate USB timing issues.
+        /// </summary>
+        public ulong TransportUsec;
+
+        /// <summary>
+        /// Non-zero if the stream is currently playing (not corked/paused).
+        /// </summary>
+        public int Playing;
+
+        /// <summary>
+        /// Non-zero if write_index is not up-to-date due to timing issues.
+        /// If set, timing data may be unreliable - common in VM environments.
+        /// </summary>
+        public int WriteIndexCorrupt;
+
+        /// <summary>
+        /// Current write index (bytes written to stream).
+        /// </summary>
+        public long WriteIndex;
+
+        /// <summary>
+        /// Non-zero if read_index is not up-to-date due to timing issues.
+        /// If set, timing data may be unreliable - common in VM environments.
+        /// </summary>
+        public int ReadIndexCorrupt;
+
+        /// <summary>
+        /// Current read index (bytes consumed by sink/hardware).
+        /// </summary>
+        public long ReadIndex;
+
+        /// <summary>
+        /// Configured sink latency requested via buffer attributes.
+        /// </summary>
+        public ulong ConfiguredSinkUsec;
+
+        /// <summary>
+        /// Configured source latency (record only).
+        /// </summary>
+        public ulong ConfiguredSourceUsec;
+
+        /// <summary>
+        /// Bytes buffered since last underflow. Useful for detecting buffer health.
+        /// </summary>
+        public long SinceUnderrunBytes;
+    }
+
+    /// <summary>
     /// Create a new stream.
     /// </summary>
     [DllImport(LibPulse, EntryPoint = "pa_stream_new")]
@@ -553,6 +635,23 @@ internal static class PulseAudioNative
     /// </summary>
     [DllImport(LibPulse, EntryPoint = "pa_stream_update_timing_info")]
     public static extern IntPtr StreamUpdateTimingInfo(IntPtr stream, IntPtr callback, IntPtr userdata);
+
+    /// <summary>
+    /// Get the current timing info for the stream.
+    /// </summary>
+    /// <param name="stream">The stream.</param>
+    /// <returns>
+    /// Pointer to TimingInfo structure, or IntPtr.Zero if timing info is not yet available.
+    /// The returned pointer is valid until the next call to this function or until
+    /// the stream is disconnected. Do NOT free this pointer.
+    /// </returns>
+    /// <remarks>
+    /// Requires PA_STREAM_AUTO_TIMING_UPDATE flag for automatic updates.
+    /// The timing info provides detailed diagnostics about buffer state and timing
+    /// reliability, which is especially useful for debugging VM/USB audio issues.
+    /// </remarks>
+    [DllImport(LibPulse, EntryPoint = "pa_stream_get_timing_info")]
+    public static extern IntPtr StreamGetTimingInfo(IntPtr stream);
 
     /// <summary>
     /// Check if the stream is corked (paused).

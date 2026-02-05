@@ -30,6 +30,7 @@ public class PulseAudioPlayer : IAudioPlayer
     private StreamNotifyCallback? _streamStateCallback;
     private StreamRequestCallback? _writeCallback;
     private StreamNotifyCallback? _underflowCallback;
+    private StreamNotifyCallback? _overflowCallback;
 
     // THREAD SAFETY: These fields are accessed from both the main thread (via public API)
     // and PulseAudio's internal mainloop thread (via write callback). Using volatile ensures
@@ -88,7 +89,14 @@ public class PulseAudioPlayer : IAudioPlayer
     /// </summary>
     private const int DiagnosticLogInterval = 100;
 
+    /// <summary>
+    /// How often to log detailed timing info (in callbacks).
+    /// At ~10ms per callback, 500 = log every ~5 seconds.
+    /// </summary>
+    private const int TimingDiagnosticInterval = 500;
+
     private int _underflowCount;
+    private int _overflowCount;
     private ulong _lastMeasuredLatencyUs;
 
     // Latency lock-in: collect samples during startup, then freeze to median
@@ -104,6 +112,17 @@ public class PulseAudioPlayer : IAudioPlayer
     private long _zeroReadCount;
     private DateTime _playbackStartTime;
     private bool _hasLoggedFirstAudio;
+
+    // Timing corruption tracking - indicates unreliable timing (common in VMs)
+    private int _writeIndexCorruptCount;
+    private int _readIndexCorruptCount;
+    private bool _hasLoggedTimingCorruption;
+
+    // Latency watermarks - track min/max since last diagnostic log
+    // Uses existing StreamGetLatency data, no additional PA calls
+    private ulong _minLatencyUsSinceLastLog = ulong.MaxValue;
+    private ulong _maxLatencyUsSinceLastLog;
+    private ulong _latencySampleCountSinceLastLog;
 
     // Audio clock: Unix epoch microseconds when playback started (captured at uncork time).
     // Used to convert pa_stream_get_time() (relative) to absolute Unix time.
@@ -350,10 +369,12 @@ public class PulseAudioPlayer : IAudioPlayer
                     _streamStateCallback = OnStreamStateChanged;
                     _writeCallback = OnWriteCallback;
                     _underflowCallback = OnUnderflow;
+                    _overflowCallback = OnOverflow;
 
                     StreamSetStateCallback(_stream, _streamStateCallback, IntPtr.Zero);
                     StreamSetWriteCallback(_stream, _writeCallback, IntPtr.Zero);
                     StreamSetUnderflowCallback(_stream, _underflowCallback, IntPtr.Zero);
+                    StreamSetOverflowCallback(_stream, _overflowCallback, IntPtr.Zero);
 
                     // Configure buffer attributes for low-latency playback.
                     // Per PulseAudio docs: set fields to uint.MaxValue (-1) to let PA choose defaults,
@@ -490,7 +511,14 @@ public class PulseAudioPlayer : IAudioPlayer
             _silenceWriteCount = 0;
             _zeroReadCount = 0;
             _underflowCount = 0;
+            _overflowCount = 0;
+            _writeIndexCorruptCount = 0;
+            _readIndexCorruptCount = 0;
             _hasLoggedFirstAudio = false;
+            _hasLoggedTimingCorruption = false;
+            _minLatencyUsSinceLastLog = ulong.MaxValue;
+            _maxLatencyUsSinceLastLog = 0;
+            _latencySampleCountSinceLastLog = 0;
             _playbackStartTime = DateTime.UtcNow;
 
             // Uncork the stream and capture timing baseline IMMEDIATELY after.
@@ -743,6 +771,11 @@ public class PulseAudioPlayer : IAudioPlayer
             _lastMeasuredLatencyUs = latencyUs;
             var newLatencyMs = (int)(latencyUs / 1000);
 
+            // Track latency watermarks for diagnostic logging (no additional PA calls)
+            if (latencyUs < _minLatencyUsSinceLastLog) _minLatencyUsSinceLastLog = latencyUs;
+            if (latencyUs > _maxLatencyUsSinceLastLog) _maxLatencyUsSinceLastLog = latencyUs;
+            _latencySampleCountSinceLastLog++;
+
             if (!_latencyLocked)
             {
                 // During startup: collect samples for lock-in
@@ -777,6 +810,11 @@ public class PulseAudioPlayer : IAudioPlayer
             }
             // After lock: OutputLatencyMs stays frozen, no updates
         }
+
+        // Check timing corruption on every callback to catch transient issues.
+        // This uses StreamGetTimingInfo which returns a cached pointer (fast),
+        // plus Marshal.PtrToStructure (~100 bytes copy). Worth it for diagnostics.
+        CheckTimingCorruption(stream);
 
         // Read volatile fields into locals for consistent access within this callback.
         // The volatile keyword ensures we see the latest values written by other threads.
@@ -877,6 +915,108 @@ public class PulseAudioPlayer : IAudioPlayer
                 }
             }
         }
+
+        // Periodically log detailed timing diagnostics to help diagnose VM/USB issues
+        if (_callbackCount % TimingDiagnosticInterval == 0)
+        {
+            LogTimingDiagnostics(stream);
+        }
+    }
+
+    /// <summary>
+    /// Check timing corruption on every callback to catch transient issues.
+    /// Lightweight: just checks corruption flags, no logging unless state changes.
+    /// </summary>
+    private void CheckTimingCorruption(IntPtr stream)
+    {
+        var timingPtr = StreamGetTimingInfo(stream);
+        if (timingPtr == IntPtr.Zero)
+            return;
+
+        var timing = Marshal.PtrToStructure<TimingInfo>(timingPtr);
+
+        // Track cumulative corruption events
+        if (timing.WriteIndexCorrupt != 0)
+        {
+            _writeIndexCorruptCount++;
+        }
+        if (timing.ReadIndexCorrupt != 0)
+        {
+            _readIndexCorruptCount++;
+        }
+
+        // Log warning on first corruption detection
+        if (!_hasLoggedTimingCorruption &&
+            (timing.WriteIndexCorrupt != 0 || timing.ReadIndexCorrupt != 0))
+        {
+            _hasLoggedTimingCorruption = true;
+            _logger.LogWarning(
+                "PulseAudio timing corruption detected - timing may be unreliable. " +
+                "WriteCorrupt={WriteCorrupt}, ReadCorrupt={ReadCorrupt}. " +
+                "This is common in VM environments with USB passthrough.",
+                timing.WriteIndexCorrupt != 0, timing.ReadIndexCorrupt != 0);
+        }
+    }
+
+    /// <summary>
+    /// Log detailed timing diagnostics from PulseAudio.
+    /// Called periodically (every ~5 seconds) to provide insight into timing health.
+    /// Includes latency watermarks (min/max) since last log.
+    /// </summary>
+    private void LogTimingDiagnostics(IntPtr stream)
+    {
+        var timingPtr = StreamGetTimingInfo(stream);
+        if (timingPtr == IntPtr.Zero)
+        {
+            _logger.LogDebug("Timing info not yet available");
+            return;
+        }
+
+        var timing = Marshal.PtrToStructure<TimingInfo>(timingPtr);
+
+        // Note: corruption tracking is now done per-callback in CheckTimingCorruption()
+        // Here we just log the summary
+
+        // Calculate buffer fullness (bytes buffered but not yet played)
+        var bufferedBytes = timing.WriteIndex - timing.ReadIndex;
+
+        // Calculate latency range for this period
+        var minLatencyMs = _minLatencyUsSinceLastLog == ulong.MaxValue ? 0 : _minLatencyUsSinceLastLog / 1000.0;
+        var maxLatencyMs = _maxLatencyUsSinceLastLog / 1000.0;
+        var latencyRange = maxLatencyMs - minLatencyMs;
+
+        // Log timing snapshot with watermarks
+        _logger.LogDebug(
+            "PA Timing: latency={CurrentMs:F1}ms (range:{MinMs:F1}-{MaxMs:F1}ms, jitter:{Jitter:F1}ms over {Samples} samples), " +
+            "sinkLatency={SinkMs:F1}ms, buffered={BufferedBytes}bytes, transport={TransportUs}μs, " +
+            "corruptSamples={WriteCorrupt}/{ReadCorrupt} (write/read), " +
+            "underflows={Underflows}, overflows={Overflows}",
+            _lastMeasuredLatencyUs / 1000.0,
+            minLatencyMs,
+            maxLatencyMs,
+            latencyRange,
+            _latencySampleCountSinceLastLog,
+            timing.SinkUsec / 1000.0,
+            bufferedBytes,
+            timing.TransportUsec,
+            _writeIndexCorruptCount,
+            _readIndexCorruptCount,
+            _underflowCount,
+            _overflowCount);
+
+        // Warn if latency jitter is significant (>20ms range indicates timing instability)
+        if (latencyRange > 20 && _latencySampleCountSinceLastLog > 100)
+        {
+            _logger.LogWarning(
+                "High latency jitter detected: {Jitter:F1}ms range ({MinMs:F1}-{MaxMs:F1}ms). " +
+                "May indicate VM scheduling issues or USB timing problems.",
+                latencyRange, minLatencyMs, maxLatencyMs);
+        }
+
+        // Reset watermarks for next period
+        _minLatencyUsSinceLastLog = ulong.MaxValue;
+        _maxLatencyUsSinceLastLog = 0;
+        _latencySampleCountSinceLastLog = 0;
     }
 
     /// <summary>
@@ -905,6 +1045,35 @@ public class PulseAudioPlayer : IAudioPlayer
         else if (_underflowCount % 100 == 0)
         {
             _logger.LogDebug("Underflow count: {Count}", _underflowCount);
+        }
+    }
+
+    /// <summary>
+    /// Called when an overflow occurs (PulseAudio received data faster than it can consume).
+    /// </summary>
+    /// <remarks>
+    /// Overflows can indicate timing issues in VM environments where the host may pause
+    /// the VM briefly, causing our player to "catch up" by writing data faster than
+    /// the hardware can play it. This can manifest as audio glitches.
+    /// </remarks>
+    private void OnOverflow(IntPtr stream, IntPtr userdata)
+    {
+        _overflowCount++;
+
+        if (_overflowCount == 1)
+        {
+            var elapsed = (DateTime.UtcNow - _playbackStartTime).TotalMilliseconds;
+            _logger.LogWarning(
+                "First audio OVERFLOW at {Elapsed:F0}ms after play. " +
+                "callbacks={Callbacks}, latency={Latency}ms. " +
+                "This may indicate VM timing issues or write callback delivering data too fast.",
+                elapsed, _callbackCount, OutputLatencyMs);
+        }
+        else if (_overflowCount % 10 == 0)
+        {
+            _logger.LogWarning(
+                "Audio overflow count: {Count}. May indicate VM scheduling issues.",
+                _overflowCount);
         }
     }
 
@@ -988,6 +1157,7 @@ public class PulseAudioPlayer : IAudioPlayer
         _streamStateCallback = null;
         _writeCallback = null;
         _underflowCallback = null;
+        _overflowCallback = null;
 
         _sampleBuffer = null;
         _byteBuffer = null;
