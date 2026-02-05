@@ -884,7 +884,7 @@ async function refreshDevices(currentDeviceId = null) {
         const selects = document.querySelectorAll('#audioDevice, #editAudioDevice');
         selects.forEach(select => {
             const currentValue = select.value;
-            select.innerHTML = '<option value="">Default Device</option>';
+            select.innerHTML = '<option value="" disabled selected>Select a device...</option>';
             visibleDevices.forEach(device => {
                 const option = document.createElement('option');
                 option.value = device.id;
@@ -1031,6 +1031,11 @@ async function savePlayer() {
         return;
     }
 
+    if (!device) {
+        showAlert('Please select an audio device', 'warning');
+        return;
+    }
+
     // Disable submit button to prevent double-click
     const submitBtn = document.getElementById('playerModalSubmit');
     submitBtn.disabled = true;
@@ -1040,7 +1045,7 @@ async function savePlayer() {
             // Edit mode: Use PUT to update config, then restart if needed
             const updatePayload = {
                 name: name !== editingName ? name : undefined,  // Only include if changed
-                device: device || '',  // Empty string = default device
+                device: device,  // Device is required
                 serverUrl: serverUrl || ''  // Empty string = mDNS discovery
                 // Note: volume is NOT included here - we update startup volume separately
                 // so it doesn't affect current playback
@@ -1120,7 +1125,7 @@ async function savePlayer() {
             // Add mode: Create new player
             const payload = {
                 name,
-                device: device || null,
+                device,  // Device is required
                 serverUrl: serverUrl || null,
                 volume,
                 persist: true
