@@ -1,10 +1,12 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-39f463d
+## Development Build: sha-e626473
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #152 from scyto/feature/auto-track-devices-cards
+- Auto-track devices and cards at startup and on discovery
 - Merge pull request #151 from scyto/bug/sync-threshold
 - Revert sync correction threshold from 30ms back to 15ms
 - Merge pull request #150 from scyto/feature/remove-default-device-option
@@ -13,8 +15,6 @@
 - Use bus path as primary key for device/card config persistence
 - Merge pull request #148 from scyto/bug/usb-unplug-wrong-device
 - Fix audio playing on wrong device when USB is unplugged
-- Merge pull request #147 from scyto/bug/usb-unplug-deadlock-upstream
-- Fix deadlock when USB audio device is unplugged
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
