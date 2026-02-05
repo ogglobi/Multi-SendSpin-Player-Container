@@ -2285,7 +2285,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
         try
         {
-            await context.Client.DisconnectAsync("device_lost").WaitAsync(DisposalTimeout);
+            await context.Client.DisconnectAsync("restart").WaitAsync(DisposalTimeout);
         }
         catch (Exception ex)
         {
