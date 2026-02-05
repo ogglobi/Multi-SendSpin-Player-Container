@@ -41,7 +41,6 @@ panel_title: Multi-Room Audio (Dev)
 # User-configurable options
 options:
   log_level: info
-  relay_serial_port: null
   relay_devices: []
   mock_hardware: false
   enable_advanced_formats: false
