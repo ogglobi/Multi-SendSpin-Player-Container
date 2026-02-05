@@ -2293,6 +2293,19 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         }
 
         _ = BroadcastStatusAsync();
+
+        // Schedule an immediate check after a short delay - the device might still be
+        // available (USB bus glitch) or might reappear very quickly. Don't rely solely
+        // on sink events which might be missed during rapid disconnect/reconnect cycles.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1500); // Wait for PA to stabilize
+            if (!_disposed && _devicePendingPlayers.ContainsKey(name))
+            {
+                _logger.LogDebug("Running scheduled device check for '{Name}' after queue", name);
+                await CheckDevicePendingPlayersAsync();
+            }
+        });
     }
 
     /// <summary>
