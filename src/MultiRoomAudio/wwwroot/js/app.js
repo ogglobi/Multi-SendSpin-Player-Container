@@ -1163,6 +1163,20 @@ async function savePlayer() {
                 throw new Error(error.error || 'Failed to create player');
             }
 
+            // Update auto-resume setting for the new player
+            const autoResume = document.getElementById('autoResume').checked;
+            if (autoResume) {
+                // Only call API if enabled (default is false)
+                const autoResumeResponse = await fetch(`./api/players/${encodeURIComponent(name)}/auto-resume`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: autoResume })
+                });
+                if (!autoResumeResponse.ok) {
+                    console.warn('Failed to update auto-resume setting');
+                }
+            }
+
             // Close modal and refresh
             bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
             document.getElementById('playerForm').reset();
