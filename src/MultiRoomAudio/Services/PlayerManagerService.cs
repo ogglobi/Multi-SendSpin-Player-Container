@@ -629,11 +629,30 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         }
         catch (ArgumentException ex)
         {
-            // Device validation failed - don't auto-reconnect, let user fix config
-            _logger.LogError(ex,
-                "Player {PlayerName} failed to start due to configuration error: {Message}. " +
-                "Player will remain in error state until manually fixed.",
-                playerConfig.Name, ex.Message);
+            // Check if this is a "device not found" error - these can be auto-recovered
+            // when the device is plugged in later
+            if (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(ex,
+                    "Player {PlayerName} failed to start - device not available: {Message}. " +
+                    "Player will auto-start when device is connected.",
+                    playerConfig.Name, ex.Message);
+
+                // Queue for device reconnection so player auto-starts when device appears
+                _devicePendingPlayers[playerConfig.Name] = new DevicePendingState(
+                    Config: playerConfig,
+                    DeviceConfig: null, // No device config yet - will use exact sink name match
+                    LostAt: DateTime.UtcNow,
+                    WasPlaying: false);
+            }
+            else
+            {
+                // Other configuration errors (invalid settings, etc.) - let user fix config
+                _logger.LogError(ex,
+                    "Player {PlayerName} failed to start due to configuration error: {Message}. " +
+                    "Player will remain in error state until manually fixed.",
+                    playerConfig.Name, ex.Message);
+            }
         }
         catch (Exception ex)
         {
@@ -1129,10 +1148,73 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     /// </summary>
     public PlayerResponse? GetPlayer(string name)
     {
-        if (!_players.TryGetValue(name, out var context))
+        // Check active players first
+        if (_players.TryGetValue(name, out var context))
+            return CreateResponse(name, context);
+
+        // Check if player exists in config but failed to start
+        if (!_config.Players.TryGetValue(name, out var config))
             return null;
 
-        return CreateResponse(name, context);
+        // Player is configured but not active (failed to start or was stopped)
+        // Return a placeholder response so user can edit/delete/restart it
+        var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
+        var isDevicePending = _devicePendingPlayers.TryGetValue(name, out var deviceState);
+
+        Models.PlayerState state;
+        string errorMessage;
+
+        if (isDevicePending)
+        {
+            state = Models.PlayerState.WaitingForDevice;
+            errorMessage = "Waiting for audio device to reconnect...";
+        }
+        else if (isPendingReconnection && !reconnectState!.WasUserStopped)
+        {
+            if (reconnectState.MdnsOnly)
+            {
+                state = Models.PlayerState.WaitingForServer;
+                errorMessage = "Waiting for mDNS discovery...";
+            }
+            else
+            {
+                state = Models.PlayerState.Reconnecting;
+                errorMessage = $"Reconnecting... (attempt {reconnectState.RetryCount})";
+            }
+        }
+        else
+        {
+            state = Models.PlayerState.Error;
+            errorMessage = "Player not running. Device may be unavailable or misconfigured.";
+        }
+
+        var volume = config.Volume ?? 100;
+        return new PlayerResponse(
+            Name: name,
+            State: state,
+            Device: config.Device,
+            ClientId: ClientIdGenerator.Generate(name),
+            ServerUrl: config.Server,
+            ServerName: null,
+            ConnectedAddress: null,
+            Volume: volume,
+            StartupVolume: volume,
+            IsMuted: false,
+            DelayMs: config.DelayMs,
+            OutputLatencyMs: 0,
+            CreatedAt: DateTime.MinValue,
+            ConnectedAt: null,
+            ErrorMessage: errorMessage,
+            IsClockSynced: false,
+            Metrics: null,
+            DeviceCapabilities: null,
+            IsPendingReconnection: isPendingReconnection || isDevicePending,
+            AutoResume: config.AutoResume,
+            ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
+            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+            AdvertisedFormat: config.AdvertisedFormat,
+            CurrentTrack: null
+        );
     }
 
     /// <summary>
@@ -1155,11 +1237,19 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             else
             {
                 // Player is configured but not active (failed to start or was stopped)
-                // Check if it's pending reconnection
+                // Check if it's pending device or server reconnection
                 var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
+                var isDevicePending = _devicePendingPlayers.ContainsKey(name);
+
                 Models.PlayerState state;
                 string errorMessage;
-                if (isPendingReconnection && !reconnectState!.WasUserStopped)
+
+                if (isDevicePending)
+                {
+                    state = Models.PlayerState.WaitingForDevice;
+                    errorMessage = "Waiting for audio device to reconnect...";
+                }
+                else if (isPendingReconnection && !reconnectState!.WasUserStopped)
                 {
                     if (reconnectState.MdnsOnly)
                     {
@@ -1199,7 +1289,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                     IsClockSynced: false,
                     Metrics: null,
                     DeviceCapabilities: null,
-                    IsPendingReconnection: isPendingReconnection,
+                    IsPendingReconnection: isPendingReconnection || isDevicePending,
                     AutoResume: config.AutoResume,
                     ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
                     NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
@@ -1646,16 +1736,22 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         // Remove from reconnection queue first
         RemoveFromReconnectionQueue(name);
 
-        var removed = await RemoveAndDisposePlayerAsync(name);
+        // Remove from device pending queue
+        _devicePendingPlayers.TryRemove(name, out _);
+
+        // Remove active player if it exists
+        var removedActive = await RemoveAndDisposePlayerAsync(name);
 
         // Also remove from configuration
-        if (_config.DeletePlayer(name))
+        var removedConfig = _config.DeletePlayer(name);
+        if (removedConfig)
         {
             _config.Save();
             _logger.LogInformation("Deleted player configuration: {Name}", name);
         }
 
-        return removed;
+        // Return true if either the active player or config was removed
+        return removedActive || removedConfig;
     }
 
     /// <summary>
