@@ -94,7 +94,7 @@ public class HidButtonService : IAsyncDisposable
     /// <summary>
     /// Enable HID button support for a device.
     /// This finds the input device and saves the configuration.
-    /// Actual event reading starts when StartHidReaderForPlayer is called.
+    /// If a player is already running on this device, starts the HID reader immediately.
     /// </summary>
     public Task<HidButtonEnableResponse> EnableHidButtonsAsync(
         AudioDevice device,
@@ -123,7 +123,7 @@ public class HidButtonService : IAsyncDisposable
             ));
         }
 
-        // Create/update state (reader will be started when player is associated)
+        // Create/update state
         var state = _deviceStates.GetOrAdd(sinkName, _ => new HidButtonDeviceState());
         state.SinkName = sinkName;
         state.Enabled = true;
@@ -132,6 +132,25 @@ public class HidButtonService : IAsyncDisposable
         // Save configuration
         var deviceKey = ConfigurationService.GenerateDeviceKey(device);
         SaveHidButtonConfig(deviceKey, true, inputDevice, device);
+
+        // Check if there's already a running player for this device - if so, start the reader immediately
+        using var scope = _serviceProvider.CreateScope();
+        var playerManager = scope.ServiceProvider.GetService<PlayerManagerService>();
+        if (playerManager != null)
+        {
+            var allPlayers = playerManager.GetAllPlayers();
+            var activePlayer = allPlayers.Players.FirstOrDefault(p =>
+                p.Device?.Equals(sinkName, StringComparison.OrdinalIgnoreCase) == true &&
+                p.State != Models.PlayerState.Stopped &&
+                p.State != Models.PlayerState.Error);
+
+            if (activePlayer != null)
+            {
+                _logger.LogInformation("Found active player '{PlayerName}' for {SinkName}, starting HID reader immediately",
+                    activePlayer.Name, sinkName);
+                StartHidReaderForPlayer(sinkName, activePlayer.Name);
+            }
+        }
 
         _logger.LogInformation("HID buttons enabled for {SinkName} (input: {InputDevice})", sinkName, inputDevice);
 

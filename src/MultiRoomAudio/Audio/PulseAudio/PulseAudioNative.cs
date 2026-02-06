@@ -561,4 +561,107 @@ internal static class PulseAudioNative
     public static extern int StreamIsCorked(IntPtr stream);
 
     #endregion
+
+    #region Async API - Subscriptions
+
+    /// <summary>
+    /// Subscription event facility (what type of object changed).
+    /// </summary>
+    [Flags]
+    public enum SubscriptionMask : uint
+    {
+        Null = 0x0000,
+        Sink = 0x0001,
+        Source = 0x0002,
+        SinkInput = 0x0004,
+        SourceOutput = 0x0008,
+        Module = 0x0010,
+        Client = 0x0020,
+        SampleCache = 0x0040,
+        Server = 0x0080,
+        Card = 0x0200,
+        All = 0x02FF
+    }
+
+    /// <summary>
+    /// Subscription event type (what happened to the object).
+    /// The event type is encoded in the upper bits of the event value.
+    /// Use FacilityMask to extract the facility (SubscriptionMask) and TypeMask to extract the type.
+    /// </summary>
+    public enum SubscriptionEventType : uint
+    {
+        /// <summary>Object was created.</summary>
+        New = 0x0000,
+        /// <summary>Object was modified.</summary>
+        Change = 0x0010,
+        /// <summary>Object was removed.</summary>
+        Remove = 0x0020,
+
+        /// <summary>Mask for extracting the facility (lower 4 bits).</summary>
+        FacilityMask = 0x000F,
+        /// <summary>Mask for extracting the event type (bits 4-5).</summary>
+        TypeMask = 0x0030
+    }
+
+    /// <summary>
+    /// Event facility values received in subscription callbacks.
+    /// IMPORTANT: These are DIFFERENT from SubscriptionMask values!
+    /// SubscriptionMask is for pa_context_subscribe(), this is for callback parsing.
+    /// </summary>
+    public enum SubscriptionEventFacility : uint
+    {
+        Sink = 0x0000,
+        Source = 0x0001,
+        SinkInput = 0x0002,
+        SourceOutput = 0x0003,
+        Module = 0x0004,
+        Client = 0x0005,
+        SampleCache = 0x0006,
+        Server = 0x0007,
+        Card = 0x0009
+    }
+
+    /// <summary>
+    /// Callback for subscription events.
+    /// </summary>
+    /// <param name="context">The context.</param>
+    /// <param name="eventType">Combined facility and event type. Use masks to extract.</param>
+    /// <param name="index">Index of the object that changed.</param>
+    /// <param name="userdata">User-provided data.</param>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void SubscriptionCallback(IntPtr context, uint eventType, uint index, IntPtr userdata);
+
+    /// <summary>
+    /// Callback for operation success/failure.
+    /// </summary>
+    /// <param name="context">The context.</param>
+    /// <param name="success">Non-zero on success, zero on failure.</param>
+    /// <param name="userdata">User-provided data.</param>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void ContextSuccessCallback(IntPtr context, int success, IntPtr userdata);
+
+    /// <summary>
+    /// Set the subscription callback. Called when a subscribed event occurs.
+    /// </summary>
+    [DllImport(LibPulse, EntryPoint = "pa_context_set_subscribe_callback")]
+    public static extern void ContextSetSubscribeCallback(IntPtr context, SubscriptionCallback? cb, IntPtr userdata);
+
+    /// <summary>
+    /// Subscribe to events on the specified facilities.
+    /// </summary>
+    /// <param name="context">The context.</param>
+    /// <param name="mask">Bitmask of facilities to subscribe to.</param>
+    /// <param name="callback">Callback for operation completion (may be null).</param>
+    /// <param name="userdata">User-provided data for callback.</param>
+    /// <returns>Operation handle (must be unref'd), or NULL on error.</returns>
+    [DllImport(LibPulse, EntryPoint = "pa_context_subscribe")]
+    public static extern IntPtr ContextSubscribe(IntPtr context, SubscriptionMask mask, ContextSuccessCallback? callback, IntPtr userdata);
+
+    /// <summary>
+    /// Decrease the reference count of an operation, potentially freeing it.
+    /// </summary>
+    [DllImport(LibPulse, EntryPoint = "pa_operation_unref")]
+    public static extern void OperationUnref(IntPtr operation);
+
+    #endregion
 }
