@@ -163,6 +163,23 @@ public class SinkIdentifiersConfig
 
     /// <summary>Last known sink name (may become stale after reboot).</summary>
     public string? LastKnownSinkName { get; set; }
+
+    /// <summary>
+    /// Card profile name (e.g., "output:analog-surround-71") from card-profiles.yaml.
+    /// Used to ensure the correct profile is active when resolving the sink.
+    /// </summary>
+    public string? CardProfile { get; set; }
+
+    /// <summary>
+    /// Checks if this identifier config has at least one stable identifier.
+    /// </summary>
+    public bool HasStableIdentifier()
+    {
+        return !string.IsNullOrEmpty(BusPath) ||
+               !string.IsNullOrEmpty(AlsaLongCardName) ||
+               !string.IsNullOrEmpty(Serial) ||
+               (!string.IsNullOrEmpty(VendorId) && !string.IsNullOrEmpty(ProductId));
+    }
 }
 
 /// <summary>
