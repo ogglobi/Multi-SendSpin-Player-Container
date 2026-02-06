@@ -303,6 +303,7 @@ squeezelite-docker/
 | PUT | `/api/players/{name}/startup-volume` | Set startup volume |
 | PUT | `/api/players/{name}/mute` | Mute/unmute player |
 | PUT | `/api/players/{name}/offset` | Set delay offset |
+| PUT | `/api/players/{name}/auto-resume` | Enable/disable auto-resume on device reconnect |
 | GET | `/api/players/formats` | Get available audio formats (only when ENABLE_ADVANCED_FORMATS=true) |
 
 ### Audio Devices
@@ -319,6 +320,8 @@ squeezelite-docker/
 | PUT | `/api/devices/{id}/alias` | Set device alias |
 | PUT | `/api/devices/{id}/hidden` | Hide/unhide device |
 | PUT | `/api/devices/{id}/max-volume` | Set device max volume |
+| GET | `/api/devices/{id}/hid-status` | Get HID button status for a device |
+| PUT | `/api/devices/{id}/hid-buttons` | Enable/disable HID button support |
 | GET | `/api/providers` | List available providers (not used by UI) |
 
 ### Sound Cards
@@ -387,6 +390,7 @@ squeezelite-docker/
 | ------ | -------- | ----------- |
 | GET | `/api/logs` | Get log entries |
 | GET | `/api/logs/stats` | Get log statistics |
+| GET | `/api/logs/download` | Download all logs as a text file |
 | DELETE | `/api/logs` | Clear logs |
 
 ### Health & Status
