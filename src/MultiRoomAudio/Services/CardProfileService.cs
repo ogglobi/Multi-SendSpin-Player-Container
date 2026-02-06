@@ -223,9 +223,11 @@ public class CardProfileService
 
         return cards.Select(card =>
         {
-            // Use stable key format (migration already converts old keys on startup)
+            // Try stable key first, fall back to legacy card.Name for pre-migration reads
+            // (migration runs in background after Kestrel starts, so API calls may arrive first)
             var stableKey = ConfigurationService.GenerateCardKey(card);
-            var config = savedProfiles.GetValueOrDefault(stableKey);
+            var config = savedProfiles.GetValueOrDefault(stableKey)
+                ?? savedProfiles.GetValueOrDefault(card.Name);
 
             var isMuted = GetCardMuteState(card);
             var bootMuted = config?.BootMuted;
@@ -254,9 +256,11 @@ public class CardProfileService
         }
 
         var savedProfiles = LoadConfigurations();
-        // Use stable key format (migration already converts old keys on startup)
+        // Try stable key first, fall back to legacy card.Name for pre-migration reads
+        // (migration runs in background after Kestrel starts, so API calls may arrive first)
         var stableKey = ConfigurationService.GenerateCardKey(card);
-        var config = savedProfiles.GetValueOrDefault(stableKey);
+        var config = savedProfiles.GetValueOrDefault(stableKey)
+            ?? savedProfiles.GetValueOrDefault(card.Name);
 
         var isMuted = GetCardMuteState(card);
         var bootMuted = config?.BootMuted;
