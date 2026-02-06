@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-e74a7bc
+## Development Build: sha-5ec4e0b
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #156 from scyto/dev
+- Merge pull request #99 from scyto/feature/auto-reconnect-option
+- Detect device loss for idle players and show immediate feedback
+- Merge pull request #98 from scyto/feature/auto-reconnect-option
+- Add SignalR notifications for device hotplug events
+- Merge pull request #97 from scyto/feature/auto-reconnect-option
+- Fix missing device handling for boot-failed players
 - i fucking hate USB devices
 - Merge pull request #96 from scyto/feature/auto-reconnect-option
 - Fix auto-resume not saved when creating new player
-- Add auto-resume option for device reconnection
-- Merge pull request #95 from scyto/bug/grace-period-cts-disposal
-- Fix CTS disposal timing in grace period debouncing
-- Merge pull request #94 from scyto/bug/hid-enable-on-running-player
-- Merge pull request #93 from scyto/feature/device-loss-grace-period
-- Start HID reader immediately when enabling on running player
-- Check subscription service IsReady before device reconnection
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
