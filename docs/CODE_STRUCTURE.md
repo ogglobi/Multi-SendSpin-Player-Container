@@ -160,7 +160,7 @@ Provider information (Sendspin only in v2.0).
 
 | Method | Route | Action |
 |--------|-------|--------|
-| GET | `/api/providers` | List available providers |
+| GET | `/api/providers` | List available providers (not used by UI) |
 
 #### HealthEndpoint.cs
 

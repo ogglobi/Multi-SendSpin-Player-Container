@@ -317,6 +317,7 @@ public static class SinksEndpoint
         .WithDescription("Scan /etc/pulse/default.pa for importable combine-sink and remap-sink definitions");
 
         // GET /api/sinks/import/status - Check if default.pa is available and writable
+        // NOTE: Not called by UI - could be used to pre-check import capability
         group.MapGet("/import/status", (DefaultPaParser parser) =>
         {
             return Results.Ok(new

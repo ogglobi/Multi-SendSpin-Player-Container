@@ -49,6 +49,7 @@ public static class CardsEndpoint
         .WithDescription("List all PulseAudio sound cards with their available profiles");
 
         // GET /api/cards/saved - Get saved profile configurations
+        // NOTE: Not called by UI - saved profiles are included in GET /api/cards response
         group.MapGet("/saved", (CardProfileService service, ILoggerFactory loggerFactory) =>
         {
             var logger = loggerFactory.CreateLogger("CardsEndpoint");

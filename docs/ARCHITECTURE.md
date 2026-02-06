@@ -127,8 +127,8 @@ The Multi-Room Audio Controller is a C# ASP.NET Core 8.0 application that:
 |------------|------|---------|
 | `PlayersEndpoint` | `/api/players` | CRUD operations, start/stop, volume |
 | `DevicesEndpoint` | `/api/devices` | Audio device enumeration |
-| `ProvidersEndpoint` | `/api/providers` | List available providers |
-| `HealthEndpoint` | `/api/health` | Health check for container orchestration |
+| `ProvidersEndpoint` | `/api/providers` | List available providers (not used by UI) |
+| `HealthEndpoint` | `/api/health` | Health check for container orchestration (not used by UI) |
 
 ### Services
 
@@ -379,8 +379,8 @@ Runtime:
 | `PUT` | `/api/players/{name}/volume` | Set volume (0-100) |
 | `PUT` | `/api/players/{name}/offset` | Set delay offset (ms) |
 | `GET` | `/api/devices` | List audio devices |
-| `GET` | `/api/providers` | List available providers |
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/providers` | List available providers (not used by UI) |
+| `GET` | `/api/health` | Health check (not used by UI) |
 
 ### Response Format
 

@@ -24,6 +24,7 @@ public static class ProvidersEndpoint
             .WithOpenApi();
 
         // GET /api/providers - List available providers
+        // NOTE: Not called by UI - reserved for future multi-provider support
         group.MapGet("/", () =>
         {
             // Sendspin-only implementation

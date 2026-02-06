@@ -310,23 +310,23 @@ squeezelite-docker/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/devices` | List audio devices |
-| GET | `/api/devices/default` | Get default device |
-| GET | `/api/devices/aliases` | List device aliases |
+| GET | `/api/devices/default` | Get default device (not used by UI) |
+| GET | `/api/devices/aliases` | List device aliases (not used by UI - included in /api/devices) |
 | GET | `/api/devices/{id}` | Get device details |
 | GET | `/api/devices/{id}/capabilities` | Get device capabilities |
 | POST | `/api/devices/refresh` | Refresh device list |
-| POST | `/api/devices/rematch` | Rematch devices to players |
+| POST | `/api/devices/rematch` | Rematch devices to players (not used by UI) |
 | PUT | `/api/devices/{id}/alias` | Set device alias |
 | PUT | `/api/devices/{id}/hidden` | Hide/unhide device |
 | PUT | `/api/devices/{id}/max-volume` | Set device max volume |
-| GET | `/api/providers` | List available providers |
+| GET | `/api/providers` | List available providers (not used by UI) |
 
 ### Sound Cards
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/cards` | List all sound cards |
-| GET | `/api/cards/saved` | List saved card configurations |
+| GET | `/api/cards/saved` | List saved card configurations (not used by UI - included in /api/cards) |
 | GET | `/api/cards/{id}` | Get card details |
 | PUT | `/api/cards/{id}/profile` | Set card profile |
 | PUT | `/api/cards/{id}/mute` | Mute/unmute card in real-time |
@@ -348,7 +348,7 @@ squeezelite-docker/
 | POST | `/api/sinks/{name}/test-tone` | Play test tone |
 | DELETE | `/api/sinks/{name}` | Delete custom sink |
 | GET | `/api/sinks/import/scan` | Scan for importable sinks |
-| GET | `/api/sinks/import/status` | Get import status |
+| GET | `/api/sinks/import/status` | Get import status (not used by UI) |
 | POST | `/api/sinks/import` | Import sinks from default.pa |
 
 ### 12V Triggers (Relay Control)
@@ -393,10 +393,10 @@ squeezelite-docker/
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
-| GET | `/api/health` | Health check |
-| GET | `/api/health/ready` | Ready check |
-| GET | `/api/health/live` | Liveness check |
-| GET | `/api/status` | System status |
+| GET | `/api/health` | Health check (for orchestration, not UI) |
+| GET | `/api/health/ready` | Ready check (for orchestration, not UI) |
+| GET | `/api/health/live` | Liveness check (for orchestration, not UI) |
+| GET | `/api/status` | System status (not used by UI - for monitoring tools) |
 
 ---
 

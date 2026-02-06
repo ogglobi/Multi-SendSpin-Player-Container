@@ -89,6 +89,7 @@ public static class HealthEndpoint
         .WithOpenApi();
 
         // GET /api/status - Detailed service status
+        // NOTE: Not called by UI - intended for external monitoring tools and debugging
         app.MapGet("/api/status", (PlayerManagerService manager) =>
         {
             try

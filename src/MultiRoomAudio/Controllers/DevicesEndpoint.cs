@@ -76,7 +76,8 @@ public static class DevicesEndpoint
         .WithDescription("List all available audio output devices with aliases");
 
         // GET /api/devices/default - Get default device
-        // NOTE: This route must be registered BEFORE /{id} to prevent the parameterized route from intercepting it
+        // NOTE: Not called by UI - UI infers default from the device list. Available for external tools.
+        // This route must be registered BEFORE /{id} to prevent the parameterized route from intercepting it
         group.MapGet("/default", (BackendFactory backendFactory, ILoggerFactory loggerFactory) =>
         {
             var logger = loggerFactory.CreateLogger("DevicesEndpoint");
@@ -188,6 +189,7 @@ public static class DevicesEndpoint
         .WithDescription("Re-enumerate audio devices (detect newly connected USB devices)");
 
         // GET /api/devices/aliases - Get all device aliases
+        // NOTE: Not called by UI - aliases are included in enriched device list from GET /api/devices
         group.MapGet("/aliases", (ConfigurationService config, ILoggerFactory loggerFactory) =>
         {
             var logger = loggerFactory.CreateLogger("DevicesEndpoint");
@@ -204,6 +206,7 @@ public static class DevicesEndpoint
         .WithDescription("Get all device aliases");
 
         // POST /api/devices/rematch - Force device re-matching
+        // NOTE: Not called by UI - available for programmatic use or future admin features
         group.MapPost("/rematch", (
             DeviceMatchingService matchingService,
             ILoggerFactory loggerFactory) =>

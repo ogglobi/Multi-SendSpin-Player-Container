@@ -1392,12 +1392,23 @@ const Wizard = {
         }
     },
 
-    // Set device alias
-    setAlias(deviceId, alias) {
+    // Set device alias - persists immediately to API
+    async setAlias(deviceId, alias) {
         if (!this.deviceState[deviceId]) {
             this.deviceState[deviceId] = { alias: '', hidden: false };
         }
         this.deviceState[deviceId].alias = alias;
+
+        // Persist to server immediately (same pattern as toggleHidden)
+        try {
+            await fetch(`./api/devices/${encodeURIComponent(deviceId)}/alias`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alias: alias })
+            });
+        } catch (error) {
+            console.error(`Failed to save alias for ${deviceId}:`, error);
+        }
     },
 
     // Suggest a name for a device
