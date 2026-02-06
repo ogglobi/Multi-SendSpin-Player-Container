@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-5ec4e0b
+## Development Build: sha-4c794c4
 
 **Current Dev Build Changes** (recent)
 
-- Merge pull request #156 from scyto/dev
-- Merge pull request #99 from scyto/feature/auto-reconnect-option
-- Detect device loss for idle players and show immediate feedback
-- Merge pull request #98 from scyto/feature/auto-reconnect-option
-- Add SignalR notifications for device hotplug events
-- Merge pull request #97 from scyto/feature/auto-reconnect-option
-- Fix missing device handling for boot-failed players
-- i fucking hate USB devices
-- Merge pull request #96 from scyto/feature/auto-reconnect-option
-- Fix auto-resume not saved when creating new player
+- Merge pull request #159 from scyto/dev
+- Remove 'v' prefix for dev builds in ProductName
+- Truncate build SHA to short format in VersionService
+- Merge remote-tracking branch 'origin/dev' into dev
+- Merge pull request #105 from scyto/feature/custom-sink-migration
+- Fix card profile and custom sink migration ordering bugs
+- Merge pull request #104 from scyto/feature/custom-sink-migration
+- Use devices.yaml historical sink names for migration fallback
+- Merge pull request #103 from scyto/feature/custom-sink-migration
+- Guard against null/empty profile in card matching
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
