@@ -930,19 +930,45 @@ public class CustomSinksService : IAsyncDisposable
         }
 
         // Case 3: alsa_card_N style (e.g., "alsa_card_0")
-        // Card numbers are NOT stable, but we can match by profile suffix
+        // Card numbers are NOT stable - use card identifiers from card-profiles.yaml
         if (deviceIdentifier.StartsWith("alsa_card_", StringComparison.OrdinalIgnoreCase))
         {
-            // Match by profile (e.g., "analog-surround-71", "analog-stereo")
-            // This is a weak match but better than nothing for old configs
-            var match = devices.FirstOrDefault(d =>
-                d.Id != null && d.Id.EndsWith("." + profile, StringComparison.OrdinalIgnoreCase));
+            // Try to find matching card by profile, then use its stable identifier
+            var cardService = _services.GetService<CardProfileService>();
+            if (cardService != null)
+            {
+                var cards = cardService.GetCards().ToList();
 
-            if (match != null)
+                // Find card whose active profile matches our sink's profile
+                // e.g., if sink profile is "analog-surround-71", card active profile might be "output:analog-surround-71+input:..."
+                var matchingCard = cards.FirstOrDefault(c =>
+                    c.ActiveProfile?.Contains(profile ?? "", StringComparison.OrdinalIgnoreCase) == true);
+
+                if (matchingCard != null)
+                {
+                    // Use card's identifier to find matching device
+                    var cardIdentifier = matchingCard.Name.Replace("alsa_card.", "");
+                    var match = devices.FirstOrDefault(d =>
+                        d.Id != null && d.Id.Contains(cardIdentifier, StringComparison.OrdinalIgnoreCase));
+
+                    if (match != null)
+                    {
+                        _logger.LogDebug("Matched old sink '{Old}' to '{New}' via card '{Card}' identifier",
+                            oldSinkName, match.Id, matchingCard.Name);
+                        return match;
+                    }
+                }
+            }
+
+            // Fallback: match by profile suffix (weak match)
+            var profileMatch = devices.FirstOrDefault(d =>
+                d.Id != null && profile != null && d.Id.EndsWith("." + profile, StringComparison.OrdinalIgnoreCase));
+
+            if (profileMatch != null)
             {
                 _logger.LogDebug("Matched old sink '{Old}' to '{New}' by profile suffix '{Profile}' (weak match)",
-                    oldSinkName, match.Id, profile);
-                return match;
+                    oldSinkName, profileMatch.Id, profile);
+                return profileMatch;
             }
         }
 
