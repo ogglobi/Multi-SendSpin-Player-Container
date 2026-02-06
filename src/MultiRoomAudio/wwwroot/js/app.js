@@ -738,16 +738,16 @@ function setupSignalR() {
 }
 
 // API calls
-async function refreshStatus(force = false) {
+async function refreshStatus(force = false, manual = false) {
     // Skip auto-refresh while modal is open (unless forced)
     if (isModalOpen && !force) {
         return;
     }
 
-    // Show spinner on manual refresh (force=true means user clicked button)
-    const refreshBtn = document.querySelector('[onclick="refreshStatus(true)"]');
+    // Show spinner on manual refresh (user clicked button)
+    const refreshBtn = document.querySelector('[onclick="refreshStatus(true, true)"]');
     let originalContent = null;
-    if (force && refreshBtn) {
+    if (manual && refreshBtn) {
         originalContent = refreshBtn.innerHTML;
         refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
         refreshBtn.disabled = true;
@@ -755,7 +755,7 @@ async function refreshStatus(force = false) {
 
     try {
         // If manual refresh, also refresh devices and cards
-        if (force) {
+        if (manual) {
             const [devicesRes, cardsRes, playersRes] = await Promise.all([
                 fetch('./api/devices/refresh', { method: 'POST' }),
                 fetch('./api/cards'),
@@ -776,13 +776,17 @@ async function refreshStatus(force = false) {
 
             renderPlayers();
 
-            // Show toast with results
-            const deviceCount = devicesData?.count ?? '?';
-            const cardCount = cardsData?.cards?.length ?? '?';
+            // Show toast - warn if device refresh failed
             const playerCount = Object.keys(players).length;
-            showAlert(`Refreshed: ${playerCount} players, ${deviceCount} devices, ${cardCount} cards`, 'success', 3000);
+            if (!devicesRes.ok) {
+                showAlert(`Refreshed ${playerCount} players, but device scan failed`, 'warning', 4000);
+            } else {
+                const deviceCount = devicesData?.count ?? '?';
+                const cardCount = cardsData?.cards?.length ?? '?';
+                showAlert(`Refreshed: ${playerCount} players, ${deviceCount} devices, ${cardCount} cards`, 'success', 3000);
+            }
         } else {
-            // Auto-refresh: just fetch players (existing behavior)
+            // Auto-refresh or force-refresh: just fetch players (existing behavior)
             const response = await fetch('./api/players');
             if (!response.ok) throw new Error('Failed to fetch players');
 
@@ -819,7 +823,7 @@ async function refreshStatus(force = false) {
     } catch (error) {
         console.error('Error refreshing status:', error);
 
-        if (force) {
+        if (manual) {
             showAlert('Refresh failed: ' + error.message, 'danger', 5000);
         }
 
@@ -832,7 +836,7 @@ async function refreshStatus(force = false) {
         }
     } finally {
         // Restore button state
-        if (force && refreshBtn && originalContent) {
+        if (manual && refreshBtn && originalContent) {
             refreshBtn.innerHTML = originalContent;
             refreshBtn.disabled = false;
         }
