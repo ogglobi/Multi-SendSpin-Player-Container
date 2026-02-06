@@ -864,31 +864,31 @@ public class CustomSinksService : IAsyncDisposable
         if (string.IsNullOrEmpty(oldSinkName))
             return null;
 
-        // Extract the device identifier portion from the sink name
+        // Extract the device identifier and profile from sink name
         // Format: alsa_output.<device-identifier>.<profile>
-        var parts = oldSinkName.Split('.');
-        if (parts.Length < 3 || !parts[0].Equals("alsa_output", StringComparison.OrdinalIgnoreCase))
+        // Note: Device identifiers can contain dots (e.g., pci-0000_01_00.0)
+        // Profiles typically start with: analog-, digital-, iec958-, hdmi-, pro-audio, stereo-fallback
+        var (deviceIdentifier, profile) = ParseSinkName(oldSinkName);
+        if (deviceIdentifier == null)
             return null;
 
-        var deviceIdentifier = parts[1];
-        var profile = string.Join(".", parts.Skip(2)); // Everything after device identifier
-
-        // Case 1: PCI device (e.g., "pci-0000_01_00.0" or "pci-0000_01_00_0")
+        // Case 1: PCI device (e.g., "pci-0000_01_00.0")
         // The PCI address is stable across reboots
         if (deviceIdentifier.StartsWith("pci-", StringComparison.OrdinalIgnoreCase))
         {
-            // Normalize PCI address format (dots vs underscores may vary)
-            var pciAddress = deviceIdentifier.Substring(4).Replace("_", ".").Replace("..", ".");
+            // Extract full PCI address (e.g., "0000_01_00.0" or "0000:01:00.0")
+            var pciAddress = deviceIdentifier.Substring(4);
 
             var match = devices.FirstOrDefault(d =>
             {
                 if (d.Id == null) return false;
-                var deviceParts = d.Id.Split('.');
-                if (deviceParts.Length < 2) return false;
-                var devicePci = deviceParts[1];
-                if (!devicePci.StartsWith("pci-", StringComparison.OrdinalIgnoreCase)) return false;
-                var currentPciAddress = devicePci.Substring(4).Replace("_", ".").Replace("..", ".");
-                return currentPciAddress.Equals(pciAddress, StringComparison.OrdinalIgnoreCase);
+                var (currentDeviceId, _) = ParseSinkName(d.Id);
+                if (currentDeviceId == null || !currentDeviceId.StartsWith("pci-", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                var currentPciAddress = currentDeviceId.Substring(4);
+                // Normalize for comparison (underscores vs colons, etc.)
+                return NormalizePciAddress(currentPciAddress).Equals(
+                    NormalizePciAddress(pciAddress), StringComparison.OrdinalIgnoreCase);
             });
 
             if (match != null)
@@ -914,11 +914,10 @@ public class CustomSinksService : IAsyncDisposable
                 var match = devices.FirstOrDefault(d =>
                 {
                     if (d.Id == null) return false;
-                    var deviceParts = d.Id.Split('.');
-                    if (deviceParts.Length < 2) return false;
-                    var deviceUsb = deviceParts[1];
-                    if (!deviceUsb.StartsWith("usb-", StringComparison.OrdinalIgnoreCase)) return false;
-                    return deviceUsb.Contains(vid, StringComparison.OrdinalIgnoreCase);
+                    var (currentDeviceId, _) = ParseSinkName(d.Id);
+                    if (currentDeviceId == null || !currentDeviceId.StartsWith("usb-", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    return currentDeviceId.Contains(vid, StringComparison.OrdinalIgnoreCase);
                 });
 
                 if (match != null)
@@ -948,6 +947,66 @@ public class CustomSinksService : IAsyncDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Parses a PulseAudio sink name into device identifier and profile.
+    /// Handles device identifiers that contain dots (e.g., PCI addresses).
+    /// </summary>
+    /// <remarks>
+    /// Profiles typically start with: analog-, digital-, iec958-, hdmi-, pro-audio, stereo-fallback
+    /// Examples:
+    /// - alsa_output.pci-0000_01_00.0.analog-surround-71 → ("pci-0000_01_00.0", "analog-surround-71")
+    /// - alsa_output.usb-0d8c_USB_Sound_Device-00.analog-stereo → ("usb-0d8c_USB_Sound_Device-00", "analog-stereo")
+    /// </remarks>
+    private static (string? deviceIdentifier, string? profile) ParseSinkName(string sinkName)
+    {
+        if (string.IsNullOrEmpty(sinkName))
+            return (null, null);
+
+        // Must start with alsa_output.
+        const string prefix = "alsa_output.";
+        if (!sinkName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return (null, null);
+
+        var remainder = sinkName.Substring(prefix.Length);
+
+        // Known profile prefixes - find where the profile starts
+        string[] profilePrefixes = ["analog-", "digital-", "iec958-", "hdmi-", "pro-audio", "stereo-fallback", "multichannel-"];
+
+        // Search for profile start from the end (profiles are typically at the end)
+        var lastDotIndex = -1;
+        foreach (var profilePrefix in profilePrefixes)
+        {
+            var idx = remainder.LastIndexOf("." + profilePrefix, StringComparison.OrdinalIgnoreCase);
+            if (idx > lastDotIndex)
+                lastDotIndex = idx;
+        }
+
+        if (lastDotIndex > 0)
+        {
+            var deviceIdentifier = remainder.Substring(0, lastDotIndex);
+            var profile = remainder.Substring(lastDotIndex + 1);
+            return (deviceIdentifier, profile);
+        }
+
+        // Fallback: split on first dot (may be incorrect for dotted device IDs)
+        var firstDot = remainder.IndexOf('.');
+        if (firstDot > 0)
+        {
+            return (remainder.Substring(0, firstDot), remainder.Substring(firstDot + 1));
+        }
+
+        return (remainder, null);
+    }
+
+    /// <summary>
+    /// Normalizes a PCI address for comparison (handles _ vs : vs . separators).
+    /// </summary>
+    private static string NormalizePciAddress(string pciAddress)
+    {
+        // Replace all separators with dots for consistent comparison
+        return pciAddress.Replace("_", ".").Replace(":", ".").ToLowerInvariant();
     }
 
     /// <summary>
