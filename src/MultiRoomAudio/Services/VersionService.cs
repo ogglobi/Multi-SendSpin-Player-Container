@@ -43,10 +43,12 @@ public class VersionService
 
         BuildDate = Environment.GetEnvironmentVariable("APP_BUILD_DATE");
 
-        // Format model string: "v1.2.3 (abc123f)" or "v1.2.3"
+        // Format model string: "v1.2.3 (abc123f)" for versions, "dev (abc123f)" for dev builds
+        // Only add "v" prefix for actual version numbers, not for "dev"
+        var versionPrefix = Version != "dev" ? "v" : "";
         ModelString = !string.IsNullOrEmpty(BuildSha)
-            ? $"v{Version} ({BuildSha})"
-            : $"v{Version}";
+            ? $"{versionPrefix}{Version} ({BuildSha})"
+            : $"{versionPrefix}{Version}";
 
         // Software version is just the version number
         SoftwareVersion = Version;
