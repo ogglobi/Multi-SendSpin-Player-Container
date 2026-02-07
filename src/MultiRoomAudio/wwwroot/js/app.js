@@ -1367,10 +1367,11 @@ async function setVolume(name, volume) {
             throw new Error(error.error || 'Failed to set volume');
         }
 
-        // Update local state
+        // Update local state and clear any pending update (it's now stale)
         if (players[name]) {
             players[name].volume = volume;
         }
+        pendingUpdate = null;
     } catch (error) {
         console.error('Error setting volume:', error);
         showAlert(error.message, 'danger');
@@ -1423,10 +1424,11 @@ async function setPlayerMute(playerName, muted) {
             throw new Error(error.message || 'Failed to set mute state');
         }
 
-        // Update local state
+        // Update local state and clear any pending update (it's now stale)
         if (players[playerName]) {
             players[playerName].isMuted = muted;
         }
+        pendingUpdate = null;
 
         // Update button UI
         if (button) {
