@@ -108,6 +108,12 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     // below the ~20-30ms threshold where multi-room delay becomes audible.
     private const long CorrectionThresholdMicroseconds = 15_000;  // 15ms deadband
 
+    // Startup deadband - wider tolerance during first 500ms to prevent oscillation.
+    // Sync corrections still happen if error exceeds 50ms, maintaining multi-room sync.
+    // After startup period, normal 15ms deadband resumes for tighter sync.
+    private const long StartupDeadbandMicroseconds = 50_000;      // 50ms during startup
+    private const int StartupDeadbandPeriodMs = 500;              // First 500ms
+
     // Correction rate limits (frames between corrections)
     private const int MinCorrectionInterval = 10;   // Most aggressive: correct every 10 frames
     private const int MaxCorrectionInterval = 500;  // Most gentle: correct every 500 frames
@@ -143,6 +149,13 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     private long _lastKnownDroppedSamples;
     private long _lastKnownOverrunCount;
     private bool _hasLoggedOverrunStart;
+
+    // Startup tracking for deadband widening
+    private long _correctionStartTime;  // Timestamp when first correction was considered
+
+    // Track whether _lastOutputFrame has been initialized with real audio (not zeros).
+    // Prevents interpolation artifacts when insertions happen before any audio is output.
+    private bool _lastOutputFrameInitialized;
 
     /// <inheritdoc/>
     public AudioFormat Format => _buffer.Format;
@@ -246,6 +259,15 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
                         elapsedMs, _totalReads, _zeroReads);
                 }
 
+                // Initialize _lastOutputFrame with real audio before any corrections.
+                // This prevents interpolation artifacts when frame insertion happens early -
+                // without this, insertions would interpolate (0 + audio) / 2 = half volume clicks.
+                if (!_lastOutputFrameInitialized && rawRead >= _channels)
+                {
+                    tempBuffer.AsSpan(0, _channels).CopyTo(_lastOutputFrame);
+                    _lastOutputFrameInitialized = true;
+                }
+
                 // Apply correction and copy to output
                 var (outputCount, dropped, inserted) = ApplyCorrectionWithInterpolation(
                     tempBuffer, rawRead, buffer.AsSpan(offset, count));
@@ -318,8 +340,22 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         var syncError = _buffer.SmoothedSyncErrorMicroseconds;
         var absError = Math.Abs((long)syncError);
 
+        // Track when corrections start being considered for startup deadband
+        var currentTime = _getCurrentTimeMicroseconds();
+        if (_correctionStartTime == 0)
+        {
+            _correctionStartTime = currentTime;
+        }
+
+        // Use wider deadband during startup to prevent oscillation while maintaining sync.
+        // After startup period, normal 15ms deadband resumes for tighter multi-room sync.
+        var elapsedMs = (currentTime - _correctionStartTime) / 1000.0;
+        var deadband = elapsedMs < StartupDeadbandPeriodMs
+            ? StartupDeadbandMicroseconds
+            : CorrectionThresholdMicroseconds;
+
         // No correction needed if within deadband - reset direction tracking
-        if (absError < CorrectionThresholdMicroseconds)
+        if (absError < deadband)
         {
             _currentDirection = CorrectionDirection.None;
             _directionChangeDebounceCounter = 0;
@@ -611,6 +647,7 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
     {
         _framesSinceLastCorrection = 0;
         _lastOutputFrame = null;
+        _lastOutputFrameInitialized = false;
         _totalDropped = 0;
         _totalInserted = 0;
         _hasLoggedOverrunStart = false;  // Allow ERROR level logging on next overrun
@@ -618,5 +655,8 @@ public sealed class BufferedAudioSampleSource : IAudioSampleSource
         // Reset anti-oscillation state
         _currentDirection = CorrectionDirection.None;
         _directionChangeDebounceCounter = 0;
+
+        // Reset startup deadband tracking so next playback gets the wider deadband
+        _correctionStartTime = 0;
     }
 }

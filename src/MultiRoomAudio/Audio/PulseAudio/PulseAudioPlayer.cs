@@ -97,6 +97,8 @@ public class PulseAudioPlayer : IAudioPlayer
     private List<int>? _latencySamples;
     private const int LatencyLockSampleCount = 100;  // ~1 second at 10ms callbacks
     private const int LatencyLockWarmupSamples = 20; // Skip first 20 (~200ms) for warmup
+    private const int MaxReasonableLatencyMs = 200;  // Cap unreasonable latency (e.g., Pi 4 reports 1000ms)
+    private const int HighVarianceThresholdMs = 200; // If range exceeds this, measurements are unreliable
 
     // Diagnostic counters for monitoring callback behavior
     private long _callbackCount;
@@ -367,9 +369,10 @@ public class PulseAudioPlayer : IAudioPlayer
                         // TLength: Target buffer length (our latency target of 50ms).
                         TLength = targetLatencyBytes,
                         // PreBuf: Prebuffering amount before playback starts.
-                        // Set to 0 to start immediately when uncorked - we handle underflows gracefully.
-                        // Previously was targetLatencyBytes/2 which delayed startup by ~25ms.
-                        PreBuf = 0,
+                        // ~25ms prebuffer gives SDK time to reach scheduled start before PA requests samples.
+                        // Without this, PA requests immediately on uncork causing underflow while SDK waits.
+                        // This doesn't affect sync timing - SDK's scheduled start still controls playback.
+                        PreBuf = targetLatencyBytes / 2,
                         // MinReq: Minimum request size for write callbacks.
                         // Smaller = more frequent callbacks = better responsiveness to timing changes.
                         // ~10ms gives good balance between responsiveness and CPU overhead.
@@ -757,14 +760,40 @@ public class PulseAudioPlayer : IAudioPlayer
                     // Discard warmup samples, compute median of the rest
                     var stableSamples = _latencySamples.Skip(LatencyLockWarmupSamples).OrderBy(x => x).ToList();
                     var median = stableSamples[stableSamples.Count / 2];
+                    var minLatency = stableSamples.First();
+                    var maxLatency = stableSamples.Last();
+                    var range = maxLatency - minLatency;
 
-                    OutputLatencyMs = median;
+                    // Handle unreliable measurements (e.g., Pi 4 reporting 132-1376ms range)
+                    if (range > HighVarianceThresholdMs)
+                    {
+                        // Wide variance indicates unreliable timing from hardware.
+                        // Use minimum + small margin instead of median to avoid massive sync errors.
+                        OutputLatencyMs = Math.Min(minLatency + 20, MaxReasonableLatencyMs);
+                        _logger.LogWarning(
+                            "Latency range {Range}ms too wide (min={Min}ms, max={Max}ms). " +
+                            "Using {Latency}ms instead of median {Median}ms to avoid sync issues",
+                            range, minLatency, maxLatency, OutputLatencyMs, median);
+                    }
+                    else if (median > MaxReasonableLatencyMs)
+                    {
+                        // Even with stable measurements, cap at reasonable maximum
+                        OutputLatencyMs = MaxReasonableLatencyMs;
+                        _logger.LogWarning(
+                            "Measured latency {Median}ms exceeds maximum, capping to {Max}ms",
+                            median, MaxReasonableLatencyMs);
+                    }
+                    else
+                    {
+                        // Normal case: use median
+                        OutputLatencyMs = median;
+                        _logger.LogInformation(
+                            "Latency locked at {Latency}ms (median of {Count} samples, range: {Min}-{Max}ms)",
+                            OutputLatencyMs, stableSamples.Count, minLatency, maxLatency);
+                    }
+
                     _latencyLocked = true;
                     _latencySamples = null; // Free memory
-
-                    _logger.LogInformation(
-                        "Latency locked at {Latency}ms (median of {Count} samples, range: {Min}-{Max}ms)",
-                        OutputLatencyMs, stableSamples.Count, stableSamples.First(), stableSamples.Last());
                 }
                 else
                 {
