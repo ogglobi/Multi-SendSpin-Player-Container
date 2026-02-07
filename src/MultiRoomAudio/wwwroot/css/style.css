@@ -1038,18 +1038,14 @@ h1, h2, h3, h4, h5, h6 {
     border-color: var(--bs-secondary-border-subtle);
 }
 
-/* Alias input wrapper - prevents accordion toggle when clicking input */
-.device-header-alias-wrapper {
-    display: inline-flex;
-    flex-shrink: 0;
-}
-
-/* Editable alias input inline in accordion header */
+/* Editable alias input - inline with device name */
 .device-header-alias {
     width: 120px;
+    max-width: 120px;
     height: 1.5rem;
     padding: 0.1rem 0.4rem;
     font-size: 0.8rem;
+    flex-shrink: 0;
 }
 
 .device-header-alias::placeholder {

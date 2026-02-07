@@ -3272,11 +3272,13 @@ function markDeviceAliasChanged(input) {
     }
 }
 
-// Handle Enter key in alias input - save and exit edit mode
+// Handle keydown in alias input - stop propagation to prevent accordion toggle
 async function handleAliasKeydown(event, input) {
+    // Always stop propagation to prevent accordion from reacting to keys (especially spacebar)
+    event.stopPropagation();
+
     if (event.key === 'Enter') {
         event.preventDefault();
-        event.stopPropagation();
 
         const deviceId = input.dataset.deviceId;
         const newAlias = input.value.trim();
@@ -3298,6 +3300,46 @@ async function handleAliasKeydown(event, input) {
 
         // Exit edit mode (like clicking outside)
         input.blur();
+    }
+}
+
+// Handle clicks on accordion header - manually toggle, but not when clicking alias input
+function handleDeviceAccordionClick(event, targetId) {
+    // Don't toggle if clicking on alias input (or inside it)
+    // Also check activeElement for keyboard-triggered clicks (spacebar on button while input focused)
+    const activeEl = document.activeElement;
+    if (event.target.classList.contains('device-header-alias') ||
+        event.target.closest('.device-header-alias') ||
+        (activeEl && activeEl.classList.contains('device-header-alias'))) {
+        event.stopPropagation();
+        return;
+    }
+
+    // Manually toggle the Bootstrap collapse and update button state
+    const collapse = document.getElementById(targetId);
+    const button = event.currentTarget;
+    if (collapse && button) {
+        const isCurrentlyExpanded = collapse.classList.contains('show');
+        const bsCollapse = bootstrap.Collapse.getOrCreateInstance(collapse);
+        bsCollapse.toggle();
+        // Update button's collapsed class for styling
+        button.classList.toggle('collapsed', isCurrentlyExpanded);
+    }
+}
+
+// Handle keydown on accordion button - block spacebar from toggling when typing in alias
+function handleDeviceAccordionKeydown(event) {
+    // If the event originated from the alias input, block spacebar from activating the button
+    if (event.target.classList.contains('device-header-alias')) {
+        if (event.key === ' ' || event.key === 'Spacebar') {
+            // Stop the button from receiving this as an activation
+            event.stopImmediatePropagation();
+            // Don't preventDefault - let the space character be typed in the input
+        }
+        // Block Enter from activating the button (handleAliasKeydown handles Enter for saving)
+        if (event.key === 'Enter') {
+            event.stopImmediatePropagation();
+        }
     }
 }
 
@@ -3455,25 +3497,20 @@ function renderSoundCards(savedScrollTop = 0) {
                 <h2 class="accordion-header device-accordion-header">
                     ${isHidden ? '<div class="device-hidden-overlay"></div>' : ''}
                     <button class="accordion-button ${isExpanded ? '' : 'collapsed'}" type="button"
-                            data-bs-toggle="collapse" data-bs-target="#device-${cardKey}">
+                            onclick="handleDeviceAccordionClick(event, 'device-${cardKey}')"
+                            onkeydown="handleDeviceAccordionKeydown(event)">
                         <div class="device-header-content">
                             <span class="device-header-info">
                                 <i class="${busIcon} text-primary me-2" title="${busLabel}"></i>
                                 <span class="fw-bold">${escapeHtml(deviceName)}</span>
-                                <span class="device-header-alias-wrapper ms-2" onclick="event.stopImmediatePropagation(); event.preventDefault();" onmousedown="event.stopImmediatePropagation();" onpointerdown="event.stopImmediatePropagation();" ontouchstart="event.stopImmediatePropagation();">
-                                    <input type="text" class="device-header-alias form-control form-control-sm"
-                                           placeholder="Alias"
-                                           value="${escapeHtml(deviceAlias)}"
-                                           data-device-id="${escapeHtml(deviceId)}"
-                                           data-original-alias="${escapeHtml(deviceAlias)}"
-                                           ${deviceId ? '' : 'disabled title="No device found for this card"'}
-                                           onclick="event.stopImmediatePropagation();"
-                                           onmousedown="event.stopImmediatePropagation();"
-                                           ontouchstart="event.stopImmediatePropagation();"
-                                           onfocus="event.stopImmediatePropagation();"
-                                           onchange="markDeviceAliasChanged(this)"
-                                           onkeydown="handleAliasKeydown(event, this)">
-                                </span>
+                                <input type="text" class="device-header-alias form-control form-control-sm ms-2"
+                                       placeholder="Alias"
+                                       value="${escapeHtml(deviceAlias)}"
+                                       data-device-id="${escapeHtml(deviceId)}"
+                                       data-original-alias="${escapeHtml(deviceAlias)}"
+                                       ${deviceId ? '' : 'disabled title="No device found for this card"'}
+                                       onchange="markDeviceAliasChanged(this)"
+                                       onkeydown="handleAliasKeydown(event, this)">
                             </span>
                             <div class="device-header-profile">
                                 <span class="badge bg-secondary text-truncate" id="device-profile-badge-${card.index}">${escapeHtml(activeDesc)}</span>
@@ -3594,6 +3631,18 @@ function renderSoundCards(savedScrollTop = 0) {
     }).join('');
 
     container.innerHTML = `<div class="accordion" id="soundCardsAccordion">${accordionHtml}</div>`;
+
+    // Add event listeners to sync button state with Bootstrap collapse events
+    container.querySelectorAll('.accordion-collapse').forEach(collapse => {
+        collapse.addEventListener('show.bs.collapse', () => {
+            const button = collapse.closest('.accordion-item')?.querySelector('.accordion-button');
+            if (button) button.classList.remove('collapsed');
+        });
+        collapse.addEventListener('hide.bs.collapse', () => {
+            const button = collapse.closest('.accordion-item')?.querySelector('.accordion-button');
+            if (button) button.classList.add('collapsed');
+        });
+    });
 
     // Update expandedDeviceState to match current DOM state if we auto-expanded
     if (shouldAutoExpand) {
