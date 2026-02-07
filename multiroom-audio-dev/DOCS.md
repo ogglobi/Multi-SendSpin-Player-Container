@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-8a1b1be
+## Development Build: sha-b003c25
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #165 from scyto/dev
+- Merge pull request #119 from scyto/fix/clear-pending-update-after-actions
+- Add real-time volume changes while dragging slider
+- Merge pull request #118 from scyto/fix/clear-pending-update-after-actions
+- Preserve other player updates in pendingUpdate
+- Clear pendingUpdate after player actions to prevent stale data
+- Merge pull request #117 from scyto/feature/defer-dom-updates-during-interaction
+- Remove focus check to prevent refresh starvation
+- Defer DOM updates during user interaction with player tiles
 - Merge pull request #164 from scyto/dev
-- Merge pull request #116 from scyto/feature/toast-notifications
-- Replace inline alerts with Bootstrap Toast notifications
-- Merge pull request #163 from scyto/dev
-- Merge pull request #115 from scyto/fix/boot-mute-lookup
-- Fix boot mute preference not applied at startup
-- Merge pull request #114 from scyto/feature/accordion-reset-fix
-- Fix accordion state not resetting on modal reopen
-- Merge pull request #113 from scyto/feature/accordion-alias-fix
-- Fix alias input triggering accordion expand/collapse
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
