@@ -1,10 +1,13 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-ff389a8
+## Development Build: sha-8a1b1be
 
 **Current Dev Build Changes** (recent)
 
+- Merge pull request #164 from scyto/dev
+- Merge pull request #116 from scyto/feature/toast-notifications
+- Replace inline alerts with Bootstrap Toast notifications
 - Merge pull request #163 from scyto/dev
 - Merge pull request #115 from scyto/fix/boot-mute-lookup
 - Fix boot mute preference not applied at startup
@@ -12,9 +15,6 @@
 - Fix accordion state not resetting on modal reopen
 - Merge pull request #113 from scyto/feature/accordion-alias-fix
 - Fix alias input triggering accordion expand/collapse
-- Merge pull request #112 from scyto/feature/audio-devices-accordion
-- Fix Codex review issues: profile badge, boot mute, mute label
-- Add profile badge to header, Enter-to-save for aliases, fix Codex issues
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
