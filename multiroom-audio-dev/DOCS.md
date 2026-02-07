@@ -1,20 +1,20 @@
 # Multi-Room Audio (Dev)
 
 <!-- VERSION_INFO_START -->
-## Development Build: sha-89c7112
+## Development Build: sha-ff389a8
 
 **Current Dev Build Changes** (recent)
 
-- Merge pull request #162 from scyto/dev
-- Merge pull request #110 from scyto/feature/enhanced-refresh-button
-- Merge pull request #111 from scyto/feature/trigger-accordion-focus-fix
-- Merge pull request #109 from scyto/bug/api-docs-missing-endpoints
-- Fix: Separate manual refresh from force-refresh flag
-- Use counter instead of boolean for operation lock
-- Fix trigger accordion losing focus during operations
-- Enhance Refresh button to rescan devices and show feedback
-- Add missing API endpoints to documentation
-- Restore legacy-key fallback in card profile reads
+- Merge pull request #163 from scyto/dev
+- Merge pull request #115 from scyto/fix/boot-mute-lookup
+- Fix boot mute preference not applied at startup
+- Merge pull request #114 from scyto/feature/accordion-reset-fix
+- Fix accordion state not resetting on modal reopen
+- Merge pull request #113 from scyto/feature/accordion-alias-fix
+- Fix alias input triggering accordion expand/collapse
+- Merge pull request #112 from scyto/feature/audio-devices-accordion
+- Fix Codex review issues: profile badge, boot mute, mute label
+- Add profile badge to header, Enter-to-save for aliases, fix Codex issues
 
 > WARNING: This is a development build. For stable releases, use the stable add-on.
 <!-- VERSION_INFO_END -->
