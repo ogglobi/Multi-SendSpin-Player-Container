@@ -12,10 +12,9 @@ let pendingUpdate = null; // Store pending updates during interaction
 
 /**
  * Check if user is actively interacting with player tiles.
- * Returns true if any of:
+ * Only checks for transient interactions that have clear start/end:
  * - Volume slider is being dragged
  * - Dropdown menu is open on a player card
- * - An element inside the player container has focus
  */
 function isUserInteractingWithPlayers() {
     // Slider drag in progress
@@ -23,12 +22,6 @@ function isUserInteractingWithPlayers() {
 
     // Any dropdown open on a player card
     if (document.querySelector('.player-card .dropdown-menu.show')) return true;
-
-    // Any focused element inside player container (but not the container itself)
-    const container = document.getElementById('players-container');
-    if (container && container.contains(document.activeElement) && document.activeElement !== container) {
-        return true;
-    }
 
     return false;
 }
@@ -622,22 +615,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Apply pending updates when focus leaves the player container
-    const playersContainer = document.getElementById('players-container');
-    if (playersContainer) {
-        playersContainer.addEventListener('focusout', () => {
-            // Check if focus is moving outside the container
-            // Use setTimeout to let the new focus target be set
-            setTimeout(() => {
-                if (pendingUpdate && !isUserInteractingWithPlayers()) {
-                    console.log('Focus left players - applying pending update');
-                    players = pendingUpdate.players;
-                    pendingUpdate = null;
-                    renderPlayers();
-                }
-            }, 0);
-        });
-    }
 });
 
 // SignalR setup
