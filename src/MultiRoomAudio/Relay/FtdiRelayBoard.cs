@@ -168,7 +168,9 @@ public sealed class FtdiRelayBoard : IRelayBoard
     }
 
     /// <summary>
-    /// Enumerate all connected FTDI devices.
+    /// Enumerate all connected FTDI relay board devices.
+    /// Filters to only include FT245-based devices (bitbang capable, used for relay boards).
+    /// FT232-based devices (serial adapters) are excluded.
     /// </summary>
     public static List<FtdiDeviceInfo> EnumerateDevices()
     {
@@ -188,6 +190,7 @@ public sealed class FtdiRelayBoard : IRelayBoard
                 return devices;
 
             IntPtr current = devList;
+            int deviceIndex = 0;
             for (int i = 0; i < count && current != IntPtr.Zero; i++)
             {
                 var node = Marshal.PtrToStructure<LibFtdi.ftdi_device_list>(current);
@@ -211,11 +214,22 @@ public sealed class FtdiRelayBoard : IRelayBoard
                     descStr = GetNullTerminatedString(description);
                 }
 
+                // Filter: Only include FT245-based devices (relay boards use bitbang mode)
+                // FT232 devices are serial adapters and should be excluded
+                // FT245R = "FT245R USB FIFO" (bitbang capable, relay boards)
+                // FT232R = "FT232R USB UART" (serial only, not relay boards)
+                if (descStr != null && !descStr.Contains("FT245", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Skip non-FT245 devices (likely serial adapters)
+                    current = node.next;
+                    continue;
+                }
+
                 // Get stable USB path from libusb (bus-port.port.port format)
                 var usbPath = GetUsbPath(node.dev);
 
                 devices.Add(new FtdiDeviceInfo(
-                    Index: i,
+                    Index: deviceIndex++,
                     SerialNumber: serialStr,
                     Description: descStr ?? $"FTDI Device {i}",
                     IsOpen: false,

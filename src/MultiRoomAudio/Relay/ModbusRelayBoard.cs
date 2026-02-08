@@ -534,7 +534,8 @@ public sealed class ModbusRelayBoard : IRelayBoard
 
     /// <summary>
     /// Enumerate available Modbus relay board devices.
-    /// Returns serial ports that could be CH340-based relay boards.
+    /// Probes each serial port with a Modbus "read coils" command to verify it's actually a relay board.
+    /// Only returns devices that respond correctly, filtering out other CH340 devices (Arduinos, GPS, etc.).
     /// </summary>
     public static List<ModbusRelayDeviceInfo> EnumerateDevices(ILogger? logger = null)
     {
@@ -549,15 +550,25 @@ public sealed class ModbusRelayBoard : IRelayBoard
                 // Try to get the USB port path for stable identification
                 var usbPortPath = GetUsbPortPath(port, logger);
 
-                result.Add(new ModbusRelayDeviceInfo(
-                    PortName: port,
-                    Description: GetPortDescription(port),
-                    IsAvailable: true,
-                    UsbPortPath: usbPortPath
-                ));
+                // Probe the device to verify it's actually a Modbus relay board
+                var probeResult = ProbeDevice(port, logger);
 
-                logger?.LogDebug("Found potential Modbus relay port: {Port}, USB path: {UsbPath}",
-                    port, usbPortPath ?? "(unknown)");
+                if (probeResult == ModbusProbeResult.RelayBoard)
+                {
+                    result.Add(new ModbusRelayDeviceInfo(
+                        PortName: port,
+                        Description: GetPortDescription(port),
+                        IsAvailable: true,
+                        UsbPortPath: usbPortPath
+                    ));
+
+                    logger?.LogDebug("Verified Modbus relay board: {Port}, USB path: {UsbPath}",
+                        port, usbPortPath ?? "(unknown)");
+                }
+                else
+                {
+                    logger?.LogDebug("Skipping {Port}: probe result = {Result}", port, probeResult);
+                }
             }
         }
         catch (Exception ex)
@@ -566,6 +577,110 @@ public sealed class ModbusRelayBoard : IRelayBoard
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Probe result for Modbus device detection.
+    /// </summary>
+    public enum ModbusProbeResult
+    {
+        /// <summary>Device responded correctly - it's a Modbus relay board.</summary>
+        RelayBoard,
+        /// <summary>Device did not respond - not a Modbus relay board or different protocol.</summary>
+        NoResponse,
+        /// <summary>Port is busy or in use by another application.</summary>
+        PortBusy,
+        /// <summary>An error occurred during probing.</summary>
+        Error
+    }
+
+    /// <summary>
+    /// Probe a serial port to determine if it's a Modbus relay board.
+    /// Sends a "read coils" command (function 0x01) and checks for the expected echo response.
+    /// This is a safe, read-only operation that doesn't change any relay state.
+    /// </summary>
+    /// <param name="portName">The serial port to probe (e.g., /dev/ttyUSB0).</param>
+    /// <param name="logger">Optional logger for diagnostics.</param>
+    /// <returns>The probe result indicating whether this is a relay board.</returns>
+    public static ModbusProbeResult ProbeDevice(string portName, ILogger? logger = null)
+    {
+        const int probeTimeoutMs = 500;
+
+        try
+        {
+            using var port = new SerialPort(portName, BaudRate, Parity.None, 8, StopBits.One)
+            {
+                ReadTimeout = probeTimeoutMs,
+                WriteTimeout = probeTimeoutMs,
+                Handshake = Handshake.None,
+                DtrEnable = false,
+                RtsEnable = false
+            };
+
+            port.Open();
+
+            if (!port.IsOpen)
+            {
+                logger?.LogDebug("Failed to open port {Port} for probing", portName);
+                return ModbusProbeResult.PortBusy;
+            }
+
+            // Clear any pending data
+            port.DiscardInBuffer();
+            port.DiscardOutBuffer();
+
+            // Build Modbus ASCII "read coils" command
+            // Function 0x01: Read Coils (read-only, safe operation)
+            // Address: 0xFE (default for these boards)
+            // Start address: 0x0000
+            // Quantity: 0x0010 (16 coils)
+            // Command: :FE0100000010F1\r\n
+            var probeCommand = BuildModbusCommand(DeviceAddress, 0x01, 0x00, 0x00, 0x00, 0x10);
+
+            logger?.LogDebug("Probing {Port} with command: {Command}", portName, probeCommand.TrimEnd());
+
+            port.Write(probeCommand);
+            port.BaseStream.Flush();
+
+            // Wait for response
+            Thread.Sleep(200);
+
+            // Check for response
+            if (port.BytesToRead > 0)
+            {
+                var responseBytes = new byte[port.BytesToRead];
+                port.Read(responseBytes, 0, responseBytes.Length);
+                var response = System.Text.Encoding.ASCII.GetString(responseBytes);
+
+                logger?.LogDebug("Probe response from {Port}: {Response}", portName, response.TrimEnd());
+
+                // These boards echo back the command as acknowledgment
+                // Check if response starts with ':' and contains our command
+                if (response.StartsWith(':') && response.Contains("FE01"))
+                {
+                    logger?.LogInformation("Detected Modbus relay board at {Port}", portName);
+                    return ModbusProbeResult.RelayBoard;
+                }
+            }
+
+            logger?.LogDebug("No valid Modbus response from {Port}", portName);
+            return ModbusProbeResult.NoResponse;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            logger?.LogDebug("Port {Port} is busy or access denied", portName);
+            return ModbusProbeResult.PortBusy;
+        }
+        catch (IOException ex) when (ex.Message.Contains("busy") || ex.Message.Contains("use"))
+        {
+            logger?.LogDebug("Port {Port} is busy: {Message}", portName, ex.Message);
+            return ModbusProbeResult.PortBusy;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogDebug(ex, "Error probing port {Port}", portName);
+            return ModbusProbeResult.Error;
+        }
     }
 
     /// <summary>
