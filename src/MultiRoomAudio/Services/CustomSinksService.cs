@@ -1156,7 +1156,9 @@ public class CustomSinksService : IAsyncDisposable
                 if (matchingCard != null)
                 {
                     // Use card's identifier to find matching device
-                    var cardIdentifier = matchingCard.Name.Replace("alsa_card.", "");
+                    var cardIdentifier = matchingCard.Name
+                        .Replace("alsa_card.", "")
+                        .Replace("bluez_card.", "");
                     var match = devices.FirstOrDefault(d =>
                         d.Id != null && d.Id.Contains(cardIdentifier, StringComparison.OrdinalIgnoreCase));
 

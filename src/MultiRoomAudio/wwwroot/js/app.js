@@ -3760,7 +3760,7 @@ function renderSoundCards(savedScrollTop = 0) {
 
     // Check HID button availability for each card
     soundCards.forEach(card => {
-        const cardBase = card.name.replace('alsa_card.', '');
+        const cardBase = card.name.replace('alsa_card.', '').replace('bluez_card.', '');
         const device = soundCardDevices.find(d => d.id && d.id.includes(cardBase));
         const hidContainer = document.getElementById(`settings-hid-buttons-container-${card.index}`);
 

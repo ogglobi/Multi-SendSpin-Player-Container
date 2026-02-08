@@ -261,8 +261,15 @@ public static partial class PulseAudioDeviceEnumerator
         var vendorIdMatch = DeviceVendorIdRegex().Match(block);
         var productIdMatch = DeviceProductIdRegex().Match(block);
         var alsaLongCardNameMatch = AlsaLongCardNameRegex().Match(block);
+        // Try multiple property names for Bluetooth MAC (varies by PulseAudio version)
         var bluetoothMacMatch = BluetoothMacRegex().Match(block);
+        if (!bluetoothMacMatch.Success)
+            bluetoothMacMatch = DeviceStringMacRegex().Match(block);
+
+        // Try multiple property names for Bluetooth codec
         var bluetoothCodecMatch = BluetoothCodecRegex().Match(block);
+        if (!bluetoothCodecMatch.Success)
+            bluetoothCodecMatch = BluetoothCodecAltRegex().Match(block);
 
         // Only create identifiers if we found at least one useful property
         if (!serialMatch.Success && !busPathMatch.Success && !vendorIdMatch.Success &&
@@ -328,9 +335,17 @@ public static partial class PulseAudioDeviceEnumerator
     private static partial Regex DeviceCardRegex();
 
     // Regex patterns for Bluetooth device identifiers
+    // Primary: PipeWire style
     [GeneratedRegex(@"api\.bluez5\.address\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
     private static partial Regex BluetoothMacRegex();
 
     [GeneratedRegex(@"api\.bluez5\.codec\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
     private static partial Regex BluetoothCodecRegex();
+
+    // Alternative: PulseAudio style - device.string contains MAC for Bluetooth devices
+    [GeneratedRegex(@"device\.string\s*=\s*""([0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2})""", RegexOptions.Multiline)]
+    private static partial Regex DeviceStringMacRegex();
+
+    [GeneratedRegex(@"bluetooth\.codec\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex BluetoothCodecAltRegex();
 }

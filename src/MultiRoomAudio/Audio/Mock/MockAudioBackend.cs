@@ -78,8 +78,10 @@ public class MockAudioBackend : IBackend
     /// </summary>
     private static string? ExtractDeviceIdentifier(string sinkName)
     {
-        // Remove alsa_output. prefix
-        var identifier = sinkName.Replace("alsa_output.", "");
+        // Remove sink prefix (alsa_output. or bluez_sink.)
+        var identifier = sinkName
+            .Replace("alsa_output.", "")
+            .Replace("bluez_sink.", "");
 
         // Remove the profile suffix (last dot-separated segment like .analog-stereo)
         var lastDot = identifier.LastIndexOf('.');
