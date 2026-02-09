@@ -279,7 +279,7 @@ public static class Ch340RelayProbe
     /// <summary>
     /// Get the USB port path for a serial port device (Linux only).
     /// </summary>
-    private static string? GetUsbPortPath(string portName, ILogger? logger = null)
+    internal static string? GetUsbPortPath(string portName, ILogger? logger = null)
     {
         if (!OperatingSystem.IsLinux())
             return null;

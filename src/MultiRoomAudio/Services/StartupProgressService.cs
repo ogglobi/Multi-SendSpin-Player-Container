@@ -10,15 +10,18 @@ namespace MultiRoomAudio.Services;
 public class StartupProgressService
 {
     private readonly ILogger<StartupProgressService> _logger;
+    private readonly ILogger _triggerLogger;
     private readonly IHubContext<PlayerStatusHub> _hubContext;
     private readonly object _lock = new();
     private readonly List<StartupPhase> _phases;
 
     public StartupProgressService(
         ILogger<StartupProgressService> logger,
+        ILoggerFactory loggerFactory,
         IHubContext<PlayerStatusHub> hubContext)
     {
         _logger = logger;
+        _triggerLogger = loggerFactory.CreateLogger("TriggerStartup");
         _hubContext = hubContext;
 
         _phases = new List<StartupPhase>
@@ -27,7 +30,8 @@ public class StartupProgressService
             new("sinks", "Loading custom audio sinks"),
             new("devices", "Detecting audio devices"),
             new("players", "Starting audio players"),
-            new("triggers", "Initializing 12V triggers")
+            new("triggers", "Initializing 12V triggers"),
+            new("hidbuttons", "Initializing HID buttons")
         };
     }
 
@@ -73,14 +77,24 @@ public class StartupProgressService
             snapshot = BuildSnapshot();
         }
 
+        // Use trigger-specific logger for trigger and hidbuttons phases
+        var logger = (phaseId == "triggers" || phaseId == "hidbuttons") ? _triggerLogger : _logger;
+        var phaseName = snapshot.Phases.First(p => p.Id == phaseId).Name;
+
         if (status == StartupPhaseStatus.InProgress)
         {
-            _logger.LogInformation("Startup: {PhaseName}...", snapshot.Phases.First(p => p.Id == phaseId).Name);
+            logger.LogInformation("Startup phase: {PhaseName}...", phaseName);
         }
         else if (status == StartupPhaseStatus.Completed)
         {
-            _logger.LogInformation("Startup: {PhaseName} complete{Detail}",
-                snapshot.Phases.First(p => p.Id == phaseId).Name,
+            logger.LogInformation("Startup phase: {PhaseName} complete{Detail}",
+                phaseName,
+                detail != null ? $" ({detail})" : "");
+        }
+        else if (status == StartupPhaseStatus.Failed)
+        {
+            logger.LogWarning("Startup phase: {PhaseName} failed{Detail}",
+                phaseName,
                 detail != null ? $" ({detail})" : "");
         }
 

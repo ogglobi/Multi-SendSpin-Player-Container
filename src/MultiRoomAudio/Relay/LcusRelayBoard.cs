@@ -186,7 +186,18 @@ public sealed class LcusRelayBoard : IRelayBoard
                 }
 
                 _portName = portName;
-                _serialNumber = $"LCUS:{portName}";
+
+                // Generate stable board ID using USB port path hash (same as enumeration)
+                var usbPortPath = Ch340RelayProbe.GetUsbPortPath(portName, _logger);
+                if (!string.IsNullOrEmpty(usbPortPath))
+                {
+                    _serialNumber = $"LCUS:{Ch340RelayDeviceInfo.StableHash(usbPortPath)}";
+                }
+                else
+                {
+                    // Fallback to port name if no USB path available (non-Linux)
+                    _serialNumber = $"LCUS:{portName}";
+                }
 
                 // Clear any pending data
                 _serialPort.DiscardInBuffer();

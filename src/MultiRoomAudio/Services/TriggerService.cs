@@ -82,22 +82,27 @@ public class TriggerService : IAsyncDisposable
     /// </summary>
     public Task InitializeAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("TriggerService starting...");
+        _logger.LogInformation("Trigger service initializing...");
 
         // Load configuration (with migration if needed)
         _config = LoadConfiguration();
 
         if (_config.Enabled)
         {
+            _logger.LogInformation("Trigger feature enabled, connecting to {Count} configured boards...", _config.Boards.Count);
             // Connect to all configured boards
+            var connected = 0;
             foreach (var boardConfig in _config.Boards)
             {
-                ConnectBoard(boardConfig.BoardId);
+                if (ConnectBoard(boardConfig.BoardId))
+                    connected++;
             }
+            _logger.LogInformation("Trigger initialization complete: {Connected}/{Total} boards connected",
+                connected, _config.Boards.Count);
         }
         else
         {
-            _logger.LogInformation("Trigger feature is disabled");
+            _logger.LogInformation("Trigger feature is disabled in configuration");
         }
 
         return Task.CompletedTask;
@@ -109,15 +114,22 @@ public class TriggerService : IAsyncDisposable
     /// </summary>
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("TriggerService stopping...");
+        _logger.LogInformation("Trigger service shutting down ({Count} boards)...", _relayBoards.Count);
 
         // Cancel all pending off timers
+        var cancelledTimers = 0;
         foreach (var kvp in _channelStates)
         {
-            kvp.Value.OffDelayTimer?.Stop();
-            kvp.Value.OffDelayTimer?.Dispose();
-            kvp.Value.OffDelayTimer = null;
+            if (kvp.Value.OffDelayTimer != null)
+            {
+                kvp.Value.OffDelayTimer.Stop();
+                kvp.Value.OffDelayTimer.Dispose();
+                kvp.Value.OffDelayTimer = null;
+                cancelledTimers++;
+            }
         }
+        if (cancelledTimers > 0)
+            _logger.LogDebug("Cancelled {Count} pending relay off timers", cancelledTimers);
 
         // Apply shutdown behavior for each board and dispose
         foreach (var boardConfig in _config.Boards)
@@ -126,13 +138,14 @@ public class TriggerService : IAsyncDisposable
             {
                 ApplyShutdownBehavior(board, boardConfig);
                 board.Dispose();
+                _logger.LogDebug("Board disconnected: '{BoardId}'", boardConfig.BoardId);
             }
         }
         _relayBoards.Clear();
         _boardStates.Clear();
         _boardErrors.Clear();
 
-        _logger.LogInformation("TriggerService stopped");
+        _logger.LogInformation("Trigger service shutdown complete");
         return Task.CompletedTask;
     }
 
@@ -257,6 +270,7 @@ public class TriggerService : IAsyncDisposable
             else
             {
                 // Disable: turn off all relays and disconnect all boards
+                var boardCount = _relayBoards.Count;
                 foreach (var board in _relayBoards.Values)
                 {
                     board.AllOff();
@@ -267,7 +281,7 @@ public class TriggerService : IAsyncDisposable
                 _boardErrors.Clear();
 
                 SaveConfiguration();
-                _logger.LogInformation("Trigger feature disabled");
+                _logger.LogInformation("Trigger feature disabled: disconnected {Count} boards, all relays OFF", boardCount);
                 return true;
             }
         }
@@ -548,7 +562,13 @@ public class TriggerService : IAsyncDisposable
         var result = board.SetRelay(channel, on);
         if (result)
         {
-            _logger.LogInformation("Manual control: {BoardId}/{Channel} set to {State}", boardId, channel, on ? "ON" : "OFF");
+            _logger.LogInformation("Manual relay test: Board '{BoardId}' channel {Channel} → {State}",
+                boardId, channel, on ? "ON" : "OFF");
+        }
+        else
+        {
+            _logger.LogWarning("Manual relay test failed: Board '{BoardId}' channel {Channel} → {State}",
+                boardId, channel, on ? "ON" : "OFF");
         }
 
         return result;
@@ -840,9 +860,9 @@ public class TriggerService : IAsyncDisposable
                     _logger.LogInformation("Board '{BoardId}': Skipping startup behavior (manual reconnect, no previous state)", boardId);
                 }
 
-                _logger.LogInformation("Connected to {BoardType} relay board '{BoardId}' (Serial: {Serial}, {Channels} channels, startup: {Startup})",
-                    boardType, boardId, board.SerialNumber ?? "(none)", board.ChannelCount,
-                    applyStartupBehavior ? boardConfig.StartupBehavior.ToString() : "skipped");
+                _logger.LogInformation(
+                    "Board connected: '{BoardId}' ({BoardType}, {Channels} channels, serial: {Serial})",
+                    boardId, boardType, board.ChannelCount, board.SerialNumber ?? "none");
                 return true;
             }
             else
@@ -898,7 +918,8 @@ public class TriggerService : IAsyncDisposable
         {
             case RelayStartupBehavior.AllOff:
                 board.AllOff();
-                _logger.LogInformation("Board '{BoardId}': All relays set to OFF (startup behavior)", config.BoardId);
+                _logger.LogInformation("Startup behavior: Board '{BoardId}' all {Count} relays → OFF",
+                    config.BoardId, config.ChannelCount);
                 break;
 
             case RelayStartupBehavior.AllOn:
@@ -906,11 +927,13 @@ public class TriggerService : IAsyncDisposable
                 {
                     board.SetRelay(i, true);
                 }
-                _logger.LogInformation("Board '{BoardId}': All relays set to ON (startup behavior)", config.BoardId);
+                _logger.LogInformation("Startup behavior: Board '{BoardId}' all {Count} relays → ON",
+                    config.BoardId, config.ChannelCount);
                 break;
 
             case RelayStartupBehavior.NoChange:
-                _logger.LogInformation("Board '{BoardId}': Relay state preserved (startup behavior)", config.BoardId);
+                _logger.LogInformation("Startup behavior: Board '{BoardId}' relay state preserved",
+                    config.BoardId);
                 break;
         }
 
@@ -930,7 +953,8 @@ public class TriggerService : IAsyncDisposable
         {
             case RelayStartupBehavior.AllOff:
                 board.AllOff();
-                _logger.LogInformation("Board '{BoardId}': All relays set to OFF (shutdown behavior)", config.BoardId);
+                _logger.LogInformation("Shutdown behavior: Board '{BoardId}' all {Count} relays → OFF",
+                    config.BoardId, config.ChannelCount);
                 break;
 
             case RelayStartupBehavior.AllOn:
@@ -938,11 +962,13 @@ public class TriggerService : IAsyncDisposable
                 {
                     board.SetRelay(i, true);
                 }
-                _logger.LogInformation("Board '{BoardId}': All relays set to ON (shutdown behavior)", config.BoardId);
+                _logger.LogInformation("Shutdown behavior: Board '{BoardId}' all {Count} relays → ON",
+                    config.BoardId, config.ChannelCount);
                 break;
 
             case RelayStartupBehavior.NoChange:
-                _logger.LogInformation("Board '{BoardId}': Relay state preserved (shutdown behavior)", config.BoardId);
+                _logger.LogInformation("Shutdown behavior: Board '{BoardId}' relay state preserved",
+                    config.BoardId);
                 break;
         }
 
@@ -1007,13 +1033,16 @@ public class TriggerService : IAsyncDisposable
                 state.IsActive = true;
                 if (_relayBoards.TryGetValue(boardId, out var board))
                 {
-                    board.SetRelay(channel, true);
+                    var success = board.SetRelay(channel, true);
+                    _logger.LogInformation(
+                        "Relay activated: Board '{BoardId}' channel {Channel} → ON (player '{Player}' started){Result}",
+                        boardId, channel, playerName, success ? "" : " [FAILED]");
                 }
-                _logger.LogInformation("Trigger {BoardId}/{Channel} activated by player '{Player}'", boardId, channel, playerName);
             }
             else
             {
-                _logger.LogDebug("Trigger {BoardId}/{Channel} already active, player '{Player}' joined (count: {Count})",
+                _logger.LogDebug(
+                    "Relay already active: Board '{BoardId}' channel {Channel} (player '{Player}' joined, {Count} active players)",
                     boardId, channel, playerName, state.ActivePlayerCount);
             }
         }
@@ -1029,7 +1058,8 @@ public class TriggerService : IAsyncDisposable
             // Decrement active player count
             state.ActivePlayerCount = Math.Max(0, state.ActivePlayerCount - 1);
 
-            _logger.LogDebug("Player '{Player}' stopped on trigger {BoardId}/{Channel} (remaining: {Count})",
+            _logger.LogDebug(
+                "Player stopped: '{Player}' on board '{BoardId}' channel {Channel} ({Count} players remaining)",
                 playerName, boardId, channel, state.ActivePlayerCount);
 
             // Only start off delay if no players are active
@@ -1041,15 +1071,18 @@ public class TriggerService : IAsyncDisposable
                     state.IsActive = false;
                     if (_relayBoards.TryGetValue(boardId, out var board))
                     {
-                        board.SetRelay(channel, false);
+                        var success = board.SetRelay(channel, false);
+                        _logger.LogInformation(
+                            "Relay deactivated: Board '{BoardId}' channel {Channel} → OFF (no active players){Result}",
+                            boardId, channel, success ? "" : " [FAILED]");
                     }
-                    _logger.LogInformation("Trigger {BoardId}/{Channel} deactivated immediately", boardId, channel);
                 }
                 else
                 {
                     // Start off delay timer
                     StartOffTimer(boardId, channel, offDelaySeconds);
-                    _logger.LogInformation("Trigger {BoardId}/{Channel} will deactivate in {Delay} seconds",
+                    _logger.LogInformation(
+                        "Relay off scheduled: Board '{BoardId}' channel {Channel} will turn OFF in {Delay}s",
                         boardId, channel, offDelaySeconds);
                 }
             }
@@ -1094,9 +1127,17 @@ public class TriggerService : IAsyncDisposable
                 state.OffDelayTimer = null;
                 if (_relayBoards.TryGetValue(boardId, out var board))
                 {
-                    board.SetRelay(channel, false);
+                    var success = board.SetRelay(channel, false);
+                    _logger.LogInformation(
+                        "Relay deactivated: Board '{BoardId}' channel {Channel} → OFF (delay timer expired){Result}",
+                        boardId, channel, success ? "" : " [FAILED]");
                 }
-                _logger.LogInformation("Trigger {BoardId}/{Channel} deactivated after delay", boardId, channel);
+            }
+            else if (state.ActivePlayerCount > 0)
+            {
+                _logger.LogDebug(
+                    "Relay off cancelled: Board '{BoardId}' channel {Channel} still has {Count} active players",
+                    boardId, channel, state.ActivePlayerCount);
             }
         }
     }
@@ -1136,7 +1177,7 @@ public class TriggerService : IAsyncDisposable
                     SaveConfigurationInternal(config);
                 }
 
-                _logger.LogInformation("Loaded trigger configuration: enabled={Enabled}, {BoardCount} boards configured",
+                _logger.LogDebug("Loaded trigger configuration: enabled={Enabled}, {BoardCount} boards",
                     config.Enabled, config.Boards.Count);
 
                 return config;

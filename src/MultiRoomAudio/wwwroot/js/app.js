@@ -4437,6 +4437,111 @@ function downloadLogs() {
     window.location.href = `./api/logs/download?${params}`;
 }
 
+// Active diagnostics EventSource (for cancellation support)
+let activeDiagnosticsEventSource = null;
+
+// Download comprehensive diagnostics file with progress banner
+function downloadDiagnostics() {
+    const banner = document.getElementById('diagnostics-banner');
+    const bannerText = document.getElementById('diagnostics-banner-text');
+    const progressEl = document.getElementById('diagnostics-progress');
+
+    if (!banner) {
+        // Fallback to direct download if banner doesn't exist
+        window.location.href = './api/diagnostics/download';
+        return;
+    }
+
+    // Cancel any existing diagnostics generation
+    if (activeDiagnosticsEventSource) {
+        activeDiagnosticsEventSource.close();
+        activeDiagnosticsEventSource = null;
+    }
+
+    // Show the banner
+    banner.classList.remove('d-none');
+    bannerText.textContent = 'Generating diagnostics...';
+    progressEl.textContent = '';
+
+    // Connect to SSE endpoint
+    const eventSource = new EventSource('./api/diagnostics/stream');
+    activeDiagnosticsEventSource = eventSource;
+
+    eventSource.addEventListener('progress', (event) => {
+        const data = JSON.parse(event.data);
+        bannerText.textContent = `Generating diagnostics — ${data.phase}`;
+        progressEl.textContent = `(${data.current}/${data.total})`;
+    });
+
+    eventSource.addEventListener('complete', (event) => {
+        eventSource.close();
+        activeDiagnosticsEventSource = null;
+
+        // Decode base64 content to bytes (preserves UTF-8 encoding)
+        const base64Content = event.data;
+        const binaryString = atob(base64Content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Create blob and trigger download
+        const blob = new Blob([bytes], { type: 'text/plain; charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const filename = `multiroom-diagnostics-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.txt`;
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // Hide the banner
+        banner.classList.add('d-none');
+    });
+
+    eventSource.addEventListener('error', (event) => {
+        eventSource.close();
+        activeDiagnosticsEventSource = null;
+        bannerText.textContent = 'Diagnostics generation failed';
+        progressEl.textContent = '';
+
+        // Hide after 3 seconds
+        setTimeout(() => {
+            banner.classList.add('d-none');
+        }, 3000);
+
+        showAlert('Failed to generate diagnostics', 'danger');
+    });
+
+    // Also handle connection errors
+    eventSource.onerror = () => {
+        if (eventSource.readyState === EventSource.CLOSED) {
+            return; // Already handled by 'error' event
+        }
+        eventSource.close();
+        activeDiagnosticsEventSource = null;
+        banner.classList.add('d-none');
+        showAlert('Connection lost while generating diagnostics', 'danger');
+    };
+}
+
+// Cancel diagnostics generation
+function cancelDiagnostics() {
+    const banner = document.getElementById('diagnostics-banner');
+
+    if (activeDiagnosticsEventSource) {
+        activeDiagnosticsEventSource.close();
+        activeDiagnosticsEventSource = null;
+    }
+
+    if (banner) {
+        banner.classList.add('d-none');
+    }
+}
+
 // ============================================
 // ONBOARDING WIZARD INTEGRATION
 // ============================================
@@ -5098,7 +5203,11 @@ async function removeBoard(boardId) {
     });
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}`, {
+        // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/remove?boardId=${encodeURIComponent(boardId)}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}`;
+        const response = await fetch(url, {
             method: 'DELETE'
         });
 
@@ -5195,7 +5304,11 @@ async function editBoard(boardId) {
         }
 
         try {
-            const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}`, {
+            // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+            const url = boardId.includes('/')
+                ? `./api/triggers/boards/settings?boardId=${encodeURIComponent(boardId)}`
+                : `./api/triggers/boards/${encodeURIComponent(boardId)}`;
+            const response = await fetch(url, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -5246,15 +5359,28 @@ async function updateBoardBehavior(boardId, behaviorType, value) {
     });
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}`, {
+        // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/settings?boardId=${encodeURIComponent(boardId)}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}`;
+        const response = await fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [behaviorType]: value })
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `Failed to update ${typeName.toLowerCase()} behavior`);
+            const errorText = await response.text();
+            let errorMessage = `Failed to update ${typeName.toLowerCase()} behavior`;
+            if (errorText) {
+                try {
+                    const error = JSON.parse(errorText);
+                    errorMessage = error.message || errorMessage;
+                } catch {
+                    errorMessage = errorText;
+                }
+            }
+            throw new Error(errorMessage);
         }
 
         // Update local data
@@ -5291,7 +5417,11 @@ async function reconnectBoard(boardId) {
     });
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/reconnect`, {
+        // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/reconnect?boardId=${encodeURIComponent(boardId)}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}/reconnect`;
+        const response = await fetch(url, {
             method: 'POST'
         });
 
@@ -5318,7 +5448,11 @@ async function updateTriggerSink(boardId, channel, sinkName) {
     const delay = delayInput ? parseInt(delayInput.value, 10) : 60;
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`, {
+        // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/channel?boardId=${encodeURIComponent(boardId)}&channel=${channel}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`;
+        const response = await fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -5347,7 +5481,11 @@ async function updateTriggerDelay(boardId, channel, delay) {
     const sinkName = sinkSelect ? sinkSelect.value : null;
 
     try {
-        const response = await fetch(`./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`, {
+        // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/channel?boardId=${encodeURIComponent(boardId)}&channel=${channel}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`;
+        const response = await fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -5369,19 +5507,60 @@ async function updateTriggerDelay(boardId, channel, delay) {
     }
 }
 
+// Update a specific channel's UI state without reloading everything
+function updateChannelState(boardId, channel, isOn) {
+    const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
+
+    // Update local triggersData
+    const board = triggersData?.boards?.find(b => b.boardId === boardId);
+    if (board) {
+        const trigger = board.triggers?.find(t => t.channel === channel);
+        if (trigger) {
+            trigger.relayState = isOn ? 'On' : 'Off';
+        }
+    }
+
+    // Find the row for this channel by looking for the sink select element
+    const sinkSelect = document.getElementById(`trigger-sink-${boardIdSafe}-${channel}`);
+    if (!sinkSelect) return;
+
+    const row = sinkSelect.closest('tr');
+    if (!row) return;
+
+    // Update the badge in the first cell
+    const firstCell = row.cells[0];
+    const badge = firstCell.querySelector('.badge.bg-success, .badge.bg-secondary');
+    if (badge) {
+        if (isOn) {
+            badge.className = 'badge bg-success ms-1';
+            badge.textContent = 'On';
+        } else {
+            badge.className = 'badge bg-secondary ms-1';
+            badge.textContent = 'Off';
+        }
+    }
+
+    // Update the button classes in the last cell
+    const lastCell = row.cells[row.cells.length - 1];
+    const buttons = lastCell.querySelectorAll('button');
+    if (buttons.length === 2) {
+        const onBtn = buttons[0];
+        const offBtn = buttons[1];
+
+        if (isOn) {
+            onBtn.className = 'btn btn-success btn-sm';
+            offBtn.className = 'btn btn-outline-secondary btn-sm';
+        } else {
+            onBtn.className = 'btn btn-outline-secondary btn-sm';
+            offBtn.className = 'btn btn-secondary btn-sm';
+        }
+    }
+}
+
 // Test a trigger relay (multi-board)
 async function testTrigger(boardId, channel, on) {
     // Prevent refresh interval from clobbering expanded state during this operation
     triggersOperationCount++;
-
-    // Save expanded state before any async operations
-    const container = document.getElementById('triggersContainer');
-    container.querySelectorAll('.accordion-collapse.show').forEach(el => {
-        const match = el.id.match(/^board-(.+)$/);
-        if (match) {
-            expandedBoardsState.add(match[1]);
-        }
-    });
 
     try {
         // Use query params for board IDs that contain slashes (e.g., MODBUS:/dev/ttyUSB0)
@@ -5400,7 +5579,9 @@ async function testTrigger(boardId, channel, on) {
         }
 
         showAlert(`Relay ${channel} turned ${on ? 'ON' : 'OFF'}`, 'success', 2000);
-        await loadTriggers();
+
+        // Update just the affected channel's UI instead of reloading everything
+        updateChannelState(boardId, channel, on);
     } catch (error) {
         console.error('Error testing trigger:', error);
         showAlert(`Failed to test relay: ${error.message}`, 'danger');
