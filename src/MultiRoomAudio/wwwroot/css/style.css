@@ -1696,7 +1696,8 @@ textarea,
 .form-control,
 .form-select,
 .form-check-input,
-.accordion-button {
+.accordion-button,
+.form-range {
     touch-action: manipulation;
 }
 
@@ -1735,6 +1736,17 @@ textarea,
 
     .volume-control {
         padding: 0.625rem 0.75rem;
+    }
+
+    /* Larger slider thumb for touch on mobile/tablet */
+    .form-range::-webkit-slider-thumb {
+        width: 28px;
+        height: 28px;
+    }
+
+    .form-range::-moz-range-thumb {
+        width: 28px;
+        height: 28px;
     }
 
     .channel-pair {
