@@ -889,6 +889,10 @@ async function refreshStatus(force = false, manual = false) {
                     .catch(err => {
                         intentionalSignalRRestart = false;
                         console.log('SignalR restart failed, will retry on next poll:', err);
+                        // Allow next poll to retry SignalR restart
+                        if (connection.state !== signalR.HubConnectionState.Connected) {
+                            serverAvailable = false;
+                        }
                     });
             }
         }
