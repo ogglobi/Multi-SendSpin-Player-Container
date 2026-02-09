@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using MultiRoomAudio.Audio.PulseAudio;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Services;
+using Sendspin.SDK.Audio;
 
 namespace MultiRoomAudio.Controllers;
 
@@ -593,10 +594,20 @@ public static class DiagnosticsEndpoint
                 var stats = playerManager.GetPlayerStats(player.Name);
                 if (stats != null)
                 {
+                    // Sync stats
                     sb.AppendLine($"  Sync Error:    {stats.Sync.SyncErrorMs:F1} ms");
+                    sb.AppendLine($"  In Tolerance:  {stats.Sync.IsWithinTolerance}");
                     sb.AppendLine($"  Buffer Level:  {stats.Buffer.BufferedMs} ms");
                     sb.AppendLine($"  Underruns:     {stats.Buffer.Underruns}");
                     sb.AppendLine($"  Overruns:      {stats.Buffer.Overruns}");
+
+                    // Clock sync stats
+                    sb.AppendLine($"  Clock Synced:  {stats.ClockSync.IsSynchronized}");
+                    sb.AppendLine($"  Clock Offset:  {stats.ClockSync.ClockOffsetMs:F2} ms");
+                    sb.AppendLine($"  Uncertainty:   {stats.ClockSync.UncertaintyMs:F2} ms");
+                    sb.AppendLine($"  Drift Rate:    {stats.ClockSync.DriftRatePpm:F2} ppm (reliable: {stats.ClockSync.IsDriftReliable})");
+                    sb.AppendLine($"  Timing Source: {stats.ClockSync.TimingSource}");
+                    sb.AppendLine($"  Output Latency:{stats.ClockSync.OutputLatencyMs} ms");
                 }
 
                 sb.AppendLine();
@@ -861,17 +872,14 @@ public static class DiagnosticsEndpoint
     {
         try
         {
-            // Get SendSpin.SDK assembly version
-            var sdkAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => a.GetName().Name == "SendSpin.SDK");
-
-            if (sdkAssembly != null)
-            {
-                var version = sdkAssembly.GetName().Version;
-                return version?.ToString(3) ?? "unknown";
-            }
-
-            return "unknown";
+            // Get SDK version from a known SDK type (works with single-file publish)
+            var sdkAssembly = typeof(IAudioPipeline).Assembly;
+            var version = sdkAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? sdkAssembly.GetName().Version?.ToString()
+                ?? "unknown";
+            // Strip source link hash if present (e.g., "6.3.4+abc123" -> "6.3.4")
+            var plusIndex = version.IndexOf('+');
+            return plusIndex > 0 ? version[..plusIndex] : version;
         }
         catch
         {
