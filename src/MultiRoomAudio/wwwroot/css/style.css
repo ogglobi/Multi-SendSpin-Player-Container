@@ -1739,12 +1739,14 @@ textarea,
     }
 
     /* Larger slider thumb for touch on mobile/tablet */
-    .form-range::-webkit-slider-thumb {
+    .form-range::-webkit-slider-thumb,
+    .volume-control .form-range::-webkit-slider-thumb {
         width: 28px;
         height: 28px;
     }
 
-    .form-range::-moz-range-thumb {
+    .form-range::-moz-range-thumb,
+    .volume-control .form-range::-moz-range-thumb {
         width: 28px;
         height: 28px;
     }
