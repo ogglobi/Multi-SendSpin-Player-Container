@@ -707,6 +707,17 @@ function setupSignalR() {
         await refreshDevices();
     });
 
+    connection.on('TriggerBoardReconnected', (data) => {
+        console.log('Relay board reconnected:', data);
+        showAlert(data.message || 'Relay board reconnected', 'success', 5000);
+
+        // If triggers modal is open, refresh it
+        const triggersModal = document.getElementById('triggersModal');
+        if (triggersModal && triggersModal.classList.contains('show')) {
+            loadTriggers();
+        }
+    });
+
     connection.onreconnecting(() => {
         statusBadge.textContent = 'Reconnecting...';
         statusBadge.className = 'badge bg-warning me-2';
