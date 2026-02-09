@@ -633,7 +633,7 @@ public class TriggerService : IAsyncDisposable
                 !string.IsNullOrEmpty(t.CustomSinkName) &&
                 string.Equals(t.CustomSinkName, deviceId, StringComparison.OrdinalIgnoreCase));
 
-            if (trigger != null && _relayBoards.ContainsKey(boardConfig.BoardId))
+            if (trigger != null && _boardStates.ContainsKey(boardConfig.BoardId))
             {
                 ActivateTrigger(boardConfig.BoardId, trigger.Channel, playerName);
                 return;
@@ -655,7 +655,7 @@ public class TriggerService : IAsyncDisposable
                 !string.IsNullOrEmpty(t.CustomSinkName) &&
                 string.Equals(t.CustomSinkName, deviceId, StringComparison.OrdinalIgnoreCase));
 
-            if (trigger != null && _relayBoards.ContainsKey(boardConfig.BoardId))
+            if (trigger != null && _boardStates.ContainsKey(boardConfig.BoardId))
             {
                 DeactivateTrigger(boardConfig.BoardId, trigger.Channel, trigger.OffDelaySeconds, playerName);
                 return;
