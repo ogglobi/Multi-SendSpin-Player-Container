@@ -608,6 +608,18 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     /// </summary>
     private async Task TryAutostartPlayerAsync(PlayerConfiguration playerConfig, CancellationToken cancellationToken)
     {
+        // Check if player has no device configured - don't start, show Error state
+        if (string.IsNullOrEmpty(playerConfig.Device) && playerConfig.PortAudioDeviceIndex == null)
+        {
+            _logger.LogWarning(
+                "Player {PlayerName} has no audio device configured. " +
+                "Assign a device to start playback.",
+                playerConfig.Name);
+            // Don't queue for reconnection - this is a config issue, not device loss
+            // Player will show in Error state via GetAllPlayers()
+            return;
+        }
+
         _logger.LogDebug(
             "Autostarting player {PlayerName} on device {Device} with server {Server}",
             playerConfig.Name,
@@ -1270,6 +1282,11 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                         state = Models.PlayerState.Reconnecting;
                         errorMessage = $"Reconnecting... (attempt {reconnectState.RetryCount})";
                     }
+                }
+                else if (string.IsNullOrEmpty(config.Device))
+                {
+                    state = Models.PlayerState.Error;
+                    errorMessage = "No audio device configured. Assign a device to start playback.";
                 }
                 else
                 {
