@@ -549,6 +549,8 @@ public class DeviceMatchingService
     /// Predicts the sink name that will be created when a profile is activated.
     /// e.g., card "alsa_card.pci-0000_01_00.0" + profile "output:analog-stereo"
     ///       → "alsa_output.pci-0000_01_00.0.analog-stereo"
+    /// Also handles combined profiles like "output:analog-stereo+input:analog-stereo"
+    ///       → "alsa_output.pci-0000_01_00.0.analog-stereo" (output portion only)
     /// </summary>
     private static string? PredictSinkName(string cardName, string profileName)
     {
@@ -571,10 +573,22 @@ public class DeviceMatchingService
             return null;
         }
 
-        // Extract profile suffix (remove "output:" prefix if present)
+        // Extract profile suffix for sink name
+        // Profile formats:
+        //   "output:analog-stereo" → "analog-stereo"
+        //   "output:analog-stereo+input:analog-stereo" → "analog-stereo" (output portion only)
+        //   "analog-stereo" → "analog-stereo" (no prefix)
         var profileSuffix = profileName;
+
+        // Remove "output:" prefix if present
         if (profileSuffix.StartsWith("output:", StringComparison.OrdinalIgnoreCase))
             profileSuffix = profileSuffix["output:".Length..];
+
+        // Handle combined profiles: strip "+input:..." portion
+        // PulseAudio names sinks based only on the output profile part
+        var plusIndex = profileSuffix.IndexOf("+input:", StringComparison.OrdinalIgnoreCase);
+        if (plusIndex > 0)
+            profileSuffix = profileSuffix[..plusIndex];
 
         return $"{prefix}{identifier}.{profileSuffix}";
     }
