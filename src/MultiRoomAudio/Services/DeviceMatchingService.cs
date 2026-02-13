@@ -419,12 +419,14 @@ public class DeviceMatchingService
     }
 
     /// <summary>
-    /// Gets cards with "off" profile that have available output profiles.
-    /// These are potential devices that will work when the profile is activated.
+    /// Gets cards that have no active sink but could have one when conditions change.
+    /// This includes:
+    /// - Cards with "off" profile (can be activated)
+    /// - Cards with active profile but no sink (e.g., Intel HDA with jack detection -
+    ///   profile stays same but sink disappears when nothing is plugged in)
     /// </summary>
     private IEnumerable<AudioDevice> GetOffProfileDevices(IReadOnlyCollection<AudioDevice> activeDevices)
     {
-        // Get all cards and filter to those with "off" profile
         var cards = PulseAudioCardEnumerator.GetCards().ToList();
 
         // Build a set of card identifiers that already have active sinks
@@ -436,49 +438,74 @@ public class DeviceMatchingService
 
         foreach (var card in cards)
         {
-            // Skip if not "off" profile
-            if (!card.ActiveProfile.Equals("off", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // Skip if card already has an active sink (shouldn't happen, but be safe)
             var cardIdentifier = ExtractCardIdentifier(card.Name);
+
+            // Skip if card already has an active sink
             if (cardIdentifier != null && activeCardIdentifiers.Contains(cardIdentifier))
                 continue;
 
-            // Find the best output profile (highest priority with sinks > 0)
-            // Note: Don't filter by IsAvailable - that flag means "hardware is connected right now"
-            // (e.g., headphones plugged in). We want to show the device even when hardware isn't
-            // connected, since that's the whole point of this feature.
-            var bestProfile = card.Profiles
-                .Where(p => p.Sinks > 0)
-                .OrderByDescending(p => p.Priority)
-                .FirstOrDefault();
+            // Determine which profile to use for predicting sink name:
+            // - If active profile is "off", find the best alternative output profile
+            // - If active profile is NOT "off" (e.g., Intel HDA with jack detection),
+            //   use the active profile since it will create the sink when hardware is plugged in
+            string profileToUse;
+            bool isActiveProfileOff = card.ActiveProfile.Equals("off", StringComparison.OrdinalIgnoreCase);
 
-            if (bestProfile == null)
+            if (isActiveProfileOff)
             {
-                _logger.LogDebug("Card '{Card}' has no output profiles, skipping", card.Name);
-                continue;
+                // Find the best output profile (highest priority with sinks > 0)
+                var bestProfile = card.Profiles
+                    .Where(p => p.Sinks > 0 && !p.Name.Equals("off", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(p => p.Priority)
+                    .FirstOrDefault();
+
+                if (bestProfile == null)
+                {
+                    _logger.LogDebug("Card '{Card}' has no output profiles, skipping", card.Name);
+                    continue;
+                }
+                profileToUse = bestProfile.Name;
+            }
+            else
+            {
+                // Use the current active profile - the sink will appear when hardware is plugged in
+                // (This handles Intel HDA with jack detection where profile stays same but sink disappears)
+                var activeProfile = card.Profiles.FirstOrDefault(p =>
+                    p.Name.Equals(card.ActiveProfile, StringComparison.OrdinalIgnoreCase));
+
+                if (activeProfile == null || activeProfile.Sinks == 0)
+                {
+                    _logger.LogDebug("Card '{Card}' active profile '{Profile}' has no sinks, skipping",
+                        card.Name, card.ActiveProfile);
+                    continue;
+                }
+                profileToUse = activeProfile.Name;
             }
 
-            // Predict what the sink name will be when profile is activated
-            var predictedSinkName = PredictSinkName(card.Name, bestProfile.Name);
+            // Predict what the sink name will be when hardware is available
+            var predictedSinkName = PredictSinkName(card.Name, profileToUse);
             if (predictedSinkName == null)
             {
                 _logger.LogDebug("Could not predict sink name for card '{Card}' profile '{Profile}'",
-                    card.Name, bestProfile.Name);
+                    card.Name, profileToUse);
                 continue;
             }
 
-            // Determine max channels from the best profile
-            var maxChannels = GetChannelsFromProfile(bestProfile.Name);
+            // Determine max channels from the profile
+            var maxChannels = GetChannelsFromProfile(profileToUse);
 
-            _logger.LogDebug("Including off-profile card '{Card}' with predicted sink '{Sink}'",
-                card.Name, predictedSinkName);
+            // Use different display suffix based on whether profile is actually "off"
+            // or just has no sink (e.g., Intel HDA with jack detection)
+            var displaySuffix = isActiveProfileOff ? "[off]" : "[unplugged]";
+
+            _logger.LogInformation("Card '{Card}' has no active sink (profile: {Profile}), " +
+                "adding as off-profile device with predicted sink '{Sink}'",
+                card.Name, card.ActiveProfile, predictedSinkName);
 
             yield return new AudioDevice(
                 Index: -card.Index, // Negative index to distinguish from active devices
                 Id: predictedSinkName,
-                Name: $"{card.Description ?? card.Name} [off]",
+                Name: $"{card.Description ?? card.Name} {displaySuffix}",
                 MaxChannels: maxChannels,
                 DefaultSampleRate: 48000,
                 DefaultLowLatencyMs: 50,
