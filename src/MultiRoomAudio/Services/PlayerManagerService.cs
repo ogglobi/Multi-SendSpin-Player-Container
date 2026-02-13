@@ -105,6 +105,12 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     private const int DeviceLossGracePeriodMs = 1500;
 
     /// <summary>
+    /// Lock to serialize sink event processing. Prevents concurrent device loss/reappear checks
+    /// that can cause race conditions when PulseAudio fires multiple events rapidly.
+    /// </summary>
+    private readonly SemaphoreSlim _sinkEventLock = new(1, 1);
+
+    /// <summary>
     /// State for a player waiting for device reconnection.
     /// </summary>
     private record DevicePendingState(
@@ -2579,9 +2585,17 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             await _hubContext.BroadcastDeviceListChangedAsync();
 
             // Check if any pending players can now be restarted
-            if (!_devicePendingPlayers.IsEmpty)
+            // Use lock to prevent concurrent processing with sink disappear events
+            if (!_devicePendingPlayers.IsEmpty && await _sinkEventLock.WaitAsync(0))
             {
-                await CheckDevicePendingPlayersAsync();
+                try
+                {
+                    await CheckDevicePendingPlayersAsync();
+                }
+                finally
+                {
+                    _sinkEventLock.Release();
+                }
             }
         });
     }
@@ -2600,7 +2614,18 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             await _hubContext.BroadcastDeviceListChangedAsync();
 
             // Check if any active players were using a sink that no longer exists
-            await CheckPlayersForLostDeviceAsync();
+            // Use lock to prevent concurrent processing with sink appear events
+            if (await _sinkEventLock.WaitAsync(0))
+            {
+                try
+                {
+                    await CheckPlayersForLostDeviceAsync();
+                }
+                finally
+                {
+                    _sinkEventLock.Release();
+                }
+            }
         });
     }
 
@@ -2681,12 +2706,20 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
                 if (newSinkName != null)
                 {
+                    // Remove from pending queue atomically - only proceed if WE removed it
+                    // This prevents race conditions where multiple sink events trigger
+                    // concurrent restart attempts for the same player
+                    if (!_devicePendingPlayers.TryRemove(name, out _))
+                    {
+                        _logger.LogDebug(
+                            "Player '{Name}' already being restarted by another task, skipping",
+                            name);
+                        continue;
+                    }
+
                     _logger.LogInformation(
                         "Device reappeared for player '{Name}': {SinkName}. Restarting player.",
                         name, newSinkName);
-
-                    // Remove from pending queue before restart
-                    _devicePendingPlayers.TryRemove(name, out _);
 
                     // Update config if sink name changed
                     if (state.Config.Device != newSinkName)
@@ -3656,6 +3689,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         }
 
         _reconnectionSignal.Dispose();
+        _sinkEventLock.Dispose();
         _logger.LogInformation("PlayerManagerService disposed");
     }
 
@@ -3710,6 +3744,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         }
 
         _reconnectionSignal.Dispose();
+        _sinkEventLock.Dispose();
         _logger.LogInformation("PlayerManagerService disposed asynchronously");
     }
 
