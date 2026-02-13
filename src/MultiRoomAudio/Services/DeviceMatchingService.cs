@@ -445,15 +445,18 @@ public class DeviceMatchingService
             if (cardIdentifier != null && activeCardIdentifiers.Contains(cardIdentifier))
                 continue;
 
-            // Find the best available output profile (highest priority with sinks > 0)
+            // Find the best output profile (highest priority with sinks > 0)
+            // Note: Don't filter by IsAvailable - that flag means "hardware is connected right now"
+            // (e.g., headphones plugged in). We want to show the device even when hardware isn't
+            // connected, since that's the whole point of this feature.
             var bestProfile = card.Profiles
-                .Where(p => p.Sinks > 0 && p.IsAvailable)
+                .Where(p => p.Sinks > 0)
                 .OrderByDescending(p => p.Priority)
                 .FirstOrDefault();
 
             if (bestProfile == null)
             {
-                _logger.LogDebug("Card '{Card}' has no available output profiles, skipping", card.Name);
+                _logger.LogDebug("Card '{Card}' has no output profiles, skipping", card.Name);
                 continue;
             }
 
