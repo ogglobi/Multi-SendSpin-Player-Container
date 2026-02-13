@@ -424,11 +424,11 @@ public class DeviceMatchingService
     /// </summary>
     private IEnumerable<AudioDevice> GetOffProfileDevices(IReadOnlyCollection<AudioDevice> activeDevices)
     {
-        // Get all cards and filter to those with "off" profile
         var cards = PulseAudioCardEnumerator.GetCards().ToList();
 
+        _logger.LogDebug("GetOffProfileDevices: Found {Count} cards total", cards.Count);
+
         // Build a set of card identifiers that already have active sinks
-        // (to avoid duplicating devices that are already in the hardware list)
         var activeCardIdentifiers = activeDevices
             .Select(d => ExtractCardIdentifier(d.Id))
             .Where(id => id != null)
@@ -436,27 +436,44 @@ public class DeviceMatchingService
 
         foreach (var card in cards)
         {
+            _logger.LogDebug("GetOffProfileDevices: Checking card '{Card}' (profile: {Profile})",
+                card.Name, card.ActiveProfile);
+
             // Skip if not "off" profile
             if (!card.ActiveProfile.Equals("off", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("GetOffProfileDevices: Card '{Card}' skipped - profile is '{Profile}', not 'off'",
+                    card.Name, card.ActiveProfile);
                 continue;
+            }
 
             // Skip if card already has an active sink (shouldn't happen, but be safe)
             var cardIdentifier = ExtractCardIdentifier(card.Name);
             if (cardIdentifier != null && activeCardIdentifiers.Contains(cardIdentifier))
+            {
+                _logger.LogDebug("GetOffProfileDevices: Card '{Card}' skipped - already has active sink",
+                    card.Name);
                 continue;
+            }
 
             // Find the best output profile (highest priority with sinks > 0)
             // Note: Don't filter by IsAvailable - that flag means "hardware is connected right now"
             // (e.g., headphones plugged in). We want to show the device even when hardware isn't
             // connected, since that's the whole point of this feature.
-            var bestProfile = card.Profiles
-                .Where(p => p.Sinks > 0)
+            var profilesWithSinks = card.Profiles.Where(p => p.Sinks > 0).ToList();
+            _logger.LogDebug("GetOffProfileDevices: Card '{Card}' has {Count} profiles with sinks > 0",
+                card.Name, profilesWithSinks.Count);
+
+            var bestProfile = profilesWithSinks
                 .OrderByDescending(p => p.Priority)
                 .FirstOrDefault();
 
             if (bestProfile == null)
             {
-                _logger.LogDebug("Card '{Card}' has no output profiles, skipping", card.Name);
+                _logger.LogWarning("GetOffProfileDevices: Card '{Card}' has no output profiles (profiles with sinks > 0), skipping. " +
+                    "Total profiles: {Total}, Profile names: [{Names}]",
+                    card.Name, card.Profiles.Count,
+                    string.Join(", ", card.Profiles.Select(p => $"{p.Name}(sinks={p.Sinks})")));
                 continue;
             }
 
@@ -464,7 +481,7 @@ public class DeviceMatchingService
             var predictedSinkName = PredictSinkName(card.Name, bestProfile.Name);
             if (predictedSinkName == null)
             {
-                _logger.LogDebug("Could not predict sink name for card '{Card}' profile '{Profile}'",
+                _logger.LogWarning("GetOffProfileDevices: Could not predict sink name for card '{Card}' profile '{Profile}'",
                     card.Name, bestProfile.Name);
                 continue;
             }
@@ -472,8 +489,9 @@ public class DeviceMatchingService
             // Determine max channels from the best profile
             var maxChannels = GetChannelsFromProfile(bestProfile.Name);
 
-            _logger.LogDebug("Including off-profile card '{Card}' with predicted sink '{Sink}'",
-                card.Name, predictedSinkName);
+            _logger.LogInformation("GetOffProfileDevices: Including off-profile card '{Card}' " +
+                "(profile: {BestProfile}) with predicted sink '{Sink}'",
+                card.Name, bestProfile.Name, predictedSinkName);
 
             yield return new AudioDevice(
                 Index: -card.Index, // Negative index to distinguish from active devices
