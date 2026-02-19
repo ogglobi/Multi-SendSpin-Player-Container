@@ -16,7 +16,6 @@ EXPOSE 8096
 
 # Audio dependencies:
 # - pulseaudio: Audio daemon (used for both HAOS and Docker modes)
-# - pulseaudio-module-alsa: ALSA modules for PulseAudio (required for ALSA output)
 # - libasound2: ALSA library (required for PulseAudio's ALSA output backend)
 # - libasound2-plugins: ALSA plugins including PulseAudio bridge
 # - alsa-utils: ALSA utilities for debugging (aplay, amixer)
@@ -31,7 +30,6 @@ EXPOSE 8096
 # - usbutils: lsusb for USB device enumeration in diagnostics
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
-    pulseaudio-module-alsa \
     libasound2 \
     libasound2-plugins \
     alsa-utils \
