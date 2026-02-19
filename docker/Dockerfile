@@ -43,7 +43,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && usermod -a -G audio pulse 2>/dev/null || true \
     && usermod -a -G audio root 2>/dev/null || true \
-    && usermod -a -G dialout root 2>/dev/null || true
+    && usermod -a -G dialout root 2>/dev/null || true \
+    # Create ALSA config directory and fix missing 10-rate-lav.conf
+    && mkdir -p /etc/alsa/conf.d \
+    && echo "# ALSA rate converter configuration" > /etc/alsa/conf.d/10-rate-lav.conf \
+    && echo "# Empty file to prevent 'cannot access file' errors" >> /etc/alsa/conf.d/10-rate-lav.conf
 
 # Build stage - using Debian SDK for consistent glibc builds
 FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
