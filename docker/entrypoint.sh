@@ -109,6 +109,18 @@ fi
 echo "Standalone Docker mode - starting local PulseAudio daemon"
 echo ""
 
+# Fix audio device permissions (required for Unraid and some Docker setups)
+echo "Fixing audio device permissions..."
+if [ -d /dev/snd ]; then
+    chgrp audio /dev/snd/* 2>/dev/null || true
+    chmod 666 /dev/snd/* 2>/dev/null || true
+    echo "  Audio device permissions fixed"
+fi
+
+# Wait for audio devices to be ready
+echo "Waiting for audio devices..."
+sleep 2
+
 # Ensure runtime directory exists with correct permissions
 mkdir -p /run/pulse
 chmod 755 /run/pulse

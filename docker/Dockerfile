@@ -80,8 +80,9 @@ RUN mkdir -p /app/config /app/logs /data /share /run/pulse && \
 
 # Disable D-Bus for PulseAudio (not available in container)
 ENV DBUS_SESSION_BUS_ADDRESS=disabled
-ENV PULSE_SYSTEM=1
-ENV PULSE_SERVER=unix:/run/pulse/native
+# Note: PULSE_SYSTEM and PULSE_SERVER are set by entrypoint.sh based on mode
+# ENV PULSE_SYSTEM=1
+# ENV PULSE_SERVER=unix:/run/pulse/native
 
 # Health check - verifies the API is responding
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
