@@ -19,6 +19,7 @@ EXPOSE 8096
 # - libasound2: ALSA library (required for PulseAudio's ALSA output backend)
 # - libasound2-plugins: ALSA plugins including PulseAudio bridge
 # - alsa-utils: ALSA utilities for debugging (aplay, amixer)
+# - alsa-ucm-conf: ALSA Use Case Manager configuration files
 # FTDI relay board dependencies:
 # - libftdi1-2: libftdi1 library for FTDI USB device control
 # - libusb-1.0-0: USB library required by libftdi
@@ -33,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libasound2-plugins \
     alsa-utils \
+    alsa-ucm-conf \
     curl \
     libftdi1-2 \
     libusb-1.0-0 \
