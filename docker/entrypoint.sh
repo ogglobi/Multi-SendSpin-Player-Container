@@ -136,9 +136,48 @@ echo ""
 # Fix audio device permissions (required for Unraid and some Docker setups)
 echo "Fixing audio device permissions..."
 if [ -d /dev/snd ]; then
+    # Show current permissions for debugging
+    echo "  Before fix:"
+    ls -la /dev/snd/ 2>/dev/null || echo "    Cannot list /dev/snd"
+    
+    # Fix permissions
     chgrp audio /dev/snd/* 2>/dev/null || true
     chmod 666 /dev/snd/* 2>/dev/null || true
+    
+    echo "  After fix:"
+    ls -la /dev/snd/ 2>/dev/null || echo "    Cannot list /dev/snd"
     echo "  Audio device permissions fixed"
+else
+    echo "  WARNING: /dev/snd directory not found!"
+fi
+
+# Check /proc/asound availability (required for ALSA device enumeration)
+echo ""
+echo "Checking /proc/asound..."
+if [ -d /proc/asound ]; then
+    if [ -f /proc/asound/cards ]; then
+        echo "  ALSA cards (/proc/asound/cards):"
+        cat /proc/asound/cards
+    else
+        echo "  WARNING: /proc/asound/cards not found - ALSA may not work"
+    fi
+    if [ -f /proc/asound/devices ]; then
+        echo "  ALSA devices (/proc/asound/devices):"
+        cat /proc/asound/devices | head -20
+    fi
+else
+    echo "  WARNING: /proc/asound not mounted!"
+    echo "  This usually means the container is not running in privileged mode."
+fi
+
+# Check /sys/class/sound availability (required for udev detection)
+echo ""
+echo "Checking /sys/class/sound..."
+if [ -d /sys/class/sound ]; then
+    echo "  Sound devices in /sys/class/sound:"
+    ls -la /sys/class/sound/ 2>/dev/null | head -20
+else
+    echo "  WARNING: /sys/class/sound not found - udev detection will fail"
 fi
 
 # Wait for audio devices to be ready
@@ -226,6 +265,15 @@ if [ -f /proc/asound/cards ]; then
     echo ""
 fi
 
+# Try aplay -l to list playback devices (works without /proc/asound)
+echo "  Checking aplay -l output:"
+if command -v aplay &>/dev/null; then
+    aplay -l 2>&1 | head -30
+else
+    echo "    aplay not available"
+fi
+echo ""
+
 if [ -d /dev/snd ]; then
     # Phase 1: Try module-alsa-card for each card (provides profile support)
     # This enables users to switch between stereo/5.1/7.1 profiles
@@ -289,6 +337,32 @@ if [ -d /dev/snd ]; then
             fi
         fi
     done
+    
+    # Phase 3: If no devices found via /dev/snd, try probing with aplay
+    if [ $CARDS_LOADED -eq 0 ]; then
+        echo ""
+        echo "  Phase 3: No devices found via /dev/snd, trying aplay probe..."
+        
+        # Parse aplay -l output to find devices
+        # Format: card 0: CARD_NAME [CHIP], device 0: DEVICE [TYPE]
+        if command -v aplay &>/dev/null; then
+            aplay -l 2>/dev/null | grep -E "^card [0-9]+:" | while read line; do
+                card_num=$(echo "$line" | sed 's/card \([0-9]*\):.*/\1/')
+                dev_num=$(echo "$line" | sed 's/.*device \([0-9]*\):.*/\1/')
+                
+                echo "  Found via aplay: hw:$card_num,$dev_num"
+                
+                sink_name="alsa_output_hw_${card_num}_${dev_num}"
+                
+                # Try to load
+                if load_output=$(pactl load-module module-alsa-sink device=hw:$card_num,$dev_num sink_name="$sink_name" rate=48000 tsched=0 2>&1); then
+                    echo "    -> Loaded as $sink_name @ 48000Hz (module $load_output)"
+                else
+                    echo "    -> Failed: $load_output"
+                fi
+            done
+        fi
+    fi
 else
     echo "  ERROR: /dev/snd not mounted!"
     echo ""
