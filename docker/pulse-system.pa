@@ -1,13 +1,15 @@
 # PulseAudio System Configuration for Multi-Room Audio Container
-# Minimal config for headless Docker with udev support
+# Minimal config for headless Docker with ALSA support
 
 # Load essential protocol modules (allow anonymous access in container)
 load-module module-native-protocol-unix auth-anonymous=1
 
-# ALSA device detection via udev (modern replacement for module-detect)
-# tsched=0 disables timer-based scheduling for better compatibility
+# ALSA device detection - try udev first, fallback to direct ALSA detection
 .nofail
+# Try udev detection (works if udev is available)
 load-module module-udev-detect tsched=0
+# Fallback: direct ALSA sink detection (works without udev)
+load-module module-alsa-sink device=default
 .fail
 
 # Always keep a sink around (creates null sink if no hardware detected)
