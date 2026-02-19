@@ -422,6 +422,10 @@ public partial class HidInputDeviceDetector
                 inputByIdPath, physicalPath ?? "(null)");
 
             // Extract USB port from sysfs path
+            if (physicalPath == null)
+            {
+                continue;
+            }
             var sysfsMatch = SysfsUsbPortPattern().Match(physicalPath);
             if (sysfsMatch.Success)
             {
