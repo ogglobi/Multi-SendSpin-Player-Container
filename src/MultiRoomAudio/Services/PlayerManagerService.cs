@@ -13,9 +13,10 @@ using Sendspin.SDK.Connection;
 using Sendspin.SDK.Discovery;
 using Sendspin.SDK.Models;
 using Sendspin.SDK.Synchronization;
+using static MultiRoomAudio.Utilities.BackgroundTaskExecutor;
+
 // Alias to disambiguate from MultiRoomAudio.Models.PlayerState (lifecycle enum)
 using SdkPlayerState = Sendspin.SDK.Models.PlayerState;
-using static MultiRoomAudio.Utilities.BackgroundTaskExecutor;
 
 namespace MultiRoomAudio.Services;
 
@@ -2641,7 +2642,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
         foreach (var (name, context) in _players.ToArray())
         {
-            if (_disposed) break;
+            if (_disposed)
+                break;
 
             // Skip players already in error/stopped state or already pending device reconnection
             if (context.State == Models.PlayerState.Error ||
@@ -2677,7 +2679,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     {
         foreach (var (name, state) in _devicePendingPlayers.ToArray())
         {
-            if (_disposed) break;
+            if (_disposed)
+                break;
 
             try
             {
@@ -3452,8 +3455,14 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     private void SignalReconnectionLoop()
     {
         // Release the semaphore if it's not already signaled (max count is 1)
-        try { _reconnectionSignal.Release(); }
-        catch (SemaphoreFullException) { /* Already signaled */ }
+        try
+        {
+            _reconnectionSignal.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            /* Already signaled */
+        }
     }
 
     /// <summary>
@@ -3469,8 +3478,14 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             try
             {
                 // Wait up to 1 second, but wake immediately if signaled
-                try { await _reconnectionSignal.WaitAsync(TimeSpan.FromSeconds(1), ct); }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                try
+                {
+                    await _reconnectionSignal.WaitAsync(TimeSpan.FromSeconds(1), ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    break;
+                }
 
                 var now = DateTime.UtcNow;
                 var playersToReconnect = _pendingReconnections
