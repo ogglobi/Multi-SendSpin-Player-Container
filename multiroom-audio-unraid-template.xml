@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>multiroom-audio</Name>
+  <Repository>ghcr.io/ogglobi/multiroom-audio:main</Repository>
+  <Registry>ghcr.io</Registry>
+  <Network>host</Network>
+  <Shell>sh</Shell>
+  <Privileged>true</Privileged>
+  <Support>https://github.com/ogglobi/Multi-SendSpin-Player-Container/issues</Support>
+  <Project>https://github.com/ogglobi/Multi-SendSpin-Player-Container</Project>
+  <Overview>Multi-Room Audio Controller with USB Sound Card support for Unraid&#13;
+&#13;
+Features:&#13;
+- USB Sound Card support (fixed permissions)&#13;
+- PulseAudio backend with automatic device detection&#13;
+- Web UI on port 8096&#13;
+&#13;
+Requirements:&#13;
+- USB Sound Card connected to the server&#13;
+- Privileged mode enabled (for /proc/asound access)</Overview>
+  <Category>MediaApp:Audio</Category>
+  <WebUI>http://[IP]:[PORT:8096]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/ogglobi/Multi-SendSpin-Player-Container/main/multiroom-audio-unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/ogglobi/Multi-SendSpin-Player-Container/main/multiroom.jpg</Icon>
+  <ExtraParams>--device /dev/snd:/dev/snd:rw</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1771510049</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>USB Sound Card connected to /dev/snd</Requires>
+  <Config Name="Web UI Port" Target="WEB_PORT" Default="8096" Mode="" Description="Web server port" Type="Variable" Display="always" Required="false" Mask="false">8096</Config>
+  <Config Name="Audio Backend" Target="AUDIO_BACKEND" Default="alsa" Mode="" Description="Audio backend: alsa or pulse" Type="Variable" Display="always" Required="false" Mask="false">alsa</Config>
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="info" Mode="" Description="Logging level: debug, info, warning, error" Type="Variable" Display="always" Required="false" Mask="false">info</Config>
+  <Config Name="Config Path" Target="CONFIG_PATH" Default="/app/config" Mode="" Description="Configuration directory" Type="Variable" Display="always" Required="false" Mask="false">/app/config</Config>
+  <Config Name="Log Path" Target="LOG_PATH" Default="/app/logs" Mode="" Description="Log directory" Type="Variable" Display="always" Required="false" Mask="false">/app/logs</Config>
+  <Config Name="Config Directory" Target="/app/config" Default="" Mode="rw" Description="Persistent configuration storage" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/multiroom-audio/config</Config>
+  <Config Name="Log Directory" Target="/app/logs" Default="" Mode="rw" Description="Log files storage" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/multiroom-audio/logs</Config>
+  <Config Name="ALSA Config" Target="/usr/share/alsa" Default="" Mode="ro" Description="ALSA configuration files" Type="Path" Display="always" Required="false" Mask="false">/usr/share/alsa</Config>
+  <Config Name="Audio Devices" Target="/dev/snd" Default="" Mode="rw" Description="USB Sound Card devices" Type="Device" Display="always" Required="true" Mask="false">/dev/snd</Config>
+</Container>
