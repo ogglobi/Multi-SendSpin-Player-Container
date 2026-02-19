@@ -345,6 +345,17 @@ internal static class PulseAudioNative
     [DllImport(LibPulse, EntryPoint = "pa_threaded_mainloop_get_api")]
     public static extern IntPtr ThreadedMainloopGetApi(IntPtr m);
 
+    /// <summary>
+    /// Check if the current thread is the mainloop thread.
+    /// </summary>
+    /// <returns>Non-zero if called from within the mainloop thread, zero otherwise.</returns>
+    /// <remarks>
+    /// Use this to avoid calling pa_threaded_mainloop_lock() from within callbacks,
+    /// which would cause an assertion failure (deadlock prevention).
+    /// </remarks>
+    [DllImport(LibPulse, EntryPoint = "pa_threaded_mainloop_in_thread")]
+    public static extern int ThreadedMainloopInThread(IntPtr m);
+
     #endregion
 
     #region Async API - Context
@@ -505,6 +516,21 @@ internal static class PulseAudioNative
     public static extern int StreamGetLatency(IntPtr stream, out ulong usec, out int negative);
 
     /// <summary>
+    /// Get the current playback time of the stream in microseconds.
+    /// </summary>
+    /// <param name="stream">The stream.</param>
+    /// <param name="usec">Output: playback time in microseconds (sound card clock domain).</param>
+    /// <returns>0 on success, negative on error.</returns>
+    /// <remarks>
+    /// This returns time in the sound card's clock domain, making it immune to VM
+    /// wall clock issues. The time is based on how much audio has actually been
+    /// played through the DAC, not wall clock time.
+    /// Requires PA_STREAM_AUTO_TIMING_UPDATE flag for automatic updates.
+    /// </remarks>
+    [DllImport(LibPulse, EntryPoint = "pa_stream_get_time")]
+    public static extern int StreamGetTime(IntPtr stream, out ulong usec);
+
+    /// <summary>
     /// Cork (pause) or uncork (resume) the stream.
     /// </summary>
     [DllImport(LibPulse, EntryPoint = "pa_stream_cork")]
@@ -533,6 +559,109 @@ internal static class PulseAudioNative
     /// </summary>
     [DllImport(LibPulse, EntryPoint = "pa_stream_is_corked")]
     public static extern int StreamIsCorked(IntPtr stream);
+
+    #endregion
+
+    #region Async API - Subscriptions
+
+    /// <summary>
+    /// Subscription event facility (what type of object changed).
+    /// </summary>
+    [Flags]
+    public enum SubscriptionMask : uint
+    {
+        Null = 0x0000,
+        Sink = 0x0001,
+        Source = 0x0002,
+        SinkInput = 0x0004,
+        SourceOutput = 0x0008,
+        Module = 0x0010,
+        Client = 0x0020,
+        SampleCache = 0x0040,
+        Server = 0x0080,
+        Card = 0x0200,
+        All = 0x02FF
+    }
+
+    /// <summary>
+    /// Subscription event type (what happened to the object).
+    /// The event type is encoded in the upper bits of the event value.
+    /// Use FacilityMask to extract the facility (SubscriptionMask) and TypeMask to extract the type.
+    /// </summary>
+    public enum SubscriptionEventType : uint
+    {
+        /// <summary>Object was created.</summary>
+        New = 0x0000,
+        /// <summary>Object was modified.</summary>
+        Change = 0x0010,
+        /// <summary>Object was removed.</summary>
+        Remove = 0x0020,
+
+        /// <summary>Mask for extracting the facility (lower 4 bits).</summary>
+        FacilityMask = 0x000F,
+        /// <summary>Mask for extracting the event type (bits 4-5).</summary>
+        TypeMask = 0x0030
+    }
+
+    /// <summary>
+    /// Event facility values received in subscription callbacks.
+    /// IMPORTANT: These are DIFFERENT from SubscriptionMask values!
+    /// SubscriptionMask is for pa_context_subscribe(), this is for callback parsing.
+    /// </summary>
+    public enum SubscriptionEventFacility : uint
+    {
+        Sink = 0x0000,
+        Source = 0x0001,
+        SinkInput = 0x0002,
+        SourceOutput = 0x0003,
+        Module = 0x0004,
+        Client = 0x0005,
+        SampleCache = 0x0006,
+        Server = 0x0007,
+        Card = 0x0009
+    }
+
+    /// <summary>
+    /// Callback for subscription events.
+    /// </summary>
+    /// <param name="context">The context.</param>
+    /// <param name="eventType">Combined facility and event type. Use masks to extract.</param>
+    /// <param name="index">Index of the object that changed.</param>
+    /// <param name="userdata">User-provided data.</param>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void SubscriptionCallback(IntPtr context, uint eventType, uint index, IntPtr userdata);
+
+    /// <summary>
+    /// Callback for operation success/failure.
+    /// </summary>
+    /// <param name="context">The context.</param>
+    /// <param name="success">Non-zero on success, zero on failure.</param>
+    /// <param name="userdata">User-provided data.</param>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void ContextSuccessCallback(IntPtr context, int success, IntPtr userdata);
+
+    /// <summary>
+    /// Set the subscription callback. Called when a subscribed event occurs.
+    /// </summary>
+    [DllImport(LibPulse, EntryPoint = "pa_context_set_subscribe_callback")]
+    public static extern void ContextSetSubscribeCallback(IntPtr context, SubscriptionCallback? cb, IntPtr userdata);
+
+    /// <summary>
+    /// Subscribe to events on the specified facilities.
+    /// </summary>
+    /// <param name="context">The context.</param>
+    /// <param name="mask">Bitmask of facilities to subscribe to.</param>
+    /// <param name="callback">Callback for operation completion (may be null).</param>
+    /// <param name="userdata">User-provided data for callback.</param>
+    /// <returns>Operation handle (must be unref'd), or NULL on error.</returns>
+    [DllImport(LibPulse, EntryPoint = "pa_context_subscribe")]
+    public static extern IntPtr ContextSubscribe(IntPtr context, SubscriptionMask mask, ContextSuccessCallback? callback, IntPtr userdata);
+
+    /// <summary>
+    /// Decrease the reference count of an operation, potentially freeing it.
+    /// </summary>
+    [DllImport(LibPulse, EntryPoint = "pa_operation_unref")]
+    public static extern void OperationUnref(IntPtr operation);
 
     #endregion
 }

@@ -46,6 +46,24 @@ public class DeviceConfiguration
     /// Applied to the PulseAudio sink at startup and when changed via API.
     /// </summary>
     public int? MaxVolume { get; set; }
+
+    /// <summary>
+    /// HID button configuration for hardware volume/mute controls.
+    /// </summary>
+    public HidButtonConfiguration? HidButtons { get; set; }
+}
+
+/// <summary>
+/// Configuration for HID buttons on a device.
+/// Persisted in devices.yaml.
+/// </summary>
+public class HidButtonConfiguration
+{
+    /// <summary>Whether HID button support is enabled for this device.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>Last known input device path (for reconnection).</summary>
+    public string? LastKnownInputPath { get; set; }
 }
 
 /// <summary>
@@ -58,6 +76,9 @@ public class DeviceIdentifiersConfig
     public string? VendorId { get; set; }
     public string? ProductId { get; set; }
     public string? AlsaLongCardName { get; set; }
+    // Bluetooth-specific
+    public string? BluetoothMac { get; set; }
+    public string? BluetoothCodec { get; set; }
 
     /// <summary>
     /// Create from the model record.
@@ -72,14 +93,16 @@ public class DeviceIdentifiersConfig
             BusPath = identifiers.BusPath,
             VendorId = identifiers.VendorId,
             ProductId = identifiers.ProductId,
-            AlsaLongCardName = identifiers.AlsaLongCardName
+            AlsaLongCardName = identifiers.AlsaLongCardName,
+            BluetoothMac = identifiers.BluetoothMac,
+            BluetoothCodec = identifiers.BluetoothCodec
         };
     }
 
     /// <summary>
     /// Convert to the model record.
     /// </summary>
-    public DeviceIdentifiers ToModel() => new(Serial, BusPath, VendorId, ProductId, AlsaLongCardName);
+    public DeviceIdentifiers ToModel() => new(Serial, BusPath, VendorId, ProductId, AlsaLongCardName, BluetoothMac, BluetoothCodec);
 }
 
 /// <summary>
@@ -92,12 +115,28 @@ public class PlayerConfiguration
     public string Device { get; set; } = string.Empty;
     public string Provider { get; set; } = "sendspin";
     public bool Autostart { get; set; } = true;
+
+    /// <summary>
+    /// Whether to automatically resume playback when the audio device is reconnected.
+    /// The player always restarts when its device reappears, but this controls whether
+    /// playback resumes automatically or not.
+    /// When enabled: Player restarts and resumes playing where it left off.
+    /// When disabled: Player restarts but stays paused/stopped.
+    /// </summary>
+    public bool AutoResume { get; set; } = false;
+
     public int DelayMs { get; set; } = 0;
     public string? Server { get; set; }
     public int? Volume { get; set; }
 
     // PortAudio device index (for Sendspin SDK)
     public int? PortAudioDeviceIndex { get; set; }
+
+    // Advertised audio format (for advanced formats feature)
+    public string? AdvertisedFormat { get; set; }
+
+    // Buffer size in milliseconds (for audio pipeline tuning)
+    public int BufferSizeMs { get; set; } = 100;
 
     // Additional provider-specific settings
     public Dictionary<string, object>? Extra { get; set; }
@@ -115,7 +154,7 @@ public class ConfigurationService
     private readonly string _devicesConfigPath;
     private readonly IDeserializer _deserializer;
     private readonly ISerializer _serializer;
-    private readonly object _lock = new();
+    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.NoRecursion);
 
     private Dictionary<string, PlayerConfiguration> _players = new();
     private Dictionary<string, DeviceConfiguration> _devices = new();
@@ -167,66 +206,103 @@ public class ConfigurationService
     /// </summary>
     public void Load()
     {
-        lock (_lock)
-        {
-            _logger.LogDebug("Loading player configuration from {ConfigPath}", _playersConfigPath);
+        _logger.LogDebug("Loading player configuration from {ConfigPath}", _playersConfigPath);
 
-            if (!File.Exists(_playersConfigPath))
+        // Read file content outside the lock to avoid blocking on slow I/O
+        string? yaml = null;
+        bool fileExists;
+
+        try
+        {
+            fileExists = File.Exists(_playersConfigPath);
+            if (fileExists)
+            {
+                yaml = File.ReadAllText(_playersConfigPath);
+            }
+        }
+        catch (IOException ex)
+        {
+            _logger.LogError(ex,
+                "Failed to read configuration file {ConfigPath}. Check file permissions",
+                _playersConfigPath);
+            _lock.EnterWriteLock();
+            try
+            {
+                _players = new Dictionary<string, PlayerConfiguration>();
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error reading config from {ConfigPath}", _playersConfigPath);
+            _lock.EnterWriteLock();
+            try
+            {
+                _players = new Dictionary<string, PlayerConfiguration>();
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+            return;
+        }
+
+        // Process the data under write lock (since we're updating _players)
+        _lock.EnterWriteLock();
+        try
+        {
+            if (!fileExists)
             {
                 _logger.LogInformation("Config file {ConfigPath} does not exist, starting fresh", _playersConfigPath);
                 _players = new Dictionary<string, PlayerConfiguration>();
                 return;
             }
 
-            try
+            // Handle empty or whitespace-only YAML files
+            if (string.IsNullOrWhiteSpace(yaml))
             {
-                var yaml = File.ReadAllText(_playersConfigPath);
-
-                // Handle empty or whitespace-only YAML files
-                if (string.IsNullOrWhiteSpace(yaml))
-                {
-                    _logger.LogInformation("Config file {ConfigPath} is empty, starting fresh", _playersConfigPath);
-                    _players = new Dictionary<string, PlayerConfiguration>();
-                    return;
-                }
-
-                var raw = _deserializer.Deserialize<Dictionary<string, PlayerConfiguration>>(yaml);
-                _players = raw ?? new Dictionary<string, PlayerConfiguration>();
-
-                // Ensure name field matches dictionary key
-                foreach (var (name, config) in _players)
-                {
-                    config.Name = name;
-                }
-
-                _logger.LogInformation("Loaded {PlayerCount} players from configuration", _players.Count);
-
-                // Log player names at debug level for troubleshooting
-                if (_players.Count > 0)
-                {
-                    _logger.LogDebug("Configured players: {PlayerNames}",
-                        string.Join(", ", _players.Keys));
-                }
-            }
-            catch (YamlDotNet.Core.YamlException ex)
-            {
-                _logger.LogError(ex,
-                    "Failed to parse YAML configuration from {ConfigPath}. File may be malformed",
-                    _playersConfigPath);
+                _logger.LogInformation("Config file {ConfigPath} is empty, starting fresh", _playersConfigPath);
                 _players = new Dictionary<string, PlayerConfiguration>();
+                return;
             }
-            catch (IOException ex)
+
+            var raw = _deserializer.Deserialize<Dictionary<string, PlayerConfiguration>>(yaml);
+            _players = raw ?? new Dictionary<string, PlayerConfiguration>();
+
+            // Ensure name field matches dictionary key
+            foreach (var (name, config) in _players)
             {
-                _logger.LogError(ex,
-                    "Failed to read configuration file {ConfigPath}. Check file permissions",
-                    _playersConfigPath);
-                _players = new Dictionary<string, PlayerConfiguration>();
+                config.Name = name;
             }
-            catch (Exception ex)
+
+            _logger.LogInformation("Loaded {PlayerCount} players from configuration", _players.Count);
+
+            // Log player names at debug level for troubleshooting
+            if (_players.Count > 0)
             {
-                _logger.LogError(ex, "Unexpected error loading config from {ConfigPath}", _playersConfigPath);
-                _players = new Dictionary<string, PlayerConfiguration>();
+                _logger.LogDebug("Configured players: {PlayerNames}",
+                    string.Join(", ", _players.Keys));
             }
+        }
+        catch (YamlDotNet.Core.YamlException ex)
+        {
+            _logger.LogError(ex,
+                "Failed to parse YAML configuration from {ConfigPath}. File may be malformed",
+                _playersConfigPath);
+            _players = new Dictionary<string, PlayerConfiguration>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error parsing config from {ConfigPath}", _playersConfigPath);
+            _players = new Dictionary<string, PlayerConfiguration>();
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
         }
     }
 
@@ -235,29 +311,40 @@ public class ConfigurationService
     /// </summary>
     public bool Save()
     {
-        lock (_lock)
+        // Serialize under read lock (we're only reading _players)
+        string yaml;
+        int playerCount;
+        _lock.EnterReadLock();
+        try
         {
-            try
-            {
-                _logger.LogDebug("Saving {PlayerCount} players to configuration", _players.Count);
-                var yaml = _serializer.Serialize(_players);
-                File.WriteAllText(_playersConfigPath, yaml);
-                _logger.LogInformation("Configuration saved successfully ({PlayerCount} players)",
-                    _players.Count);
-                return true;
-            }
-            catch (IOException ex)
-            {
-                _logger.LogError(ex,
-                    "Failed to write configuration file {ConfigPath}. Check disk space and permissions",
-                    _playersConfigPath);
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error saving config to {ConfigPath}", _playersConfigPath);
-                return false;
-            }
+            _logger.LogDebug("Saving {PlayerCount} players to configuration", _players.Count);
+            yaml = _serializer.Serialize(_players);
+            playerCount = _players.Count;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
+        // Write file outside the lock
+        try
+        {
+            File.WriteAllText(_playersConfigPath, yaml);
+            _logger.LogInformation("Configuration saved successfully ({PlayerCount} players)",
+                playerCount);
+            return true;
+        }
+        catch (IOException ex)
+        {
+            _logger.LogError(ex,
+                "Failed to write configuration file {ConfigPath}. Check disk space and permissions",
+                _playersConfigPath);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error saving config to {ConfigPath}", _playersConfigPath);
+            return false;
         }
     }
 
@@ -266,9 +353,14 @@ public class ConfigurationService
     /// </summary>
     public PlayerConfiguration? GetPlayer(string name)
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _players.TryGetValue(name, out var config) ? config : null;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -277,7 +369,8 @@ public class ConfigurationService
     /// </summary>
     public void SetPlayer(string name, PlayerConfiguration config)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             var isUpdate = _players.ContainsKey(name);
             config.Name = name;
@@ -296,6 +389,10 @@ public class ConfigurationService
                 "Player {PlayerName} config: Device={Device}, Autostart={Autostart}, Server={Server}",
                 name, config.Device ?? "(default)", config.Autostart, config.Server ?? "(auto-discover)");
         }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -303,7 +400,8 @@ public class ConfigurationService
     /// </summary>
     public bool DeletePlayer(string name)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             if (_players.Remove(name))
             {
@@ -314,6 +412,10 @@ public class ConfigurationService
             _logger.LogDebug("Attempted to delete non-existent player: {PlayerName}", name);
             return false;
         }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -321,9 +423,14 @@ public class ConfigurationService
     /// </summary>
     public bool PlayerExists(string name)
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _players.ContainsKey(name);
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -332,9 +439,14 @@ public class ConfigurationService
     /// </summary>
     public IReadOnlyList<string> ListPlayers()
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _players.Keys.ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -343,19 +455,25 @@ public class ConfigurationService
     /// </summary>
     public bool UpdatePlayerField(string name, Action<PlayerConfiguration> update, bool save = true)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             if (!_players.TryGetValue(name, out var config))
                 return false;
 
             update(config);
             _logger.LogDebug("Updated player config field: {Name}", name);
-
-            if (save)
-                Save();
-
-            return true;
         }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        // Save outside the lock
+        if (save)
+            Save();
+
+        return true;
     }
 
     /// <summary>
@@ -363,9 +481,14 @@ public class ConfigurationService
     /// </summary>
     public IReadOnlyList<PlayerConfiguration> GetAutostartPlayers()
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _players.Values.Where(p => p.Autostart).ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -374,7 +497,8 @@ public class ConfigurationService
     /// </summary>
     public bool RenamePlayer(string oldName, string newName)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             if (!_players.TryGetValue(oldName, out var config))
                 return false;
@@ -389,6 +513,10 @@ public class ConfigurationService
             _logger.LogDebug("Renamed player: {OldName} -> {NewName}", oldName, newName);
             return true;
         }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     // =========================================================================
@@ -396,42 +524,133 @@ public class ConfigurationService
     // =========================================================================
 
     /// <summary>
+    /// Migrates old-format device keys (serial-based) to new-format keys (bus path-based).
+    /// Returns true if any keys were migrated.
+    /// </summary>
+    /// <remarks>
+    /// Old format: serial_xxx (based on device serial number)
+    /// New format: path_xxx (based on USB bus path - stable per USB port)
+    /// Bus path is preferred because it handles identical devices (same serial) in different ports.
+    /// </remarks>
+    private bool MigrateDeviceKeys(Dictionary<string, DeviceConfiguration> devices)
+    {
+        var needsMigration = new List<(string oldKey, string newKey, DeviceConfiguration config)>();
+
+        foreach (var (key, config) in devices)
+        {
+            // Check if this is an old-format key (serial-based) that should be migrated
+            if (key.StartsWith("serial_", StringComparison.OrdinalIgnoreCase))
+            {
+                // Check if we have a bus path to migrate to
+                if (!string.IsNullOrEmpty(config.Identifiers?.BusPath))
+                {
+                    var newKey = $"path_{SanitizeKey(config.Identifiers.BusPath)}";
+                    // Only migrate if the new key doesn't already exist
+                    if (!devices.ContainsKey(newKey))
+                    {
+                        needsMigration.Add((key, newKey, config));
+                    }
+                }
+            }
+        }
+
+        if (needsMigration.Count == 0)
+        {
+            return false;
+        }
+
+        // Apply migrations
+        foreach (var (oldKey, newKey, config) in needsMigration)
+        {
+            devices.Remove(oldKey);
+            devices[newKey] = config;
+            _logger.LogInformation("Migrated device key '{OldKey}' to '{NewKey}'", oldKey, newKey);
+        }
+
+        // Save the migrated configuration (outside lock since we're already in LoadDevices which holds the lock)
+        // We'll save after releasing the lock by setting a flag
+        return true;
+    }
+
+    /// <summary>
     /// Load device configurations from YAML file.
     /// </summary>
     public void LoadDevices()
     {
-        lock (_lock)
-        {
-            _logger.LogDebug("Loading device configuration from {ConfigPath}", _devicesConfigPath);
+        _logger.LogDebug("Loading device configuration from {ConfigPath}", _devicesConfigPath);
 
-            if (!File.Exists(_devicesConfigPath))
+        // Read file content outside the lock
+        string? yaml = null;
+        bool fileExists;
+
+        try
+        {
+            fileExists = File.Exists(_devicesConfigPath);
+            if (fileExists)
+            {
+                yaml = File.ReadAllText(_devicesConfigPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read device configuration from {ConfigPath}", _devicesConfigPath);
+            _lock.EnterWriteLock();
+            try
+            {
+                _devices = new Dictionary<string, DeviceConfiguration>();
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+            return;
+        }
+
+        // Process the data under write lock
+        var needsSave = false;
+        _lock.EnterWriteLock();
+        try
+        {
+            if (!fileExists)
             {
                 _logger.LogDebug("Devices config file does not exist, starting fresh");
                 _devices = new Dictionary<string, DeviceConfiguration>();
                 return;
             }
 
-            try
+            if (string.IsNullOrWhiteSpace(yaml))
             {
-                var yaml = File.ReadAllText(_devicesConfigPath);
-
-                if (string.IsNullOrWhiteSpace(yaml))
-                {
-                    _logger.LogDebug("Devices config file is empty, starting fresh");
-                    _devices = new Dictionary<string, DeviceConfiguration>();
-                    return;
-                }
-
-                var raw = _deserializer.Deserialize<Dictionary<string, DeviceConfiguration>>(yaml);
-                _devices = raw ?? new Dictionary<string, DeviceConfiguration>();
-
-                _logger.LogInformation("Loaded {DeviceCount} device configurations", _devices.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to load device configuration from {ConfigPath}", _devicesConfigPath);
+                _logger.LogDebug("Devices config file is empty, starting fresh");
                 _devices = new Dictionary<string, DeviceConfiguration>();
+                return;
             }
+
+            var raw = _deserializer.Deserialize<Dictionary<string, DeviceConfiguration>>(yaml);
+            _devices = raw ?? new Dictionary<string, DeviceConfiguration>();
+
+            // Migrate old-format keys (serial-based) to new-format keys (bus path-based)
+            needsSave = MigrateDeviceKeys(_devices);
+            if (needsSave)
+            {
+                _logger.LogInformation("Migrated device keys to bus path format");
+            }
+
+            _logger.LogInformation("Loaded {DeviceCount} device configurations", _devices.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse device configuration from {ConfigPath}", _devicesConfigPath);
+            _devices = new Dictionary<string, DeviceConfiguration>();
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        // Save migrated configuration outside the lock
+        if (needsSave)
+        {
+            SaveDevices();
         }
     }
 
@@ -440,21 +659,32 @@ public class ConfigurationService
     /// </summary>
     public bool SaveDevices()
     {
-        lock (_lock)
+        // Serialize under read lock
+        string yaml;
+        int deviceCount;
+        _lock.EnterReadLock();
+        try
         {
-            try
-            {
-                _logger.LogDebug("Saving {DeviceCount} devices to configuration", _devices.Count);
-                var yaml = _serializer.Serialize(_devices);
-                File.WriteAllText(_devicesConfigPath, yaml);
-                _logger.LogDebug("Device configuration saved successfully");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to save device configuration to {ConfigPath}", _devicesConfigPath);
-                return false;
-            }
+            _logger.LogDebug("Saving {DeviceCount} devices to configuration", _devices.Count);
+            yaml = _serializer.Serialize(_devices);
+            deviceCount = _devices.Count;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
+        // Write file outside the lock
+        try
+        {
+            File.WriteAllText(_devicesConfigPath, yaml);
+            _logger.LogDebug("Device configuration saved successfully ({DeviceCount} devices)", deviceCount);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save device configuration to {ConfigPath}", _devicesConfigPath);
+            return false;
         }
     }
 
@@ -463,9 +693,14 @@ public class ConfigurationService
     /// </summary>
     public DeviceConfiguration? GetDevice(string deviceKey)
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _devices.TryGetValue(deviceKey, out var config) ? config : null;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -474,11 +709,16 @@ public class ConfigurationService
     /// </summary>
     public void SetDevice(string deviceKey, DeviceConfiguration config)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             _devices[deviceKey] = config;
             _logger.LogDebug("Set device configuration: {DeviceKey}, Alias={Alias}",
                 deviceKey, config.Alias ?? "(none)");
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
         }
     }
 
@@ -488,11 +728,16 @@ public class ConfigurationService
     /// </summary>
     public string? GetDeviceAliasBySinkName(string sinkName)
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             var device = _devices.Values.FirstOrDefault(d =>
                 d.LastKnownSinkName?.Equals(sinkName, StringComparison.OrdinalIgnoreCase) == true);
             return device?.Alias;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -501,11 +746,71 @@ public class ConfigurationService
     /// </summary>
     public DeviceConfiguration? GetDeviceConfigBySinkName(string sinkName)
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _devices.Values.FirstOrDefault(d =>
                 d.LastKnownSinkName?.Equals(sinkName, StringComparison.OrdinalIgnoreCase) == true);
         }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Generic helper method for updating a device property.
+    /// Handles loading/creating the device config, updating the property, and saving.
+    /// </summary>
+    /// <typeparam name="T">The type of the property value.</typeparam>
+    /// <param name="deviceKey">The device key to update.</param>
+    /// <param name="propertyName">The name of the property (for logging).</param>
+    /// <param name="value">The new value for the property.</param>
+    /// <param name="setter">Action to set the property on the device configuration.</param>
+    /// <param name="currentDevice">Optional current device info to update identifiers.</param>
+    /// <param name="formatValue">Optional function to format the value for logging.</param>
+    /// <returns>True if the configuration was saved successfully.</returns>
+    private bool UpdateDeviceProperty<T>(
+        string deviceKey,
+        string propertyName,
+        T value,
+        Action<DeviceConfiguration, T> setter,
+        AudioDevice? currentDevice = null,
+        Func<T, string>? formatValue = null)
+    {
+        _lock.EnterWriteLock();
+        try
+        {
+            if (!_devices.TryGetValue(deviceKey, out var config))
+            {
+                config = new DeviceConfiguration
+                {
+                    FirstSeen = DateTime.UtcNow
+                };
+                _devices[deviceKey] = config;
+            }
+
+            setter(config, value);
+            config.LastSeen = DateTime.UtcNow;
+
+            // Update from current device info if provided
+            if (currentDevice != null)
+            {
+                config.LastKnownSinkName = currentDevice.Id;
+                config.Identifiers = DeviceIdentifiersConfig.FromModel(currentDevice.Identifiers);
+            }
+
+            var formattedValue = formatValue != null ? formatValue(value) : value?.ToString() ?? "(null)";
+            _logger.LogInformation("Set device {PropertyName}: {DeviceKey} = {Value}",
+                propertyName, deviceKey, formattedValue);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        // Save outside the lock
+        return SaveDevices();
     }
 
     /// <summary>
@@ -513,30 +818,12 @@ public class ConfigurationService
     /// </summary>
     public bool SetDeviceHidden(string deviceKey, bool hidden, AudioDevice? currentDevice = null)
     {
-        lock (_lock)
-        {
-            if (!_devices.TryGetValue(deviceKey, out var config))
-            {
-                config = new DeviceConfiguration
-                {
-                    FirstSeen = DateTime.UtcNow
-                };
-                _devices[deviceKey] = config;
-            }
-
-            config.Hidden = hidden;
-            config.LastSeen = DateTime.UtcNow;
-
-            // Update from current device info if provided
-            if (currentDevice != null)
-            {
-                config.LastKnownSinkName = currentDevice.Id;
-                config.Identifiers = DeviceIdentifiersConfig.FromModel(currentDevice.Identifiers);
-            }
-
-            _logger.LogInformation("Set device hidden: {DeviceKey} = {Hidden}", deviceKey, hidden);
-            return SaveDevices();
-        }
+        return UpdateDeviceProperty(
+            deviceKey,
+            "hidden",
+            hidden,
+            (config, value) => config.Hidden = value,
+            currentDevice);
     }
 
     /// <summary>
@@ -544,31 +831,13 @@ public class ConfigurationService
     /// </summary>
     public bool SetDeviceMaxVolume(string deviceKey, int? maxVolume, AudioDevice? currentDevice = null)
     {
-        lock (_lock)
-        {
-            if (!_devices.TryGetValue(deviceKey, out var config))
-            {
-                config = new DeviceConfiguration
-                {
-                    FirstSeen = DateTime.UtcNow
-                };
-                _devices[deviceKey] = config;
-            }
-
-            config.MaxVolume = maxVolume;
-            config.LastSeen = DateTime.UtcNow;
-
-            // Update from current device info if provided
-            if (currentDevice != null)
-            {
-                config.LastKnownSinkName = currentDevice.Id;
-                config.Identifiers = DeviceIdentifiersConfig.FromModel(currentDevice.Identifiers);
-            }
-
-            _logger.LogInformation("Set device max volume: {DeviceKey} = {MaxVolume}%",
-                deviceKey, maxVolume?.ToString() ?? "(cleared)");
-            return SaveDevices();
-        }
+        return UpdateDeviceProperty(
+            deviceKey,
+            "max volume",
+            maxVolume,
+            (config, value) => config.MaxVolume = value,
+            currentDevice,
+            v => v.HasValue ? $"{v}%" : "(cleared)");
     }
 
     /// <summary>
@@ -576,50 +845,35 @@ public class ConfigurationService
     /// </summary>
     public bool SetDeviceAlias(string deviceKey, string? alias, AudioDevice? currentDevice = null)
     {
-        lock (_lock)
-        {
-            if (!_devices.TryGetValue(deviceKey, out var config))
-            {
-                config = new DeviceConfiguration
-                {
-                    FirstSeen = DateTime.UtcNow
-                };
-                _devices[deviceKey] = config;
-            }
-
-            config.Alias = alias;
-            config.LastSeen = DateTime.UtcNow;
-
-            // Update from current device info if provided
-            if (currentDevice != null)
-            {
-                config.LastKnownSinkName = currentDevice.Id;
-                config.Identifiers = DeviceIdentifiersConfig.FromModel(currentDevice.Identifiers);
-            }
-
-            _logger.LogInformation("Set device alias: {DeviceKey} = '{Alias}'", deviceKey, alias ?? "(cleared)");
-            return SaveDevices();
-        }
+        return UpdateDeviceProperty(
+            deviceKey,
+            "alias",
+            alias,
+            (config, value) => config.Alias = value,
+            currentDevice,
+            v => $"'{v ?? "(cleared)"}'");
     }
 
     /// <summary>
     /// Generate a stable device key from device identifiers.
-    /// Priority: Serial > BusPath > VendorId+ProductId
+    /// Priority: BusPath > Serial > VendorId+ProductId > SinkName
+    /// Bus path is preferred because it's stable per USB port and avoids collisions
+    /// when multiple identical devices (with same/no serial) are connected.
     /// </summary>
     public static string GenerateDeviceKey(AudioDevice device)
     {
         var id = device.Identifiers;
 
-        // Use serial number if available (most stable)
-        if (!string.IsNullOrEmpty(id?.Serial))
-        {
-            return $"serial_{SanitizeKey(id.Serial)}";
-        }
-
-        // Use bus path if available (stable per USB port)
+        // Use bus path if available (stable per USB port, handles identical devices)
         if (!string.IsNullOrEmpty(id?.BusPath))
         {
             return $"path_{SanitizeKey(id.BusPath)}";
+        }
+
+        // Use serial number if available (may not be unique across identical devices)
+        if (!string.IsNullOrEmpty(id?.Serial))
+        {
+            return $"serial_{SanitizeKey(id.Serial)}";
         }
 
         // Use vendor+product ID combination
@@ -630,6 +884,37 @@ public class ConfigurationService
 
         // Fallback to sink name (least stable)
         return $"sink_{SanitizeKey(device.Id)}";
+    }
+
+    /// <summary>
+    /// Generate a stable card key from card identifiers.
+    /// Priority: BusPath > Serial > VendorId+ProductId > CardName
+    /// Uses same logic as GenerateDeviceKey for consistency between devices.yaml and card-profiles.yaml.
+    /// </summary>
+    public static string GenerateCardKey(PulseAudioCard card)
+    {
+        var id = card.Identifiers;
+
+        // Use bus path if available (stable per USB port, handles identical devices)
+        if (!string.IsNullOrEmpty(id?.BusPath))
+        {
+            return $"path_{SanitizeKey(id.BusPath)}";
+        }
+
+        // Use serial number if available (may not be unique across identical devices)
+        if (!string.IsNullOrEmpty(id?.Serial))
+        {
+            return $"serial_{SanitizeKey(id.Serial)}";
+        }
+
+        // Use vendor+product ID combination
+        if (!string.IsNullOrEmpty(id?.VendorId) && !string.IsNullOrEmpty(id?.ProductId))
+        {
+            return $"usb_{id.VendorId}_{id.ProductId}";
+        }
+
+        // Fallback to card name (least stable, includes enumeration suffix)
+        return $"card_{SanitizeKey(card.Name)}";
     }
 
     /// <summary>
@@ -650,7 +935,8 @@ public class ConfigurationService
     /// </summary>
     public void UpdateDeviceInfo(string deviceKey, AudioDevice device)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             if (!_devices.TryGetValue(deviceKey, out var config))
             {
@@ -665,6 +951,45 @@ public class ConfigurationService
             config.LastSeen = DateTime.UtcNow;
             config.Identifiers = DeviceIdentifiersConfig.FromModel(device.Identifiers);
         }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Ensure a device is tracked in the configuration.
+    /// Returns true if a NEW device entry was created (not already tracked).
+    /// </summary>
+    public bool EnsureDeviceTracked(string deviceKey, AudioDevice device)
+    {
+        _lock.EnterWriteLock();
+        try
+        {
+            if (_devices.TryGetValue(deviceKey, out var config))
+            {
+                // Already tracked - just update LastSeen and identifiers
+                config.LastKnownSinkName = device.Id;
+                config.LastSeen = DateTime.UtcNow;
+                config.Identifiers = DeviceIdentifiersConfig.FromModel(device.Identifiers);
+                return false;
+            }
+
+            // New device - create entry
+            _devices[deviceKey] = new DeviceConfiguration
+            {
+                FirstSeen = DateTime.UtcNow,
+                LastSeen = DateTime.UtcNow,
+                LastKnownSinkName = device.Id,
+                Identifiers = DeviceIdentifiersConfig.FromModel(device.Identifiers)
+            };
+            _logger.LogInformation("New device discovered: {DeviceKey} ({SinkName})", deviceKey, device.Id);
+            return true;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -672,11 +997,16 @@ public class ConfigurationService
     /// </summary>
     public Dictionary<string, string> GetAllDeviceAliases()
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return _devices
                 .Where(d => !string.IsNullOrEmpty(d.Value.Alias) && !string.IsNullOrEmpty(d.Value.LastKnownSinkName))
                 .ToDictionary(d => d.Value.LastKnownSinkName!, d => d.Value.Alias!);
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 
@@ -685,9 +1015,14 @@ public class ConfigurationService
     /// </summary>
     public IReadOnlyDictionary<string, DeviceConfiguration> GetAllDeviceConfigurations()
     {
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             return new Dictionary<string, DeviceConfiguration>(_devices);
+        }
+        finally
+        {
+            _lock.ExitReadLock();
         }
     }
 }

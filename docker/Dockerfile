@@ -20,6 +20,15 @@ EXPOSE 8096
 # - libasound2: ALSA library (required for PulseAudio's ALSA output backend)
 # - libasound2-plugins: ALSA plugins including PulseAudio bridge
 # - alsa-utils: ALSA utilities for debugging (aplay, amixer)
+# FTDI relay board dependencies:
+# - libftdi1-2: libftdi1 library for FTDI USB device control
+# - libusb-1.0-0: USB library required by libftdi
+# USB HID relay board dependencies:
+# - libudev1: Required by HidSharp for USB HID device enumeration
+# CH340/Modbus serial relay board dependencies:
+# - dialout group membership for serial port access (added below)
+# Diagnostics dependencies:
+# - usbutils: lsusb for USB device enumeration in diagnostics
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
     pulseaudio-module-alsa \
@@ -27,9 +36,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2-plugins \
     alsa-utils \
     curl \
+    libftdi1-2 \
+    libusb-1.0-0 \
+    libudev1 \
+    usbutils \
     && rm -rf /var/lib/apt/lists/* \
     && usermod -a -G audio pulse 2>/dev/null || true \
-    && usermod -a -G audio root 2>/dev/null || true
+    && usermod -a -G audio root 2>/dev/null || true \
+    && usermod -a -G dialout root 2>/dev/null || true
 
 # Build stage - using Debian SDK for consistent glibc builds
 FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
@@ -87,6 +101,10 @@ ENV DBUS_SESSION_BUS_ADDRESS=disabled
 # Note: PULSE_SYSTEM and PULSE_SERVER are set by entrypoint.sh based on mode
 # ENV PULSE_SYSTEM=1
 # ENV PULSE_SERVER=unix:/run/pulse/native
+
+# Clear default ASPNETCORE_URLS to prevent "Overriding address" warning
+# (.NET 8+ images default to http://+:8080, which conflicts with Kestrel config on port 8096)
+ENV ASPNETCORE_URLS=
 
 # Health check - verifies the API is responding
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

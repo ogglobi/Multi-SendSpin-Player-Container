@@ -16,13 +16,16 @@ const string AppName = "Multi-Room Audio Controller";
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure logging for HAOS compatibility
-// Console logging goes to supervisor logs when running as add-on
+// Configure logging
+// HAOS: supervisor adds its own timestamps, so use simple format without ours
+// Standalone Docker: add HH:mm:ss timestamps for console readability
+var isHaos = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SUPERVISOR_TOKEN"))
+             || File.Exists("/data/options.json");
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole(options =>
+builder.Logging.AddSimpleConsole(options =>
 {
-    // Use simple format for better readability in HA logs
-    options.FormatterName = "simple";
+    if (!isHaos)
+        options.TimestampFormat = "HH:mm:ss ";
 });
 builder.Logging.AddDebug();
 
@@ -38,12 +41,18 @@ var logLevel = logLevelStr switch
 };
 builder.Logging.SetMinimumLevel(logLevel);
 
+// Override appsettings.json logging configuration with LOG_LEVEL env var
+// This ensures LOG_LEVEL=debug actually enables debug logging
+builder.Logging.AddFilter(null, logLevel);
+
 // Reduce noise from framework loggers unless in debug mode
 if (logLevel > LogLevel.Debug)
 {
     builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
     builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Warning);
+    builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Information); // Keep "Now listening on" visible
     builder.Logging.AddFilter("System.Net.Http", LogLevel.Warning);
+    builder.Logging.AddFilter("Sendspin.SDK.Discovery", LogLevel.Critical); // SDK logs TaskCanceledException at Error during shutdown — noisy, our code already handles this
 }
 
 // Configure services
@@ -95,32 +104,85 @@ builder.Services.AddSingleton<LoggingService>();
 builder.Services.AddSingleton<ConfigurationService>();
 builder.Services.AddSingleton<VolumeCommandRunner>();
 builder.Services.AddSingleton<BackendFactory>();
+builder.Services.AddSingleton<AlsaCapabilityService>();
 builder.Services.AddSingleton<DeviceMatchingService>();
+builder.Services.AddSingleton<VersionService>();
 
 // Onboarding services
 builder.Services.AddSingleton<ToneGeneratorService>();
 builder.Services.AddSingleton<OnboardingService>();
 
 // Add PulseAudio utilities (no startup dependency)
-builder.Services.AddSingleton<PaModuleRunner>();
+// Use mock implementations when MOCK_HARDWARE is enabled
+// Check both environment variable (Docker) and HAOS options file (add-on UI toggle)
+var isMockHardware = Environment.GetEnvironmentVariable("MOCK_HARDWARE")?.ToLower() == "true";
+if (!isMockHardware)
+{
+    // Check HAOS options.json for mock_hardware toggle
+    const string haosOptionsFile = "/data/options.json";
+    if (File.Exists(haosOptionsFile))
+    {
+        try
+        {
+            var json = File.ReadAllText(haosOptionsFile);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("mock_hardware", out var mockProp) &&
+                mockProp.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                isMockHardware = true;
+            }
+        }
+        catch
+        {
+            // Ignore parsing errors - will use default (false)
+        }
+    }
+}
+if (isMockHardware)
+{
+    // Mock hardware configuration service - loads from mock_hardware.yaml if present
+    builder.Services.AddSingleton<MultiRoomAudio.Services.MockHardwareConfigService>();
+
+    builder.Services.AddSingleton<MultiRoomAudio.Utilities.IPaModuleRunner, MultiRoomAudio.Audio.Mock.MockPaModuleRunner>();
+    // Relay hardware abstractions - mock implementations
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayDeviceEnumerator, MultiRoomAudio.Relay.MockRelayDeviceEnumerator>();
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayBoardFactory, MultiRoomAudio.Relay.MockRelayBoardFactory>();
+}
+else
+{
+    builder.Services.AddSingleton<MultiRoomAudio.Utilities.IPaModuleRunner, MultiRoomAudio.Utilities.PaModuleRunner>();
+    // Relay hardware abstractions - real implementations
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayDeviceEnumerator, MultiRoomAudio.Relay.RealRelayDeviceEnumerator>();
+    builder.Services.AddSingleton<MultiRoomAudio.Relay.IRelayBoardFactory, MultiRoomAudio.Relay.RealRelayBoardFactory>();
+    // PulseAudio subscription service for device auto-reconnect (monitors sink events)
+    builder.Services.AddSingleton<MultiRoomAudio.Audio.PulseAudio.PulseAudioSubscriptionService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<MultiRoomAudio.Audio.PulseAudio.PulseAudioSubscriptionService>());
+}
 builder.Services.AddSingleton<DefaultPaParser>();
 
-// IMPORTANT: Hosted services start in registration order.
-// Correct order: CardProfiles → CustomSinks → Players
-// - Card profiles must be set before sinks can use surround channels
-// - Sinks must exist before players can use them
+// Startup diagnostics service
+builder.Services.AddSingleton<StartupDiagnosticsService>();
 
-// 1. CardProfileService - restore saved card profiles (e.g., surround 7.1) FIRST
+// Service singletons (no longer IHostedService — initialization is handled by StartupOrchestrator)
 builder.Services.AddSingleton<CardProfileService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<CardProfileService>());
-
-// 2. CustomSinksService - load remap/combine sinks SECOND (depends on profiles)
 builder.Services.AddSingleton<CustomSinksService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<CustomSinksService>());
-
-// 3. PlayerManagerService - autostart players LAST (depends on sinks existing)
 builder.Services.AddSingleton<PlayerManagerService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<PlayerManagerService>());
+builder.Services.AddSingleton<TriggerService>();
+
+// HID button support for hardware volume/mute controls
+builder.Services.AddSingleton<HidInputDeviceDetector>();
+builder.Services.AddSingleton<PaSinkEventService>();
+builder.Services.AddSingleton<HidButtonService>();
+// PaSinkEventService runs as a background service (pactl subscribe)
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PaSinkEventService>());
+
+// Startup progress tracking (broadcasts phase changes to web clients via SignalR)
+builder.Services.AddSingleton<StartupProgressService>();
+
+// StartupOrchestrator runs initialization in the background AFTER Kestrel starts.
+// This ensures the web UI is immediately available while services initialize.
+// Dependency order preserved: CardProfiles → CustomSinks → Devices → Players → Triggers
+builder.Services.AddHostedService<StartupOrchestrator>();
 
 // Static files are served via UseStaticFiles() middleware below
 
@@ -143,12 +205,25 @@ else if (!int.TryParse(portString, out port) || port < 1 || port > 65535)
     port = DefaultPort;
 }
 
+// Clear default URLs to avoid "Overriding address" warning
+builder.WebHost.UseUrls();
+
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenAnyIP(port);
 });
 
 var app = builder.Build();
+
+// Wire up mock hardware config service to static enumerators if in mock mode
+if (isMockHardware)
+{
+    var mockConfigService = app.Services.GetService<MultiRoomAudio.Services.MockHardwareConfigService>();
+    if (mockConfigService != null)
+    {
+        MultiRoomAudio.Audio.Mock.MockCardEnumerator.SetConfigService(mockConfigService);
+    }
+}
 
 // Configure middleware pipeline
 app.UseCors("AllowAll");
@@ -214,6 +289,14 @@ app.MapSinksEndpoints();
 app.MapOnboardingEndpoints();
 app.MapCardsEndpoints();
 app.MapLogsEndpoints();
+app.MapTriggersEndpoints();
+app.MapDiagnosticsEndpoints();
+
+// Startup progress endpoint (for web UI to show initialization status)
+app.MapGet("/api/startup", (StartupProgressService startup) => Results.Ok(startup.GetProgress()))
+    .WithTags("Health")
+    .WithName("StartupProgress")
+    .WithOpenApi();
 
 // Root endpoint redirects to index.html or shows API info
 app.MapGet("/api", () => Results.Ok(new
@@ -231,6 +314,7 @@ app.MapGet("/api", () => Results.Ok(new
         sinks = "/api/sinks",
         cards = "/api/cards",
         logs = "/api/logs",
+        triggers = "/api/triggers",
         swagger = "/docs"
     }
 }))
@@ -278,104 +362,23 @@ logger.LogInformation("Config path: {ConfigPath}", environmentService.ConfigPath
 logger.LogInformation("Log path: {LogPath}", environmentService.LogPath);
 logger.LogInformation("Audio backend: {AudioBackend}", environmentService.AudioBackend);
 
-if (environmentService.IsHaos)
-{
-    logger.LogInformation("Running as Home Assistant add-on");
-    logger.LogDebug("Supervisor token present: {HasToken}",
-        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SUPERVISOR_TOKEN")));
-
-    // Log PulseAudio diagnostic info
-    var pulseServer = Environment.GetEnvironmentVariable("PULSE_SERVER");
-    logger.LogInformation("PULSE_SERVER: {PulseServer}", pulseServer ?? "(not set)");
-
-    // Check for PulseAudio socket
-    var pulseSocketPaths = new[] { "/run/pulse", "/var/run/pulse", "/tmp/pulse" };
-    foreach (var path in pulseSocketPaths)
-    {
-        if (Directory.Exists(path))
-        {
-            try
-            {
-                var files = Directory.GetFiles(path, "*", SearchOption.AllDirectories);
-                logger.LogInformation("PulseAudio socket directory {Path}: {FileCount} files", path, files.Length);
-                foreach (var file in files.Take(5))
-                {
-                    logger.LogDebug("  {File}", file);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning("Could not enumerate {Path}: {Error}", path, ex.Message);
-            }
-        }
-    }
-
-    // Try to run pactl info for diagnostics
-    try
-    {
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "pactl",
-            Arguments = "info",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        using var process = System.Diagnostics.Process.Start(psi);
-        if (process != null)
-        {
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit(5000);
-
-            if (process.ExitCode == 0)
-            {
-                logger.LogInformation("PulseAudio connected successfully");
-                // Log key info lines
-                foreach (var line in output.Split('\n').Where(l =>
-                    l.StartsWith("Server Name:") ||
-                    l.StartsWith("Default Sink:") ||
-                    l.StartsWith("Default Source:")))
-                {
-                    logger.LogInformation("  {Line}", line.Trim());
-                }
-            }
-            else
-            {
-                logger.LogWarning("PulseAudio connection failed: {Error}", error.Trim());
-            }
-        }
-
-        // Also list available sinks
-        psi.Arguments = "list sinks short";
-        using var sinkProcess = System.Diagnostics.Process.Start(psi);
-        if (sinkProcess != null)
-        {
-            var sinkOutput = sinkProcess.StandardOutput.ReadToEnd();
-            sinkProcess.WaitForExit(5000);
-
-            if (sinkProcess.ExitCode == 0 && !string.IsNullOrWhiteSpace(sinkOutput))
-            {
-                logger.LogInformation("PulseAudio sinks available:");
-                foreach (var line in sinkOutput.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)))
-                {
-                    logger.LogInformation("  {Sink}", line.Trim());
-                }
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning("Could not run pactl diagnostics: {Error}", ex.Message);
-    }
-}
-else
-{
-    logger.LogInformation("Running in standalone Docker mode");
-}
+// Run PulseAudio diagnostics (logs environment-specific info)
+var diagnosticsService = app.Services.GetRequiredService<StartupDiagnosticsService>();
+diagnosticsService.RunPulseAudioDiagnostics();
 
 logger.LogInformation("API documentation available at /docs");
 logger.LogInformation("========================================");
 
+// Broadcast shutdown notification to all connected web clients
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+lifetime.ApplicationStopping.Register(() =>
+{
+    logger.LogInformation("Broadcasting server shutdown to connected clients...");
+    var hubContext = app.Services.GetRequiredService<IHubContext<PlayerStatusHub>>();
+    hubContext.Clients.All.SendAsync("ServerShuttingDown").GetAwaiter().GetResult();
+});
+
 app.Run();
+
+// Make Program class accessible for WebApplicationFactory in tests
+public partial class Program { }

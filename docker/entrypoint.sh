@@ -17,6 +17,30 @@ echo "========================================="
 if [ -f "/data/options.json" ] || [ -n "$SUPERVISOR_TOKEN" ]; then
     echo "Detected HAOS add-on mode - using system PulseAudio"
 
+    # Read options from HAOS options.json and export as environment variables
+    if [ -f "/data/options.json" ]; then
+        # Log level
+        LOG_LEVEL=$(cat /data/options.json | grep -o '"log_level"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+        if [ -n "$LOG_LEVEL" ]; then
+            export LOG_LEVEL
+            echo "Log level: $LOG_LEVEL"
+        fi
+
+        # Mock hardware
+        MOCK_HARDWARE=$(cat /data/options.json | grep -o '"mock_hardware"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/.*:[[:space:]]*//')
+        if [ "$MOCK_HARDWARE" = "true" ]; then
+            export MOCK_HARDWARE=true
+            echo "Mock hardware: enabled"
+        fi
+
+        # Advanced formats
+        ENABLE_ADVANCED_FORMATS=$(cat /data/options.json | grep -o '"enable_advanced_formats"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/.*:[[:space:]]*//')
+        if [ "$ENABLE_ADVANCED_FORMATS" = "true" ]; then
+            export ENABLE_ADVANCED_FORMATS=true
+            echo "Advanced formats: enabled"
+        fi
+    fi
+
     # HAOS supervisor mounts:
     # - /etc/pulse/client.conf (contains default-server pointing to /run/audio)
     # - /run/audio (the PulseAudio socket directory)
@@ -124,6 +148,20 @@ sleep 2
 # Ensure runtime directory exists with correct permissions
 mkdir -p /run/pulse
 chmod 755 /run/pulse
+
+# Apply PulseAudio sample rate/format from environment variables
+# Defaults: 48000Hz, float32le (matches daemon.conf defaults)
+# Can be overridden via PA_SAMPLE_RATE and PA_SAMPLE_FORMAT env vars
+PA_SAMPLE_RATE="${PA_SAMPLE_RATE:-48000}"
+PA_SAMPLE_FORMAT="${PA_SAMPLE_FORMAT:-float32le}"
+
+if [ -f /etc/pulse/daemon.conf ]; then
+    echo "Configuring PulseAudio: ${PA_SAMPLE_FORMAT} @ ${PA_SAMPLE_RATE}Hz"
+    sed -i "s/^default-sample-rate = .*/default-sample-rate = $PA_SAMPLE_RATE/" /etc/pulse/daemon.conf
+    sed -i "s/^default-sample-format = .*/default-sample-format = $PA_SAMPLE_FORMAT/" /etc/pulse/daemon.conf
+else
+    echo "WARNING: /etc/pulse/daemon.conf not found, using PulseAudio defaults"
+fi
 
 # Start PulseAudio in system mode (daemon)
 # Using --disallow-exit to prevent auto-shutdown, --exit-idle-time=-1 to never exit

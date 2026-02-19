@@ -13,7 +13,8 @@ public enum LogCategory
     Audio,      // PulseAudio, volume control, underflows
     API,        // HTTP requests/responses
     Config,     // Configuration load/save/CRUD
-    SDK         // SDK interactions, connection state, sync
+    SDK,        // SDK interactions, connection state, sync
+    Trigger     // Relay boards, 12V triggers, channel operations
 }
 
 /// <summary>
@@ -391,22 +392,42 @@ public class LoggingService : IDisposable
         if (string.IsNullOrEmpty(categoryName))
             return LogCategory.System;
 
+        // Note: Order matters! More specific patterns must come before general ones.
+        // "Relay" must come before "Audio" because "MultiRoomAudio.Relay.*" contains "Audio".
         return categoryName switch
         {
+            // Player
             var c when c.Contains("PlayerManager", StringComparison.OrdinalIgnoreCase) => LogCategory.Player,
             var c when c.Contains("PlayerStatus", StringComparison.OrdinalIgnoreCase) => LogCategory.Player,
-            var c when c.Contains("Audio", StringComparison.OrdinalIgnoreCase) => LogCategory.Audio,
+
+            // Trigger/Relay - MUST come before Audio (namespace "MultiRoomAudio.Relay" contains "Audio")
+            var c when c.Contains("Trigger", StringComparison.OrdinalIgnoreCase) => LogCategory.Trigger,
+            var c when c.Contains("Relay", StringComparison.OrdinalIgnoreCase) => LogCategory.Trigger,
+
+            // Audio - use specific patterns to avoid matching "MultiRoomAudio" namespace
+            var c when c.Contains(".Audio.", StringComparison.OrdinalIgnoreCase) => LogCategory.Audio,
+            var c when c.EndsWith("Audio", StringComparison.OrdinalIgnoreCase) => LogCategory.Audio,
             var c when c.Contains("Pulse", StringComparison.OrdinalIgnoreCase) => LogCategory.Audio,
             var c when c.Contains("Volume", StringComparison.OrdinalIgnoreCase) => LogCategory.Audio,
+            var c when c.Contains("Alsa", StringComparison.OrdinalIgnoreCase) => LogCategory.Audio,
+
+            // API
             var c when c.Contains("Endpoint", StringComparison.OrdinalIgnoreCase) => LogCategory.API,
             var c when c.Contains("Controller", StringComparison.OrdinalIgnoreCase) => LogCategory.API,
+
+            // Config
             var c when c.Contains("Configuration", StringComparison.OrdinalIgnoreCase) => LogCategory.Config,
             var c when c.Contains("Config", StringComparison.OrdinalIgnoreCase) => LogCategory.Config,
+
+            // SDK
             var c when c.Contains("SDK", StringComparison.OrdinalIgnoreCase) => LogCategory.SDK,
             var c when c.Contains("Sendspin", StringComparison.OrdinalIgnoreCase) => LogCategory.SDK,
             var c when c.Contains("Connection", StringComparison.OrdinalIgnoreCase) => LogCategory.SDK,
+
+            // System
             var c when c.Contains("Environment", StringComparison.OrdinalIgnoreCase) => LogCategory.System,
             var c when c.StartsWith("Program", StringComparison.OrdinalIgnoreCase) => LogCategory.System,
+
             _ => LogCategory.System
         };
     }

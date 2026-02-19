@@ -96,8 +96,8 @@ Methods:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/devices/{id}/alias` | PUT | Set device alias |
-| `/api/devices/aliases` | GET | Get all aliases |
-| `/api/devices/rematch` | POST | Force device re-matching |
+| `/api/devices/aliases` | GET | Get all aliases (not used by UI - included in /api/devices) |
+| `/api/devices/rematch` | POST | Force device re-matching (not used by UI) |
 
 Extend existing `/api/devices` response to include `identifiers` and `alias`.
 

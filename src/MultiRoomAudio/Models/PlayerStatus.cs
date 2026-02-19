@@ -14,7 +14,13 @@ public enum PlayerState
     Paused,
     Stopped,
     Error,
-    Reconnecting
+    Reconnecting,
+    WaitingForServer,
+    /// <summary>
+    /// Player stopped due to audio device loss (USB unplug).
+    /// Waiting for the device to reconnect.
+    /// </summary>
+    WaitingForDevice
 }
 
 /// <summary>
@@ -26,6 +32,8 @@ public record PlayerResponse(
     string? Device,
     string ClientId,
     string? ServerUrl,
+    string? ServerName,        // Friendly name from MA (e.g., "Music Assistant")
+    string? ConnectedAddress,  // IP:port we connected to (e.g., "192.168.1.50:8095")
     int Volume,
     int StartupVolume,
     bool IsMuted,
@@ -38,8 +46,11 @@ public record PlayerResponse(
     PlayerMetrics? Metrics,
     DeviceCapabilities? DeviceCapabilities = null,
     bool IsPendingReconnection = false,
+    bool AutoResume = false,
     int? ReconnectionAttempts = null,
-    DateTime? NextReconnectionAttempt = null
+    DateTime? NextReconnectionAttempt = null,
+    string? AdvertisedFormat = null,
+    TrackInfo? CurrentTrack = null
 );
 
 /// <summary>
@@ -51,6 +62,18 @@ public record PlayerMetrics(
     long SamplesPlayed,
     long Underruns,
     long Overruns
+);
+
+/// <summary>
+/// Current track information from Music Assistant.
+/// </summary>
+public record TrackInfo(
+    string? Title,
+    string? Artist,
+    string? Album,
+    string? ArtworkUrl,
+    double? DurationSeconds,
+    double? PositionSeconds
 );
 
 /// <summary>

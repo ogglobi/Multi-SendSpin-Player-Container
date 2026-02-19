@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using MultiRoomAudio.Audio;
+using MultiRoomAudio.Audio.PulseAudio;
+using MultiRoomAudio.Exceptions;
 using MultiRoomAudio.Hubs;
 using MultiRoomAudio.Models;
 using MultiRoomAudio.Utilities;
@@ -11,6 +13,9 @@ using Sendspin.SDK.Connection;
 using Sendspin.SDK.Discovery;
 using Sendspin.SDK.Models;
 using Sendspin.SDK.Synchronization;
+// Alias to disambiguate from MultiRoomAudio.Models.PlayerState (lifecycle enum)
+using SdkPlayerState = Sendspin.SDK.Models.PlayerState;
+using static MultiRoomAudio.Utilities.BackgroundTaskExecutor;
 
 namespace MultiRoomAudio.Services;
 
@@ -19,7 +24,7 @@ namespace MultiRoomAudio.Services;
 /// Handles creation, connection, state management, and disposal.
 /// Integrates with ConfigurationService for persistence and autostart.
 /// </summary>
-public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposable
+public class PlayerManagerService : IAsyncDisposable, IDisposable
 {
     private readonly ILogger<PlayerManagerService> _logger;
     private readonly ILoggerFactory _loggerFactory;
@@ -28,6 +33,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private readonly IHubContext<PlayerStatusHub> _hubContext;
     private readonly VolumeCommandRunner _volumeRunner;
     private readonly BackendFactory _backendFactory;
+    private readonly TriggerService _triggerService;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly VersionService _versionService;
     private readonly ConcurrentDictionary<string, PlayerContext> _players = new();
     private readonly MdnsServerDiscovery _serverDiscovery;
     private bool _disposed;
@@ -49,6 +57,16 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private Task? _reconnectionTask;
 
     /// <summary>
+    /// Whether continuous mDNS discovery is running to detect server reappearance.
+    /// </summary>
+    private bool _mdnsWatchActive;
+
+    /// <summary>
+    /// Signal to wake the reconnection loop immediately (e.g. when mDNS discovers a server).
+    /// </summary>
+    private readonly SemaphoreSlim _reconnectionSignal = new(0, 1);
+
+    /// <summary>
     /// Cached server URI from mDNS discovery to avoid race conditions.
     /// </summary>
     private Uri? _cachedServerUri;
@@ -62,6 +80,45 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// Lock for serializing mDNS discovery requests.
     /// </summary>
     private readonly SemaphoreSlim _discoveryLock = new(1, 1);
+
+    /// <summary>
+    /// PulseAudio subscription service for device change events (may be null on non-PA systems).
+    /// </summary>
+    private readonly PulseAudioSubscriptionService? _subscriptionService;
+
+    /// <summary>
+    /// Tracks players waiting for their audio device to reappear (USB reconnect).
+    /// Key: player name, Value: device identifiers for matching.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DevicePendingState> _devicePendingPlayers = new();
+
+    /// <summary>
+    /// Tracks players with pending device loss (waiting for grace period before deciding to disconnect).
+    /// Used to handle USB bus glitches where sink temporarily disappears but device stays plugged in.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _deviceLossGracePeriods = new();
+
+    /// <summary>
+    /// Grace period before reacting to device loss errors.
+    /// USB bus glitches are very brief - the sink typically reappears within a second.
+    /// </summary>
+    private const int DeviceLossGracePeriodMs = 1500;
+
+    /// <summary>
+    /// Lock to serialize sink event processing. Prevents concurrent device loss/reappear checks
+    /// that can cause race conditions when PulseAudio fires multiple events rapidly.
+    /// </summary>
+    private readonly SemaphoreSlim _sinkEventLock = new(1, 1);
+
+    /// <summary>
+    /// State for a player waiting for device reconnection.
+    /// </summary>
+    private record DevicePendingState(
+        PlayerConfiguration Config,
+        DeviceConfiguration? DeviceConfig,
+        DateTime LostAt,
+        bool WasPlaying
+    );
 
     #region Constants
 
@@ -120,15 +177,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Standard startup grace period
         StartupGracePeriodMicroseconds = 500_000,
 
-        // SYNC FIX: Set to 0 to use SDK default behavior for precise timing.
-        // A large grace window (e.g., 1 second) causes audio to play early because
-        // the SDK starts playback immediately when samples are scheduled within the
-        // grace window, rather than waiting for the scheduled time.
-        //
-        // NOTE: If playback fails to start (chicken-and-egg problem where buffer
-        // fills but scheduled time never arrives), consider a small non-zero value
-        // like 50_000 (50ms) instead of removing entirely.
-        ScheduledStartGraceWindowMicroseconds = 0,  // Use SDK default for accurate sync
+        // Grace window for scheduled start time - allows playback to begin when
+        // within this threshold of the scheduled time. Without a grace window,
+        // micro-jitter in timing can cause the "scheduled start not reached"
+        // issue where playback never starts because it's always "just barely"
+        // in the future.
+        ScheduledStartGraceWindowMicroseconds = 10_000,  // 10ms (SDK default)
     };
 
     /// <summary>
@@ -153,10 +207,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
     /// <summary>
     /// Pattern for valid player names.
-    /// Allows alphanumeric characters, spaces, hyphens, underscores, and apostrophes.
+    /// Allows any printable characters except control characters (supports international characters).
     /// </summary>
     private static readonly Regex ValidPlayerNamePattern = new(
-        @"^[a-zA-Z0-9\s\-_']+$",
+        @"^[^\x00-\x1F\x7F]+$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -190,13 +244,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// </summary>
     /// <param name="state">The player state to check.</param>
     /// <returns>True if the player is in an active state.</returns>
-    private static bool IsPlayerInActiveState(PlayerState state)
+    private static bool IsPlayerInActiveState(Models.PlayerState state)
     {
-        return state == PlayerState.Starting ||
-               state == PlayerState.Connecting ||
-               state == PlayerState.Connected ||
-               state == PlayerState.Playing ||
-               state == PlayerState.Buffering;
+        return state == Models.PlayerState.Starting ||
+               state == Models.PlayerState.Connecting ||
+               state == Models.PlayerState.Connected ||
+               state == Models.PlayerState.Playing ||
+               state == Models.PlayerState.Buffering;
     }
 
     /// <summary>
@@ -285,6 +339,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         try
         {
+            // Prevent feedback loop with PlayerStateChanged handler
+            context.IsUpdatingFromServer = true;
             _logger.LogInformation("VOLUME [PushToServer] Player '{Name}': {Volume}%",
                 name, context.Config.Volume);
             await context.Client.SetVolumeAsync(context.Config.Volume);
@@ -292,6 +348,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to push volume to server for player '{Name}'", name);
+        }
+        finally
+        {
+            context.IsUpdatingFromServer = false;
         }
     }
 
@@ -316,14 +376,21 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         PlayerConfig Config,
         DateTime CreatedAt,
         CancellationTokenSource Cts,
-        DeviceCapabilities? DeviceCapabilities = null
+        DeviceCapabilities? DeviceCapabilities = null,
+        AudioDevice? CachedDevice = null
     )
     {
-        public PlayerState State { get; set; } = PlayerState.Created;
+        public Models.PlayerState State { get; set; } = Models.PlayerState.Created;
         public string? ErrorMessage { get; set; }
         public DateTime? ConnectedAt { get; set; }
         public int InitialVolume { get; init; } // Store initial volume to detect resets
         public long SamplesPlayed { get; set; }
+        public bool? LastConfirmedMuted { get; set; } // Track last mute state echoed to server
+        public DateTime? LastMuteChangeAt { get; set; } // Track when we last changed mute (for grace period)
+
+        // Server info captured during connection/handshake
+        public string? ServerName { get; set; }       // Friendly name from MA handshake (server/hello)
+        public string? ConnectedAddress { get; set; } // IP:port we connected to
 
         // Event handler references for proper cleanup (prevents memory leaks)
         public EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateHandler { get; set; }
@@ -331,6 +398,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         public EventHandler<AudioPipelineError>? PipelineErrorHandler { get; set; }
         public EventHandler<AudioPlayerError>? PlayerErrorHandler { get; set; }
         public EventHandler<GroupState>? GroupStateHandler { get; set; }
+        // SDK 5.4.0: Handler for individual player volume/mute commands
+        public EventHandler<SdkPlayerState>? PlayerStateHandler { get; set; }
+        // Flag to prevent feedback loops when updating server
+        public bool IsUpdatingFromServer { get; set; }
     }
 
     /// <summary>
@@ -340,7 +411,22 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         PlayerConfiguration Config,
         int RetryCount = 0,
         DateTime? NextRetryTime = null,
-        bool WasUserStopped = false
+        bool WasUserStopped = false,
+        bool MdnsOnly = false
+    );
+
+    /// <summary>
+    /// Holds SDK components created during player setup.
+    /// Used internally to pass components between helper methods.
+    /// </summary>
+    private record PlayerComponents(
+        ClientCapabilities Capabilities,
+        IClockSynchronizer ClockSync,
+        IAudioPlayer Player,
+        IAudioPipeline Pipeline,
+        SendspinConnection Connection,
+        ISendspinClient Client,
+        DeviceCapabilities? DeviceCapabilities
     );
 
     public PlayerManagerService(
@@ -350,7 +436,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         EnvironmentService environment,
         IHubContext<PlayerStatusHub> hubContext,
         VolumeCommandRunner volumeRunner,
-        BackendFactory backendFactory)
+        BackendFactory backendFactory,
+        TriggerService triggerService,
+        IServiceProvider serviceProvider,
+        VersionService versionService,
+        PulseAudioSubscriptionService? subscriptionService = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -359,18 +449,27 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         _hubContext = hubContext;
         _volumeRunner = volumeRunner;
         _backendFactory = backendFactory;
+        _triggerService = triggerService;
+        _serviceProvider = serviceProvider;
+        _versionService = versionService;
+        _subscriptionService = subscriptionService;
         _serverDiscovery = new MdnsServerDiscovery(
             loggerFactory.CreateLogger<MdnsServerDiscovery>());
+
+        // Subscribe to device change events for auto-reconnect and UI updates
+        if (_subscriptionService != null)
+        {
+            _subscriptionService.SinkAppeared += OnSinkAppeared;
+            _subscriptionService.SinkDisappeared += OnSinkDisappeared;
+        }
     }
 
     /// <summary>
-    /// Initializes all audio device hardware volumes to a fixed level.
-    /// This is called once at container startup to set a safe volume level
-    /// that avoids clipping. The server (Music Assistant) then controls the
-    /// actual volume level via its own volume control.
-    /// Devices with configured MaxVolume limits in devices.yaml are skipped.
+    /// Initializes all audio device hardware volumes to a safe level (80% or configured max).
+    /// Called by StartupOrchestrator during background initialization.
+    /// Devices with configured MaxVolume limits in devices.yaml use their limit instead.
     /// </summary>
-    private async Task InitializeHardwareVolumesAsync(CancellationToken cancellationToken)
+    public async Task InitializeHardwareAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Initializing hardware volumes to {Volume}%...", HardwareVolumePercent);
 
@@ -385,6 +484,26 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
 
             _logger.LogInformation("Found {Count} audio output device(s)", devices.Count);
+
+            // Track all devices with identifiers for persistence
+            var newDevicesFound = false;
+            foreach (var device in devices)
+            {
+                if (device.Identifiers != null)
+                {
+                    var deviceKey = ConfigurationService.GenerateDeviceKey(device);
+                    if (_config.EnsureDeviceTracked(deviceKey, device))
+                    {
+                        newDevicesFound = true;
+                    }
+                }
+            }
+
+            // Save once if any new devices were discovered
+            if (newDevicesFound)
+            {
+                _config.SaveDevices();
+            }
 
             // Get device configurations to check for volume limits
             var deviceConfigs = _config.GetAllDeviceConfigurations();
@@ -438,105 +557,173 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Autostarts configured players and begins the background reconnection task.
+    /// Called by StartupOrchestrator during background initialization.
+    /// </summary>
+    public async Task AutostartPlayersAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("PlayerManagerService starting...");
 
-        // Initialize all audio device hardware volumes to 80% to avoid clipping
-        // Server (Music Assistant) controls the actual volume level
-        await InitializeHardwareVolumesAsync(cancellationToken);
-
-        // Autostart configured players
+        // Autostart configured players (creates player objects; connections are async)
         var autostartPlayers = _config.GetAutostartPlayers();
-        if (autostartPlayers.Count > 0)
+        if (autostartPlayers.Count == 0)
+        {
+            _logger.LogInformation("No players configured for autostart");
+        }
+        else
         {
             _logger.LogInformation("Found {AutostartCount} players configured for autostart",
                 autostartPlayers.Count);
 
             foreach (var playerConfig in autostartPlayers)
             {
-                _logger.LogDebug(
-                    "Autostarting player {PlayerName} on device {Device} with server {Server}",
-                    playerConfig.Name,
-                    playerConfig.PortAudioDeviceIndex?.ToString() ?? playerConfig.Device ?? "(default)",
-                    playerConfig.Server ?? "(auto-discover)");
-
-                try
-                {
-                    var request = new PlayerCreateRequest
-                    {
-                        Name = playerConfig.Name,
-                        Device = playerConfig.PortAudioDeviceIndex?.ToString() ?? playerConfig.Device,
-                        ClientId = ClientIdGenerator.Generate(playerConfig.Name),
-                        ServerUrl = playerConfig.Server,
-                        Volume = playerConfig.Volume ?? 100,
-                        DelayMs = playerConfig.DelayMs,
-                        Persist = false // Already persisted, don't re-save
-                    };
-
-                    await CreatePlayerAsync(request, cancellationToken);
-
-                    _logger.LogInformation("Player {PlayerName} autostarted successfully", playerConfig.Name);
-                }
-                catch (ArgumentException ex)
-                {
-                    // Device validation failed - don't auto-reconnect, let user fix config
-                    _logger.LogError(ex,
-                        "Player {PlayerName} failed to start due to configuration error: {Message}. " +
-                        "Player will remain in error state until manually fixed.",
-                        playerConfig.Name, ex.Message);
-                    // Don't queue for reconnection - player stays in Error state
-                }
-                catch (Exception ex)
-                {
-                    // Network/server issues - queue for reconnection
-                    _logger.LogWarning(ex,
-                        "Failed to autostart player {PlayerName}, queuing for reconnection. Device: {Device}, Server: {Server}",
-                        playerConfig.Name,
-                        playerConfig.Device ?? "(default)",
-                        playerConfig.Server ?? "(auto-discover)");
-
-                    QueueForReconnection(playerConfig, isInitialFailure: true);
-                }
-            }
-        }
-        else
-        {
-            _logger.LogInformation("No players configured for autostart");
-        }
-
-        // Check for any players that failed to connect and queue them for reconnection
-        // Wait for all mDNS discovery attempts to complete (6s timeout + 2s buffer)
-        if (autostartPlayers.Count > 0)
-        {
-            _logger.LogDebug("Waiting for connection attempts to complete...");
-            await Task.Delay(8000, cancellationToken);
-
-            foreach (var playerConfig in autostartPlayers)
-            {
-                if (_players.TryGetValue(playerConfig.Name, out var context))
-                {
-                    // Queue for reconnection if player is in error state and never connected
-                    if (context.State == PlayerState.Error && context.ConnectedAt == null)
-                    {
-                        _logger.LogWarning(
-                            "Player '{PlayerName}' failed to connect during autostart (mDNS discovery failed), queuing for reconnection",
-                            playerConfig.Name);
-                        QueueForReconnection(playerConfig, isInitialFailure: true);
-                    }
-                }
+                await TryAutostartPlayerAsync(playerConfig, cancellationToken);
             }
         }
 
-        // Start the background reconnection task
+        // Start background task: check for failed connections then run reconnection loop.
+        // This runs AFTER the startup phase completes so the UI becomes usable immediately.
         _reconnectionCts = new CancellationTokenSource();
-        _reconnectionTask = ProcessReconnectionsAsync(_reconnectionCts.Token);
+        _reconnectionTask = PostAutostartAndReconnectAsync(autostartPlayers, _reconnectionCts.Token);
 
         _logger.LogInformation("PlayerManagerService started with {PlayerCount} active players, {PendingCount} pending reconnection",
             _players.Count, _pendingReconnections.Count);
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Background task that waits for initial connections to settle, then runs the reconnection loop.
+    /// Runs after the startup "players" phase completes so the UI is immediately usable.
+    /// </summary>
+    private async Task PostAutostartAndReconnectAsync(
+        IReadOnlyList<PlayerConfiguration> autostartPlayers,
+        CancellationToken cancellationToken)
+    {
+        // Check for failed connections after mDNS discovery timeout
+        if (autostartPlayers.Count > 0)
+        {
+            await CheckForFailedConnectionsAsync(autostartPlayers, cancellationToken);
+        }
+
+        // Then run the reconnection loop
+        await ProcessReconnectionsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts to autostart a single player.
+    /// </summary>
+    private async Task TryAutostartPlayerAsync(PlayerConfiguration playerConfig, CancellationToken cancellationToken)
+    {
+        // Check if player has no device configured - don't start, show Error state
+        if (string.IsNullOrEmpty(playerConfig.Device) && playerConfig.PortAudioDeviceIndex == null)
+        {
+            _logger.LogWarning(
+                "Player {PlayerName} has no audio device configured. " +
+                "Assign a device to start playback.",
+                playerConfig.Name);
+            // Don't queue for reconnection - this is a config issue, not device loss
+            // Player will show in Error state via GetAllPlayers()
+            return;
+        }
+
+        _logger.LogDebug(
+            "Autostarting player {PlayerName} on device {Device} with server {Server}",
+            playerConfig.Name,
+            playerConfig.PortAudioDeviceIndex?.ToString() ?? playerConfig.Device ?? "(default)",
+            playerConfig.Server ?? "(auto-discover)");
+
+        try
+        {
+            var request = new PlayerCreateRequest
+            {
+                Name = playerConfig.Name,
+                Device = playerConfig.PortAudioDeviceIndex?.ToString() ?? playerConfig.Device,
+                ClientId = ClientIdGenerator.Generate(playerConfig.Name),
+                ServerUrl = playerConfig.Server,
+                Volume = playerConfig.Volume ?? 100,
+                DelayMs = playerConfig.DelayMs,
+                AdvertisedFormat = playerConfig.AdvertisedFormat,
+                Persist = false // Already persisted, don't re-save
+            };
+
+            await CreatePlayerAsync(request, cancellationToken);
+            _logger.LogInformation("Player {PlayerName} autostarted successfully", playerConfig.Name);
+        }
+        catch (ArgumentException ex)
+        {
+            // Check if this is a "device not found" error - these can be auto-recovered
+            // when the device is plugged in later
+            if (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(ex,
+                    "Player {PlayerName} failed to start - device not available: {Message}. " +
+                    "Player will auto-start when device is connected.",
+                    playerConfig.Name, ex.Message);
+
+                // Queue for device reconnection so player auto-starts when device appears
+                _devicePendingPlayers[playerConfig.Name] = new DevicePendingState(
+                    Config: playerConfig,
+                    DeviceConfig: null, // No device config yet - will use exact sink name match
+                    LostAt: DateTime.UtcNow,
+                    WasPlaying: false);
+            }
+            else
+            {
+                // Other configuration errors (invalid settings, etc.) - let user fix config
+                _logger.LogError(ex,
+                    "Player {PlayerName} failed to start due to configuration error: {Message}. " +
+                    "Player will remain in error state until manually fixed.",
+                    playerConfig.Name, ex.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Network/server issues - queue for reconnection
+            _logger.LogWarning(ex,
+                "Failed to autostart player {PlayerName}, queuing for reconnection. Device: {Device}, Server: {Server}",
+                playerConfig.Name,
+                playerConfig.Device ?? "(default)",
+                playerConfig.Server ?? "(auto-discover)");
+
+            QueueForReconnection(playerConfig, mdnsOnly: string.IsNullOrEmpty(playerConfig.Server));
+        }
+    }
+
+    /// <summary>
+    /// Waits for mDNS discovery to complete and queues any players that failed to connect.
+    /// </summary>
+    private async Task CheckForFailedConnectionsAsync(
+        IReadOnlyList<PlayerConfiguration> autostartPlayers,
+        CancellationToken cancellationToken)
+    {
+        // Wait for all mDNS discovery attempts to complete (6s timeout + 2s buffer)
+        _logger.LogDebug("Waiting for connection attempts to complete...");
+        await Task.Delay(8000, cancellationToken);
+
+        foreach (var playerConfig in autostartPlayers)
+        {
+            if (_players.TryGetValue(playerConfig.Name, out var context))
+            {
+                // Queue for reconnection if player is in error state and never connected
+                if (context.State == Models.PlayerState.Error && context.ConnectedAt == null)
+                {
+                    var isMdnsOnly = string.IsNullOrEmpty(playerConfig.Server);
+                    _logger.LogWarning(
+                        isMdnsOnly
+                            ? "Player '{PlayerName}' waiting for mDNS discovery (no server configured)"
+                            : "Player '{PlayerName}' failed to connect during autostart, queuing for reconnection",
+                        playerConfig.Name);
+                    QueueForReconnection(playerConfig, mdnsOnly: isMdnsOnly);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gracefully stops all players and the reconnection task.
+    /// Called by StartupOrchestrator during shutdown.
+    /// </summary>
+    public async Task ShutdownAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("PlayerManagerService stopping with {PlayerCount} active players, {PendingCount} pending reconnection...",
             _players.Count, _pendingReconnections.Count);
@@ -594,10 +781,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return false;
         }
 
-        // Validate against allowed character pattern
+        // Validate against allowed character pattern (no control characters)
         if (!ValidPlayerNamePattern.IsMatch(name))
         {
-            errorMessage = "Player name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and apostrophes are allowed.";
+            errorMessage = "Player name cannot contain control characters.";
             return false;
         }
 
@@ -632,97 +819,51 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         try
         {
-            // Probe device capabilities (used for reporting in Stats for Nerds)
-            var deviceCapabilities = _backendFactory.GetDeviceCapabilities(request.Device);
+            // Phase 1: Create all SDK components
+            var components = CreateSdkComponents(request);
 
-            // 1. Create capabilities with player role
-            var clientCapabilities = new ClientCapabilities
-            {
-                ClientId = request.ClientId ?? GenerateClientId(request.Name),
-                ClientName = request.Name,
-                Roles = new List<string> { "controller@v1", "player@v1", "metadata@v1" },
-                AudioFormats = GetDefaultFormats(),
-                BufferCapacity = ServerAnnouncedBufferCapacityBytes,
-                InitialVolume = request.Volume  // Set initial volume for hello message
-            };
-
-            // 2. Create clock synchronizer
-            var clockSync = new KalmanClockSynchronizer(
-                _loggerFactory.CreateLogger<KalmanClockSynchronizer>());
-
-            // 3. Create audio player using the appropriate backend
-            // PulseAudio handles all format conversion natively (always float32 output)
-            var player = _backendFactory.CreatePlayer(request.Device, _loggerFactory);
-
-            // 4. Create audio pipeline with proper factories
-            // Uses direct passthrough - PulseAudio handles format conversion to devices
-            var decoderFactory = new AudioDecoderFactory();
-            var pipeline = new AudioPipeline(
-                _loggerFactory.CreateLogger<AudioPipeline>(),
-                decoderFactory,
-                clockSync,
-                bufferFactory: (format, sync) =>
-                {
-                    var buffer = new TimedAudioBuffer(
-                        format,
-                        sync,
-                        bufferCapacityMs: LocalBufferCapacityMs,
-                        syncOptions: PulseAudioSyncOptions);
-                    buffer.TargetBufferMilliseconds = PlaybackStartThresholdMs;  // Playback starts at 80% of this (200ms)
-                    return buffer;
-                },
-                playerFactory: () => player,
-                sourceFactory: (buffer, timeFunc) =>
-                {
-                    // Direct passthrough - no resampling
-                    // PulseAudio handles format conversion to device natively
-                    return new BufferedAudioSampleSource(
-                        buffer,
-                        timeFunc,
-                        _loggerFactory.CreateLogger<BufferedAudioSampleSource>());
-                },
-                waitForConvergence: true,      // Wait for minimal sync (2 measurements) before playback
-                convergenceTimeoutMs: 1000);   // 1 second timeout (SDK 3.0 uses HasMinimalSync for fast start)
-
-            // 5. Create WebSocket connection
-            var connection = new SendspinConnection(
-                _loggerFactory.CreateLogger<SendspinConnection>());
-
-            // 6. Create SDK client
-            var client = new SendspinClientService(
-                _loggerFactory.CreateLogger<SendspinClientService>(),
-                connection,
-                clockSync,
-                clientCapabilities,
-                pipeline);
-
-            // 7. Create config for tracking
+            // Phase 2: Create config and context
             var config = new PlayerConfig
             {
                 Name = request.Name,
                 DeviceId = request.Device,
-                ClientId = clientCapabilities.ClientId,
+                ClientId = components.Capabilities.ClientId,
                 ServerUrl = request.ServerUrl,
                 Volume = request.Volume,
-                DelayMs = request.DelayMs
+                DelayMs = request.DelayMs,
+                AdvertisedFormat = request.AdvertisedFormat
             };
 
-            // 8. Create context
             var cts = new CancellationTokenSource();
+
+            // Cache device info once at creation time for stats display
+            // This avoids running pactl every 250ms when stats panel is open
+            var cachedDevice = !string.IsNullOrEmpty(request.Device)
+                ? _backendFactory.GetDevice(request.Device)
+                : null;
+
             var context = new PlayerContext(
-                client, connection, pipeline, player, clockSync, clientCapabilities, config,
-                DateTime.UtcNow, cts, deviceCapabilities)
+                components.Client,
+                components.Connection,
+                components.Pipeline,
+                components.Player,
+                components.ClockSync,
+                components.Capabilities,
+                config,
+                DateTime.UtcNow,
+                cts,
+                components.DeviceCapabilities,
+                cachedDevice)
             {
-                State = PlayerState.Created,
-                InitialVolume = request.Volume // Store initial volume to detect resets
+                State = Models.PlayerState.Created,
+                InitialVolume = request.Volume
             };
 
-            // 9. Wire up events
+            // Phase 3: Wire up events
             WireEvents(request.Name, context);
 
-            // 10. Persist configuration FIRST if requested
+            // Phase 4: Persist configuration if requested
             // This ensures config is saved before player runs, so reboot behavior is consistent
-            // If save fails, we throw before adding to _players (clean failure)
             if (request.Persist)
             {
                 var persistConfig = new PlayerConfiguration
@@ -733,66 +874,24 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     Autostart = true,
                     DelayMs = request.DelayMs,
                     Server = request.ServerUrl,
-                    Volume = request.Volume
+                    Volume = request.Volume,
+                    AdvertisedFormat = request.AdvertisedFormat
                 };
                 _config.SetPlayer(request.Name, persistConfig);
                 _config.Save();
                 _logger.LogDebug("Persisted configuration for player '{Name}'", request.Name);
             }
 
-            // 11. Store context atomically - handles race condition where another thread
-            // created a player with the same name between validation and here
+            // Phase 5: Register player atomically
+            // Handles race condition where another thread created a player with the same name
             if (!_players.TryAdd(request.Name, context))
             {
-                _logger.LogWarning("Race condition: player '{Name}' was created by another thread", request.Name);
-                // Roll back config if we just saved it
-                if (request.Persist)
-                {
-                    try
-                    {
-                        _config.DeletePlayer(request.Name);
-                        _config.Save();
-                    }
-                    catch (Exception configEx)
-                    {
-                        _logger.LogWarning(configEx, "Failed to roll back config for '{Name}'", request.Name);
-                    }
-                }
-                // Unsubscribe event handlers first to prevent memory leaks
-                UnwireEvents(context);
-                context.Cts.Cancel();
-                try
-                {
-                    await DisposePlayerContextAsync(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error disposing orphaned context for '{Name}'", request.Name);
-                }
-                throw new InvalidOperationException($"Player '{request.Name}' already exists");
+                await HandleRegistrationFailureAsync(request.Name, context, request.Persist);
+                throw new EntityAlreadyExistsException("Player", request.Name);
             }
 
-            // 12. Software volume stays at 1.0 (passthrough)
-            // Hardware volume is set to 80% on container startup to avoid clipping
-            // Server (Music Assistant) controls the actual volume level
-            player.Volume = 1.0f;
-            _logger.LogInformation("VOLUME [Create] Player '{Name}': initial volume {Volume}% (sent to server)",
-                request.Name, request.Volume);
-
-            // 13. Apply delay offset from user configuration
-            clockSync.StaticDelayMs = request.DelayMs;
-            if (request.DelayMs != 0)
-            {
-                _logger.LogInformation("Delay offset for '{Name}': {DelayMs}ms", request.Name, request.DelayMs);
-            }
-
-            // 14. Start connection in background with proper error handling
-            // Use the player's own cancellation token, not the request token,
-            // so the connection persists after the HTTP response is sent
-            _ = ConnectPlayerWithErrorHandlingAsync(request.Name, context, context.Cts.Token);
-
-            // 15. Broadcast status update to all clients
-            _ = BroadcastStatusAsync();
+            // Phase 6: Initialize and start connection
+            InitializeAndConnectPlayer(request.Name, context, request.DelayMs);
 
             return CreateResponse(request.Name, context);
         }
@@ -804,14 +903,345 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
+    /// Creates all SDK components needed for a player.
+    /// </summary>
+    /// <param name="request">The player creation request.</param>
+    /// <returns>Record containing all SDK components.</returns>
+    private PlayerComponents CreateSdkComponents(PlayerCreateRequest request)
+    {
+        // Probe device capabilities (used for reporting in Stats for Nerds)
+        var deviceCapabilities = _backendFactory.GetDeviceCapabilities(request.Device);
+
+        // Apply format filtering (always defaults to flac-48000 for maximum compatibility)
+        var audioFormats = GetDefaultFormats();
+        audioFormats = FilterFormatsByPreference(audioFormats, request.AdvertisedFormat);
+
+        // Create capabilities with player role
+        var clientCapabilities = new ClientCapabilities
+        {
+            ClientId = request.ClientId ?? GenerateClientId(request.Name),
+            ClientName = request.Name,
+            Roles = new List<string> { "controller@v1", "player@v1", "metadata@v1" },
+            AudioFormats = audioFormats,
+            BufferCapacity = ServerAnnouncedBufferCapacityBytes,
+            InitialVolume = request.Volume,
+            InitialMuted = false, // Players start unmuted
+
+            // Device metadata for Music Assistant display
+            Manufacturer = "MultiRoom-Audio",
+            ProductName = _versionService.ModelString,        // "v1.2.3 (abc123f)"
+            SoftwareVersion = _versionService.SoftwareVersion // "1.2.3"
+        };
+
+        // Create clock synchronizer with player-prefixed logger for debugging
+        var clockSync = new KalmanClockSynchronizer(
+            _loggerFactory.CreatePlayerLogger<KalmanClockSynchronizer>(request.Name));
+
+        // Create audio player using the appropriate backend
+        var player = _backendFactory.CreatePlayer(request.Device, _loggerFactory);
+
+        // Create audio pipeline with proper factories (player-prefixed loggers for debugging)
+        var decoderFactory = new AudioDecoderFactory();
+        var pipeline = new AudioPipeline(
+            _loggerFactory.CreatePlayerLogger<AudioPipeline>(request.Name),
+            decoderFactory,
+            clockSync,
+            bufferFactory: (format, sync) =>
+            {
+                var buffer = new TimedAudioBuffer(
+                    format,
+                    sync,
+                    bufferCapacityMs: LocalBufferCapacityMs,
+                    syncOptions: PulseAudioSyncOptions);
+                buffer.TargetBufferMilliseconds = PlaybackStartThresholdMs;
+                return buffer;
+            },
+            playerFactory: () => player,
+            sourceFactory: (buffer, timeFunc) =>
+            {
+                return new BufferedAudioSampleSource(
+                    buffer,
+                    timeFunc,
+                    _loggerFactory.CreatePlayerLogger<BufferedAudioSampleSource>(request.Name));
+            },
+            waitForConvergence: true,
+            convergenceTimeoutMs: 1000);
+
+        // Create WebSocket connection with player-prefixed logger.
+        // AutoReconnect disabled: the app's own reconnection logic handles recovery
+        // with fresh mDNS discovery and clean player contexts (see QueueForReconnection).
+        var connection = new SendspinConnection(
+            _loggerFactory.CreatePlayerLogger<SendspinConnection>(request.Name),
+            new ConnectionOptions { AutoReconnect = false });
+
+        // Create SDK client with player-prefixed logger
+        var client = new SendspinClientService(
+            _loggerFactory.CreatePlayerLogger<SendspinClientService>(request.Name),
+            connection,
+            clockSync,
+            clientCapabilities,
+            pipeline);
+
+        return new PlayerComponents(
+            clientCapabilities,
+            clockSync,
+            player,
+            pipeline,
+            connection,
+            client,
+            deviceCapabilities);
+    }
+
+    /// <summary>
+    /// Handles registration failure by rolling back config and cleaning up context.
+    /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="context">Player context to dispose.</param>
+    /// <param name="wasPersisted">Whether config was persisted and needs rollback.</param>
+    private async Task HandleRegistrationFailureAsync(string name, PlayerContext context, bool wasPersisted)
+    {
+        _logger.LogWarning("Race condition: player '{Name}' was created by another thread", name);
+
+        if (wasPersisted)
+        {
+            try
+            {
+                _config.DeletePlayer(name);
+                _config.Save();
+            }
+            catch (Exception configEx)
+            {
+                _logger.LogWarning(configEx, "Failed to roll back config for '{Name}'", name);
+            }
+        }
+
+        UnwireEvents(context);
+        context.Cts.Cancel();
+
+        try
+        {
+            await DisposePlayerContextAsync(context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disposing orphaned context for '{Name}'", name);
+        }
+    }
+
+    /// <summary>
+    /// Initializes a registered player and starts its connection.
+    /// Called after the player has been successfully added to _players.
+    /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="context">Player context.</param>
+    /// <param name="delayMs">Delay offset in milliseconds.</param>
+    private void InitializeAndConnectPlayer(string name, PlayerContext context, int delayMs)
+    {
+        // Apply startup volume locally - player is authoritative for its own volume
+        // Hardware volume is set to 80% on container startup to avoid clipping
+        context.Player.Volume = context.Config.Volume / 100.0f;
+        _logger.LogInformation("VOLUME [Create] Player '{Name}': startup volume {Volume}% applied locally",
+            name, context.Config.Volume);
+
+        // Apply delay offset from user configuration
+        context.ClockSync.StaticDelayMs = delayMs;
+        if (delayMs != 0)
+        {
+            _logger.LogInformation("Delay offset for '{Name}': {DelayMs}ms", name, delayMs);
+        }
+
+        // Start HID button reader if enabled for this device
+        var deviceId = context.Config.DeviceId;
+        if (!string.IsNullOrEmpty(deviceId))
+        {
+            var hidService = _serviceProvider.GetService<HidButtonService>();
+            hidService?.StartHidReaderForPlayer(deviceId, name);
+        }
+
+        // Start connection in background with proper error handling
+        FireAndForget(
+            ConnectPlayerWithErrorHandlingAsync(name, context, context.Cts.Token),
+            $"Connection setup for player '{name}'", _logger);
+
+        // Broadcast status update to all clients
+        FireAndForget(BroadcastStatusAsync(), $"Status broadcast after creating player '{name}'", _logger);
+    }
+
+    /// <summary>
+    /// Creates multiple players in a batch operation.
+    /// Validates all players, saves configurations, and starts them.
+    /// </summary>
+    /// <param name="players">The list of players to create.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Result containing lists of created, started, and failed players.</returns>
+    public async Task<BatchCreatePlayersResult> BatchCreatePlayersAsync(
+        List<BatchPlayerRequest> players,
+        CancellationToken ct = default)
+    {
+        var created = new List<string>();
+        var started = new List<string>();
+        var failed = new List<BatchPlayerFailure>();
+
+        // Validate and create configurations for each player
+        foreach (var playerReq in players)
+        {
+            try
+            {
+                // Validate player name is not empty
+                if (string.IsNullOrWhiteSpace(playerReq.Name))
+                {
+                    failed.Add(new BatchPlayerFailure(playerReq.Name ?? "(empty)", "Player name is required"));
+                    continue;
+                }
+
+                // Validate player name format
+                if (!ValidatePlayerName(playerReq.Name, out var nameError))
+                {
+                    failed.Add(new BatchPlayerFailure(playerReq.Name, nameError!));
+                    continue;
+                }
+
+                // Check if player already exists
+                if (_config.PlayerExists(playerReq.Name))
+                {
+                    failed.Add(new BatchPlayerFailure(playerReq.Name, "Player already exists"));
+                    continue;
+                }
+
+                // Create player configuration
+                var playerConfig = new PlayerConfiguration
+                {
+                    Name = playerReq.Name,
+                    Device = playerReq.Device ?? string.Empty,
+                    Volume = playerReq.Volume ?? 75,
+                    Autostart = playerReq.Autostart ?? true,
+                    Provider = "sendspin"
+                };
+
+                _config.SetPlayer(playerReq.Name, playerConfig);
+                created.Add(playerReq.Name);
+
+                _logger.LogInformation("Created player configuration from batch: {PlayerName}", playerReq.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create player configuration {PlayerName}", playerReq.Name);
+                failed.Add(new BatchPlayerFailure(playerReq.Name ?? "(unknown)", ex.Message));
+            }
+        }
+
+        // Save all configurations at once
+        if (created.Count > 0)
+        {
+            _config.Save();
+        }
+
+        // Start each created player
+        // Note: Autostart won't trigger since the app is already running
+        foreach (var playerName in created)
+        {
+            try
+            {
+                var playerConfig = _config.GetPlayer(playerName);
+                if (playerConfig == null)
+                    continue;
+
+                var createRequest = new PlayerCreateRequest
+                {
+                    Name = playerName,
+                    Device = playerConfig.Device,
+                    Volume = playerConfig.Volume ?? 75,
+                    AdvertisedFormat = playerConfig.AdvertisedFormat
+                };
+
+                await CreatePlayerAsync(createRequest, ct);
+                started.Add(playerName);
+
+                _logger.LogInformation("Started player from batch: {PlayerName}", playerName);
+            }
+            catch (Exception ex)
+            {
+                // Don't add to failed - the player was created (config saved), just not started
+                // It will start on next restart
+                _logger.LogWarning(ex, "Failed to start player {PlayerName} (config saved, will start on restart)", playerName);
+            }
+        }
+
+        return new BatchCreatePlayersResult(created, started, failed);
+    }
+
+    /// <summary>
     /// Gets the current status of a player.
     /// </summary>
     public PlayerResponse? GetPlayer(string name)
     {
-        if (!_players.TryGetValue(name, out var context))
+        // Check active players first
+        if (_players.TryGetValue(name, out var context))
+            return CreateResponse(name, context);
+
+        // Check if player exists in config but failed to start
+        if (!_config.Players.TryGetValue(name, out var config))
             return null;
 
-        return CreateResponse(name, context);
+        // Player is configured but not active (failed to start or was stopped)
+        // Return a placeholder response so user can edit/delete/restart it
+        var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
+        var isDevicePending = _devicePendingPlayers.TryGetValue(name, out var deviceState);
+
+        Models.PlayerState state;
+        string errorMessage;
+
+        if (isDevicePending)
+        {
+            state = Models.PlayerState.WaitingForDevice;
+            errorMessage = "Waiting for audio device to reconnect...";
+        }
+        else if (isPendingReconnection && !reconnectState!.WasUserStopped)
+        {
+            if (reconnectState.MdnsOnly)
+            {
+                state = Models.PlayerState.WaitingForServer;
+                errorMessage = "Waiting for mDNS discovery...";
+            }
+            else
+            {
+                state = Models.PlayerState.Reconnecting;
+                errorMessage = $"Reconnecting... (attempt {reconnectState.RetryCount})";
+            }
+        }
+        else
+        {
+            state = Models.PlayerState.Error;
+            errorMessage = "Player not running. Device may be unavailable or misconfigured.";
+        }
+
+        var volume = config.Volume ?? 100;
+        return new PlayerResponse(
+            Name: name,
+            State: state,
+            Device: config.Device,
+            ClientId: ClientIdGenerator.Generate(name),
+            ServerUrl: config.Server,
+            ServerName: null,
+            ConnectedAddress: null,
+            Volume: volume,
+            StartupVolume: volume,
+            IsMuted: false,
+            DelayMs: config.DelayMs,
+            OutputLatencyMs: 0,
+            CreatedAt: DateTime.MinValue,
+            ConnectedAt: null,
+            ErrorMessage: errorMessage,
+            IsClockSynced: false,
+            Metrics: null,
+            DeviceCapabilities: null,
+            IsPendingReconnection: isPendingReconnection || isDevicePending,
+            AutoResume: config.AutoResume,
+            ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
+            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+            AdvertisedFormat: config.AdvertisedFormat,
+            CurrentTrack: null
+        );
     }
 
     /// <summary>
@@ -834,14 +1264,41 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             else
             {
                 // Player is configured but not active (failed to start or was stopped)
-                // Check if it's pending reconnection
+                // Check if it's pending device or server reconnection
                 var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
-                var state = isPendingReconnection && !reconnectState!.WasUserStopped
-                    ? PlayerState.Reconnecting
-                    : PlayerState.Error;
-                var errorMessage = isPendingReconnection && !reconnectState!.WasUserStopped
-                    ? $"Reconnecting... (attempt {reconnectState.RetryCount})"
-                    : "Player not running. Device may be unavailable or misconfigured.";
+                var isDevicePending = _devicePendingPlayers.ContainsKey(name);
+
+                Models.PlayerState state;
+                string errorMessage;
+
+                if (isDevicePending)
+                {
+                    state = Models.PlayerState.WaitingForDevice;
+                    errorMessage = "Waiting for audio device to reconnect...";
+                }
+                else if (isPendingReconnection && !reconnectState!.WasUserStopped)
+                {
+                    if (reconnectState.MdnsOnly)
+                    {
+                        state = Models.PlayerState.WaitingForServer;
+                        errorMessage = "Waiting for mDNS discovery...";
+                    }
+                    else
+                    {
+                        state = Models.PlayerState.Reconnecting;
+                        errorMessage = $"Reconnecting... (attempt {reconnectState.RetryCount})";
+                    }
+                }
+                else if (string.IsNullOrEmpty(config.Device))
+                {
+                    state = Models.PlayerState.Error;
+                    errorMessage = "No audio device configured. Assign a device to start playback.";
+                }
+                else
+                {
+                    state = Models.PlayerState.Error;
+                    errorMessage = "Player not running. Device may be unavailable or misconfigured.";
+                }
 
                 // Return a placeholder response so user can edit/reconfigure it
                 var volume = config.Volume ?? 100;
@@ -851,6 +1308,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     Device: config.Device,
                     ClientId: ClientIdGenerator.Generate(name),
                     ServerUrl: config.Server,
+                    ServerName: null,        // Not connected, no server name yet
+                    ConnectedAddress: null,  // Not connected, no address yet
                     Volume: volume,
                     StartupVolume: volume, // For non-running players, startup volume = config volume
                     IsMuted: false,
@@ -862,9 +1321,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     IsClockSynced: false,
                     Metrics: null,
                     DeviceCapabilities: null,
-                    IsPendingReconnection: isPendingReconnection,
+                    IsPendingReconnection: isPendingReconnection || isDevicePending,
+                    AutoResume: config.AutoResume,
                     ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
-                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
+                    NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+                    AdvertisedFormat: config.AdvertisedFormat,
+                    CurrentTrack: null
                 ));
             }
         }
@@ -910,10 +1372,10 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// Sets the volume for a player (0-100).
     /// Updates local config and notifies server. Hardware volume is fixed at 80% on startup.
     /// </summary>
-    public async Task<bool> SetVolumeAsync(string name, int volume, CancellationToken ct = default)
+    public Task<bool> SetVolumeAsync(string name, int volume, CancellationToken ct = default)
     {
         if (!_players.TryGetValue(name, out var context))
-            return false;
+            return Task.FromResult(false);
 
         volume = Math.Clamp(volume, 0, 100);
         _logger.LogInformation("VOLUME [Set] Player '{Name}': {Volume}%", name, volume);
@@ -921,40 +1383,193 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // 1. Update local config (always)
         context.Config.Volume = volume;
 
-        // 2. Software volume stays at 1.0 (passthrough) - server controls actual volume
-        context.Player.Volume = 1.0f;
+        // 2. Apply volume locally - player is authoritative for its own volume
+        context.Player.Volume = volume / 100.0f;
 
-        // 3. Notify server of volume change (only if in an active state)
-        // Server (Music Assistant) handles the actual volume control
+        // 3. Inform MA of our volume (command + state echo)
         if (IsPlayerInActiveState(context.State))
         {
-            try
+            FireAndForget(async () =>
             {
-                await context.Client.SetVolumeAsync(volume);
-            }
-            catch (Exception ex)
-            {
-                // Don't fail the whole operation if server notification fails
-                _logger.LogWarning(ex, "Failed to notify server of volume change for '{Name}'", name);
-            }
+                try
+                {
+                    // Prevent feedback loop with PlayerStateChanged handler
+                    context.IsUpdatingFromServer = true;
+                    // Command MA to update its displayed volume
+                    await context.Client.SetVolumeAsync(volume);
+                    // SDK 5.4.0 auto-acknowledges, but we still echo state for full sync
+                    await context.Client.SendPlayerStateAsync(volume, context.Player.IsMuted);
+                    _logger.LogInformation("VOLUME [Sync] Player '{Name}': sent {Volume}% to MA",
+                        name, volume);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to sync volume for '{Name}'", name);
+                }
+                finally
+                {
+                    context.IsUpdatingFromServer = false;
+                }
+            }, $"Volume sync for '{name}'", _logger);
         }
 
         // 4. Broadcast status update to all clients
         _ = BroadcastStatusAsync();
 
-        return true;
+        // 5. Persist volume to config so it survives restarts
+        _config.UpdatePlayerField(name, cfg => cfg.Volume = volume, save: true);
+
+        return Task.FromResult(true);
     }
 
 
     /// <summary>
     /// Sets the mute state for a player.
+    /// Applies software mute to the audio pipeline (not the hardware sink).
+    /// Also syncs mute state to Music Assistant server.
     /// </summary>
     public bool SetMuted(string name, bool muted)
     {
         if (!_players.TryGetValue(name, out var context))
             return false;
 
+        _logger.LogInformation("MUTE [UserToggle] Player '{Name}': {State}",
+            name, muted ? "muted" : "unmuted");
+
         context.Pipeline.SetMuted(muted);
+        context.Player.IsMuted = muted;
+        context.LastMuteChangeAt = DateTime.UtcNow; // Track for grace period
+
+        // Broadcast to UI immediately via SignalR
+        FireAndForget(async () =>
+        {
+            var players = GetAllPlayers();
+            await _hubContext.BroadcastStatusUpdateAsync(players);
+        }, $"Mute broadcast for '{name}'", _logger);
+
+        // Sync mute state to Music Assistant server (bidirectional sync)
+        FireAndForget(async () =>
+        {
+            try
+            {
+                // Prevent feedback loop with PlayerStateChanged handler
+                context.IsUpdatingFromServer = true;
+                await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
+                context.LastConfirmedMuted = muted;
+                _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server",
+                    name, muted ? "muted" : "unmuted");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to sync mute state for '{Name}'", name);
+            }
+            finally
+            {
+                context.IsUpdatingFromServer = false;
+            }
+        }, $"Mute state sync for '{name}'", _logger);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Apply a hardware-initiated volume change (from HID buttons).
+    /// Unlike SetVolumeAsync, this does NOT set the hardware volume (already changed by button press).
+    /// It syncs the new volume to local state, Music Assistant, and broadcasts to clients.
+    /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="volume">New volume percentage (0-100).</param>
+    /// <returns>True if successful, false if player not found.</returns>
+    public Task<bool> ApplyHardwareVolumeChangeAsync(string name, int volume)
+    {
+        if (!_players.TryGetValue(name, out var context))
+            return Task.FromResult(false);
+
+        volume = Math.Clamp(volume, 0, 100);
+        _logger.LogInformation("VOLUME [Hardware] Player '{Name}': {Volume}% (from HID button)", name, volume);
+
+        // 1. Update local config
+        context.Config.Volume = volume;
+
+        // 2. Apply volume locally - player is authoritative for its own volume
+        context.Player.Volume = volume / 100.0f;
+
+        // 3. Inform MA of our volume
+        if (IsPlayerInActiveState(context.State))
+        {
+            FireAndForget(async () =>
+            {
+                try
+                {
+                    context.IsUpdatingFromServer = true;
+                    await context.Client.SetVolumeAsync(volume);
+                    await context.Client.SendPlayerStateAsync(volume, context.Player.IsMuted);
+                    _logger.LogInformation("VOLUME [Hardware->MA] Player '{Name}': synced {Volume}% to MA",
+                        name, volume);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to sync hardware volume for '{Name}'", name);
+                }
+                finally
+                {
+                    context.IsUpdatingFromServer = false;
+                }
+            }, $"Hardware volume sync for '{name}'", _logger);
+        }
+
+        // 4. Broadcast status update
+        _ = BroadcastStatusAsync();
+
+        // 5. Persist to config
+        _config.UpdatePlayerField(name, cfg => cfg.Volume = volume, save: true);
+
+        return Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// Apply a hardware-initiated mute change (from HID buttons).
+    /// Unlike SetMuted, this is called when hardware mute button is pressed.
+    /// Syncs to local state, Music Assistant, and broadcasts to clients.
+    /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="muted">New mute state.</param>
+    /// <returns>True if successful, false if player not found.</returns>
+    public bool ApplyHardwareMuteChange(string name, bool muted)
+    {
+        if (!_players.TryGetValue(name, out var context))
+            return false;
+
+        _logger.LogInformation("MUTE [Hardware] Player '{Name}': {State} (from HID button)",
+            name, muted ? "muted" : "unmuted");
+
+        context.Pipeline.SetMuted(muted);
+        context.Player.IsMuted = muted;
+
+        // Sync mute state to Music Assistant server
+        FireAndForget(async () =>
+        {
+            try
+            {
+                context.IsUpdatingFromServer = true;
+                await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
+                context.LastConfirmedMuted = muted;
+                _logger.LogInformation("MUTE [Hardware->MA] Player '{Name}': synced {State} to server",
+                    name, muted ? "muted" : "unmuted");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to sync hardware mute for '{Name}'", name);
+            }
+            finally
+            {
+                context.IsUpdatingFromServer = false;
+            }
+        }, $"Hardware mute sync for '{name}'", _logger);
+
+        // Broadcast status update
+        _ = BroadcastStatusAsync();
+
         return true;
     }
 
@@ -998,9 +1613,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return null;
 
         // If already running, just return current state
-        if (context.State == PlayerState.Playing || context.State == PlayerState.Connected ||
-            context.State == PlayerState.Buffering || context.State == PlayerState.Connecting ||
-            context.State == PlayerState.Starting)
+        if (context.State == Models.PlayerState.Playing || context.State == Models.PlayerState.Connected ||
+            context.State == Models.PlayerState.Buffering || context.State == Models.PlayerState.Connecting ||
+            context.State == Models.PlayerState.Starting)
         {
             _logger.LogDebug("Player '{Name}' is already running (state={State})", name, context.State);
             return CreateResponse(name, context);
@@ -1031,7 +1646,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
 
         // Already stopped?
-        if (context.State == PlayerState.Stopped)
+        if (context.State == Models.PlayerState.Stopped)
         {
             _logger.LogDebug("Player '{Name}' is already stopped", name);
             return true;
@@ -1039,10 +1654,18 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         _logger.LogInformation("Stopping player '{Name}' (user-initiated)", name);
 
+        // Stop HID button reader for this player
+        var deviceId = context.Config.DeviceId;
+        if (!string.IsNullOrEmpty(deviceId))
+        {
+            var hidService = _serviceProvider.GetService<HidButtonService>();
+            hidService?.StopHidReaderForPlayer(deviceId, name);
+        }
+
         try
         {
             context.Cts.Cancel();
-            context.State = PlayerState.Stopped;
+            context.State = Models.PlayerState.Stopped;
 
             // Stop pipeline and disconnect, but don't remove from dictionary
             try
@@ -1073,7 +1696,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error stopping player '{Name}'", name);
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = ex.Message;
 
             _ = BroadcastStatusAsync();
@@ -1094,6 +1717,14 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             return false;
 
         _logger.LogInformation("Removing and disposing player '{Name}'", name);
+
+        // Stop HID button reader for this player
+        var deviceId = context.Config.DeviceId;
+        if (!string.IsNullOrEmpty(deviceId))
+        {
+            var hidService = _serviceProvider.GetService<HidButtonService>();
+            hidService?.StopHidReaderForPlayer(deviceId, name);
+        }
 
         try
         {
@@ -1137,16 +1768,22 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Remove from reconnection queue first
         RemoveFromReconnectionQueue(name);
 
-        var removed = await RemoveAndDisposePlayerAsync(name);
+        // Remove from device pending queue
+        _devicePendingPlayers.TryRemove(name, out _);
+
+        // Remove active player if it exists
+        var removedActive = await RemoveAndDisposePlayerAsync(name);
 
         // Also remove from configuration
-        if (_config.DeletePlayer(name))
+        var removedConfig = _config.DeletePlayer(name);
+        if (removedConfig)
         {
             _config.Save();
             _logger.LogInformation("Deleted player configuration: {Name}", name);
         }
 
-        return removed;
+        // Return true if either the active player or config was removed
+        return removedActive || removedConfig;
     }
 
     /// <summary>
@@ -1168,6 +1805,9 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             ? persistedConfig.Volume ?? 100
             : config.Volume;
 
+        // Get advertised format from persisted config
+        var advertisedFormat = persistedConfig?.AdvertisedFormat ?? config.AdvertisedFormat;
+
         // Fully remove and dispose old player
         await RemoveAndDisposePlayerAsync(name);
 
@@ -1179,6 +1819,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             ServerUrl = config.ServerUrl,
             Volume = startupVolume,  // Use startup volume, not runtime volume
             DelayMs = config.DelayMs,
+            AdvertisedFormat = advertisedFormat,
             Persist = false // Already persisted
         };
 
@@ -1256,7 +1897,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Check if new name already exists
             if (_players.ContainsKey(newName))
             {
-                throw new InvalidOperationException($"A player named '{newName}' already exists");
+                throw new EntityAlreadyExistsException("Player", newName);
             }
 
             // Get the player context
@@ -1309,7 +1950,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // This should not normally be reached since ConnectPlayerAsync has its own error handling,
             // but we catch here as a safety net to ensure no exceptions are lost
             _logger.LogError(ex, "Unhandled exception during player '{Name}' connection", name);
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = ex.Message;
             _ = BroadcastStatusAsync();
         }
@@ -1375,7 +2016,7 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     {
         try
         {
-            context.State = PlayerState.Starting;
+            context.State = Models.PlayerState.Starting;
             _ = BroadcastStatusAsync();
 
             // Discover server if URL not provided
@@ -1391,16 +2032,22 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
 
             // Connect
-            context.State = PlayerState.Connecting;
+            context.State = Models.PlayerState.Connecting;
             _ = BroadcastStatusAsync();
 
             await context.Client.ConnectAsync(serverUri!, ct);
 
-            context.State = PlayerState.Connected;
+            context.State = Models.PlayerState.Connected;
             context.ConnectedAt = DateTime.UtcNow;
+
+            // Capture server info (one-time, not in audio hot path)
+            context.ConnectedAddress = $"{serverUri!.Host}:{serverUri.Port}";
+            context.ServerName = context.Client.ServerName;
+
             _ = BroadcastStatusAsync();
 
-            _logger.LogInformation("Player '{Name}' connected to server", name);
+            _logger.LogInformation("Player '{Name}' connected to server '{ServerName}' at {Address}",
+                name, context.ServerName ?? "unknown", context.ConnectedAddress);
 
             // Push our configured volume to the server (overrides SDK's default volume:100)
             await PushVolumeToServerAsync(name, context);
@@ -1411,17 +2058,93 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to connect player '{Name}'", name);
-            context.State = PlayerState.Error;
+            if (ex is TimeoutException or InvalidOperationException)
+            {
+                _logger.LogWarning("Player '{Name}' could not find server: {Message}", name, ex.Message);
+            }
+            else
+            {
+                _logger.LogWarning("Player '{Name}' failed to connect: {Message}", name, ex.Message);
+            }
+            _logger.LogDebug(ex, "Player '{Name}' connection failure details", name);
+
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = ex.Message;
             _ = BroadcastStatusAsync();
+
+            // If this is an initial connection failure (not managed by TryReconnectPlayerAsync),
+            // queue for reconnection so the player doesn't stay in Error state forever.
+            // TryReconnectPlayerAsync has its own re-queuing logic, so skip if already pending.
+            if (!_pendingReconnections.ContainsKey(name))
+            {
+                var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
+                if (persistedConfig != null)
+                {
+                    // Players without a configured server URL rely on mDNS discovery —
+                    // any failure should wait passively for mDNS rather than active retries
+                    var isMdnsFailure = string.IsNullOrEmpty(persistedConfig.Server);
+
+                    if (isMdnsFailure)
+                    {
+                        _logger.LogInformation(
+                            "Player '{Name}' waiting for server discovery via mDNS", name);
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "Player '{Name}' initial connection failed, queuing for reconnection", name);
+                    }
+
+                    await RemoveAndDisposePlayerAsync(name);
+                    QueueForReconnection(persistedConfig, mdnsOnly: isMdnsFailure);
+                }
+            }
         }
     }
 
+    /// <summary>
+    /// Wires all event handlers for a player context.
+    /// </summary>
+    /// <remarks>
+    /// Creates and subscribes 5 event handlers:
+    /// <list type="bullet">
+    /// <item>ConnectionState - tracks connection state and triggers reconnection</item>
+    /// <item>PipelineState - tracks playback state (Playing/Buffering/Idle)</item>
+    /// <item>PipelineError - handles pipeline errors with auto-stop</item>
+    /// <item>PlayerError - handles audio errors with auto-stop</item>
+    /// <item>GroupState - logs group average volume (display only, SDK 5.4.0)</item>
+    /// <item>PlayerState - handles server volume/mute commands with grace period (SDK 5.4.0)</item>
+    /// </list>
+    /// </remarks>
     private void WireEvents(string name, PlayerContext context)
     {
-        // Store handler references for proper cleanup (prevents memory leaks)
-        context.ConnectionStateHandler = (_, args) =>
+        // Create handler references for proper cleanup (prevents memory leaks)
+        context.ConnectionStateHandler = CreateConnectionStateHandler(name, context);
+        context.PipelineStateHandler = CreatePipelineStateHandler(name, context);
+        context.PipelineErrorHandler = CreatePipelineErrorHandler(name, context);
+        context.PlayerErrorHandler = CreatePlayerErrorHandler(name, context);
+        context.GroupStateHandler = CreateGroupStateHandler(name, context);
+        // SDK 5.4.0: PlayerStateChanged for individual player volume/mute commands
+        context.PlayerStateHandler = CreatePlayerStateHandler(name, context);
+
+        // Subscribe to events
+        context.Client.ConnectionStateChanged += context.ConnectionStateHandler;
+        context.Pipeline.StateChanged += context.PipelineStateHandler;
+        context.Pipeline.ErrorOccurred += context.PipelineErrorHandler;
+        context.Player.ErrorOccurred += context.PlayerErrorHandler;
+        context.Client.GroupStateChanged += context.GroupStateHandler;
+        // SDK 5.4.0: Subscribe to PlayerStateChanged
+        context.Client.PlayerStateChanged += context.PlayerStateHandler;
+    }
+
+    /// <summary>
+    /// Creates handler for connection state changes (Connected/Disconnected).
+    /// Manages state transitions, grace period initialization, and reconnection queueing.
+    /// </summary>
+    private EventHandler<ConnectionStateChangedEventArgs> CreateConnectionStateHandler(
+        string name, PlayerContext context)
+    {
+        return (_, args) =>
         {
             _logger.LogDebug("Player '{Name}' connection state: {State}", name, args.NewState);
 
@@ -1429,25 +2152,31 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
             context.State = args.NewState switch
             {
-                ConnectionState.Connected => PlayerState.Connected,
-                ConnectionState.Disconnected => PlayerState.Stopped,
+                ConnectionState.Connected => Models.PlayerState.Connected,
+                ConnectionState.Connecting => Models.PlayerState.Connecting,
+                ConnectionState.Handshaking => Models.PlayerState.Connecting,
+                ConnectionState.Reconnecting => Models.PlayerState.Reconnecting,
+                ConnectionState.Disconnected => Models.PlayerState.Stopped,
+                ConnectionState.Disconnecting => context.State, // Brief transition, keep current
                 _ => context.State
             };
 
-            // Record connection time and push initial volume to server when connected
+            // Record connection time and push startup volume to server when connected
             // This ensures MA shows the correct startup volume immediately
             if (args.NewState == ConnectionState.Connected)
             {
                 context.ConnectedAt = DateTime.UtcNow;
-                _logger.LogDebug("VOLUME [GracePeriod] Player '{Name}': grace period started for {Duration}s",
+                _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': grace period started for {Duration}s",
                     name, VolumeGracePeriod.TotalSeconds);
                 _ = PushVolumeToServerAsync(name, context);
             }
 
             // Handle disconnection - queue for reconnection if appropriate
             if (args.NewState == ConnectionState.Disconnected &&
-                previousState != PlayerState.Stopped &&  // Not user-stopped
-                previousState != PlayerState.Error)       // Not already errored
+                previousState != Models.PlayerState.Stopped &&  // Not user-stopped
+                previousState != Models.PlayerState.Error &&    // Not already errored
+                !_pendingReconnections.ContainsKey(name) &&     // Not already pending server reconnection
+                !_devicePendingPlayers.ContainsKey(name))       // Not waiting for device reconnection
             {
                 _logger.LogWarning("Player '{Name}' disconnected unexpectedly, queuing for reconnection", name);
 
@@ -1468,80 +2197,680 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     // Remove the disconnected player and queue for reconnection
                     await RemoveAndDisposePlayerAsync(name);
                     QueueForReconnection(persistedConfig);
-                }, $"Reconnection setup for '{name}'");
+                }, $"Reconnection setup for '{name}'", _logger);
             }
 
             // Broadcast status update on connection state change
             _ = BroadcastStatusAsync();
         };
+    }
 
-        context.PipelineStateHandler = (_, state) =>
+    /// <summary>
+    /// Creates handler for pipeline state changes (Playing/Buffering/Idle).
+    /// Updates player state and pushes volume on playback start.
+    /// </summary>
+    private EventHandler<AudioPipelineState> CreatePipelineStateHandler(
+        string name, PlayerContext context)
+    {
+        return (_, state) =>
         {
             _logger.LogDebug("Player '{Name}' pipeline state: {State}", name, state);
 
+            var previousState = context.State;
+
+            var stateStr = state.ToString();
+
             if (state == AudioPipelineState.Playing)
-                context.State = PlayerState.Playing;
+                context.State = Models.PlayerState.Playing;
             else if (state == AudioPipelineState.Buffering)
-                context.State = PlayerState.Buffering;
+                context.State = Models.PlayerState.Buffering;
             else if (state == AudioPipelineState.Idle)
-                context.State = PlayerState.Connected;
+                context.State = Models.PlayerState.Connected;
+            else if (stateStr is "Starting")
+            {
+                context.State = Models.PlayerState.Starting;
+                _logger.LogInformation("Player '{Name}' pipeline is starting", name);
+            }
+            else if (stateStr is "Stopping")
+            {
+                context.State = Models.PlayerState.Connected;
+                _logger.LogInformation("Player '{Name}' pipeline is stopping", name);
+            }
+            else if (stateStr is "Dropping" or "Disconnecting")
+                _logger.LogInformation("Player '{Name}' pipeline state: {State}", name, stateStr);
+            else if (stateStr is "Inserting")
+                _logger.LogWarning("Player '{Name}' pipeline is inserting frames (possible sync issue)", name);
             else
             {
-                // Log unknown states so we can track SDK changes
-                _logger.LogWarning("Player '{Name}' received unknown pipeline state: {State}", name, state);
+                // Truly unknown state — log as warning so we notice SDK changes
+                _logger.LogWarning("Player '{Name}' received unknown pipeline state: {State}", name, stateStr);
             }
 
-            // Push volume to server when playback starts to ensure correct level
-            // This handles the case where SDK sends volume:100 in initial hello
-            if (state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering)
+            // Notify trigger service of playback state changes
+            // Activate when transitioning TO an active state (Playing/Buffering) from inactive
+            // Deactivate when transitioning TO a stopped state (Idle/Stopping) from active
+            var isActiveState = state == AudioPipelineState.Playing || state == AudioPipelineState.Buffering;
+            var wasInactiveState = previousState != Models.PlayerState.Playing && previousState != Models.PlayerState.Buffering;
+            var isStoppedState = state == AudioPipelineState.Idle || stateStr is "Stopping";
+            var wasActiveState = previousState == Models.PlayerState.Playing || previousState == Models.PlayerState.Buffering;
+
+            if (isActiveState && wasInactiveState)
             {
-                _ = PushVolumeToServerAsync(name, context);
+                _triggerService.OnPlayerStarted(name, context.Config.DeviceId);
+            }
+            else if (isStoppedState && wasActiveState)
+            {
+                _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
             }
 
             // Broadcast status update on pipeline state change
             _ = BroadcastStatusAsync();
         };
+    }
 
-        context.PipelineErrorHandler = (_, error) =>
+    /// <summary>
+    /// Creates handler for pipeline errors (decoder failures, etc.).
+    /// Detects device loss errors and queues for device reconnection if possible.
+    /// </summary>
+    private EventHandler<AudioPipelineError> CreatePipelineErrorHandler(
+        string name, PlayerContext context)
+    {
+        return (_, error) =>
         {
             _logger.LogError(error.Exception, "Player '{Name}' pipeline error: {Message}",
                 name, error.Message);
             context.ErrorMessage = error.Message;
 
-            // Auto-stop player on pipeline error to prevent resource waste
-            _logger.LogWarning("Auto-stopping player '{Name}' due to pipeline error", name);
-            FireAndForget(
-                StopPlayerInternalAsync(name, "Pipeline error: " + error.Message),
-                $"StopPlayerInternalAsync for '{name}' (pipeline error)");
-        };
+            // Check if this is a device loss error (USB unplug with DontMove flag)
+            var isDeviceLoss = error.Message.Contains("Audio device lost") ||
+                               error.Message.Contains("Entity killed") ||
+                               error.Message.Contains("No such entity");
 
-        context.PlayerErrorHandler = (_, error) =>
+            if (isDeviceLoss && _subscriptionService?.IsReady == true)
+            {
+                // Start grace period - don't immediately disconnect from MA
+                // USB bus glitches can briefly kill streams on other devices on the same controller
+                StartDeviceLossGracePeriod(name, context, "pipeline");
+            }
+            else
+            {
+                // Auto-stop player on pipeline error to prevent resource waste
+                // Also falls back here if subscription service isn't ready (PA failed)
+                _logger.LogWarning("Auto-stopping player '{Name}' due to pipeline error", name);
+                FireAndForget(
+                    StopPlayerInternalAsync(name, "Pipeline error: " + error.Message),
+                    $"StopPlayerInternalAsync for '{name}' (pipeline error)", _logger);
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates handler for audio player errors (device unavailable, etc.).
+    /// Detects device loss errors and queues for device reconnection if possible.
+    /// </summary>
+    private EventHandler<AudioPlayerError> CreatePlayerErrorHandler(
+        string name, PlayerContext context)
+    {
+        return (_, error) =>
         {
             _logger.LogError(error.Exception, "Player '{Name}' audio error: {Message}",
                 name, error.Message);
             context.ErrorMessage = error.Message;
 
-            // Auto-stop player on audio error (e.g., device unavailable)
-            _logger.LogWarning("Auto-stopping player '{Name}' due to audio error", name);
-            FireAndForget(
-                StopPlayerInternalAsync(name, "Audio error: " + error.Message),
-                $"StopPlayerInternalAsync for '{name}' (audio error)");
-        };
+            // Check if this is a device loss error (USB unplug with DontMove flag)
+            var isDeviceLoss = error.Message.Contains("Audio device lost") ||
+                               error.Message.Contains("No such entity");
 
-        // Handle volume changes from server (Music Assistant UI, etc.)
-        context.GroupStateHandler = (_, group) =>
+            if (isDeviceLoss && _subscriptionService?.IsReady == true)
+            {
+                // Start grace period - don't immediately disconnect from MA
+                // USB bus glitches can briefly kill streams on other devices on the same controller
+                StartDeviceLossGracePeriod(name, context, "audio");
+            }
+            else
+            {
+                // Original behavior for non-device errors
+                // Also falls back here if subscription service isn't ready (PA failed)
+                _logger.LogWarning("Auto-stopping player '{Name}' due to audio error", name);
+                FireAndForget(
+                    StopPlayerInternalAsync(name, "Audio error: " + error.Message),
+                    $"StopPlayerInternalAsync for '{name}' (audio error)", _logger);
+            }
+        };
+    }
+
+    #region Device Auto-Reconnection
+
+    /// <summary>
+    /// Starts a grace period before reacting to device loss.
+    /// USB bus glitches can briefly kill streams on devices sharing the same controller.
+    /// By waiting briefly, we can often recover the stream without disconnecting from MA.
+    /// </summary>
+    private void StartDeviceLossGracePeriod(string name, PlayerContext context, string source)
+    {
+        // Cancel any existing grace period for this player (debounce multiple errors)
+        if (_deviceLossGracePeriods.TryRemove(name, out var existingCts))
         {
+            existingCts.Cancel();
+            // Don't dispose here - the old task's finally block will handle it
+            // Disposing now causes ObjectDisposedException in the old task
+        }
+
+        var cts = new CancellationTokenSource();
+        _deviceLossGracePeriods[name] = cts;
+
+        _logger.LogWarning(
+            "Player '{Name}' detected device loss ({Source}), starting {Ms}ms grace period before disconnect",
+            name, source, DeviceLossGracePeriodMs);
+
+        // Immediately update UI to show device issue (don't wait for grace period)
+        // Note: Don't change state yet - keep player in current state so recovery can work
+        // The error message will indicate the issue to the user
+        context.ErrorMessage = "Audio device disconnected, checking...";
+        _ = BroadcastStatusAsync();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(DeviceLossGracePeriodMs, cts.Token);
+                await HandleDeviceLossAfterGracePeriodAsync(name, context);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Grace period cancelled for '{Name}'", name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Grace period handler failed for '{Name}', falling back to reconnection queue", name);
+                // Don't leave the player stuck - queue for reconnection as fallback
+                try
+                {
+                    await QueueForDeviceReconnectionAsync(name, context);
+                }
+                catch (Exception innerEx)
+                {
+                    _logger.LogError(innerEx, "Failed to queue '{Name}' for reconnection after grace period failure", name);
+                }
+            }
+            finally
+            {
+                // Only remove from dictionary if we're still the active grace period
+                // (avoids removing a newer grace period that superseded us)
+                _deviceLossGracePeriods.TryRemove(KeyValuePair.Create(name, cts));
+                cts.Dispose();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Handles device loss after grace period expires.
+    /// If the sink is still available, attempts stream recovery without disconnecting from MA.
+    /// If the sink is gone, falls back to full disconnect/reconnect.
+    /// </summary>
+    private async Task HandleDeviceLossAfterGracePeriodAsync(string name, PlayerContext context)
+    {
+        // Check if player was already stopped/removed during grace period
+        if (!_players.ContainsKey(name))
+        {
+            _logger.LogDebug("Player '{Name}' no longer exists after grace period", name);
+            return;
+        }
+
+        // Check if sink is still available
+        var sinkName = context.Config.DeviceId;
+        var device = !string.IsNullOrEmpty(sinkName) ? _backendFactory.GetDevice(sinkName) : null;
+
+        if (device != null)
+        {
+            // Sink still exists! Try to recreate just the PA stream (no MA disconnect)
+            _logger.LogInformation(
+                "Player '{Name}' sink still available after grace period, attempting stream recovery",
+                name);
+
+            try
+            {
+                await RecoverPlayerStreamAsync(name, context);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Stream recovery failed for '{Name}', falling back to full reconnect", name);
+            }
+        }
+
+        // Sink gone or recovery failed - queue for reconnection
+        _logger.LogWarning("Player '{Name}' sink unavailable after grace period, queuing for reconnection", name);
+        await QueueForDeviceReconnectionAsync(name, context);
+    }
+
+    /// <summary>
+    /// Attempts to recover a player's audio stream by recreating it on the same device.
+    /// This preserves the MA connection and group membership.
+    /// </summary>
+    private async Task RecoverPlayerStreamAsync(string name, PlayerContext context)
+    {
+        // Check if player is still in a recoverable state
+        // If already stopped or queued for reconnection, skip recovery
+        if (context.State == Models.PlayerState.Stopped ||
+            context.State == Models.PlayerState.Error ||
+            _devicePendingPlayers.ContainsKey(name))
+        {
+            _logger.LogDebug("Player '{Name}' already stopped or queued, skipping stream recovery", name);
+            return;
+        }
+
+        var deviceId = context.Config.DeviceId;
+
+        _logger.LogInformation("Attempting stream recovery for '{Name}' on device '{Device}'", name, deviceId);
+
+        // Use SwitchDeviceAsync to switch to the SAME device
+        // This recreates the PA stream without disconnecting from MA
+        await context.Pipeline.SwitchDeviceAsync(deviceId, CancellationToken.None);
+
+        context.ErrorMessage = null;
+        _logger.LogInformation("Player '{Name}' stream recovered successfully, MA connection preserved", name);
+
+        _ = BroadcastStatusAsync();
+    }
+
+    /// <summary>
+    /// Queues a player for automatic restart when its audio device reappears.
+    /// Called when a player loses its audio device (USB unplug).
+    /// </summary>
+    private async Task QueueForDeviceReconnectionAsync(string name, PlayerContext context)
+    {
+        // Guard against double-handling (both pipeline and player error handlers may fire)
+        if (_devicePendingPlayers.ContainsKey(name))
+        {
+            _logger.LogDebug("Player '{Name}' already queued for device reconnection, skipping duplicate", name);
+            return;
+        }
+
+        // Get persisted config for later restart
+        var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
+        if (persistedConfig == null)
+        {
+            _logger.LogWarning("Player '{Name}' has no persisted config, cannot auto-restart on device reconnection", name);
+            await StopPlayerInternalAsync(name, "Device lost (no config for reconnect)");
+            return;
+        }
+
+        // Get device configuration with identifiers for robust matching
+        // IMPORTANT: Get fresh identifiers from the backend (not saved config) because
+        // devices.yaml may not exist or may not have this device saved.
+        DeviceConfiguration? deviceConfig = null;
+        if (!string.IsNullOrEmpty(context.Config.DeviceId))
+        {
+            var currentDevice = _backendFactory.GetDevice(context.Config.DeviceId);
+            if (currentDevice?.Identifiers != null)
+            {
+                // Create a DeviceConfiguration with fresh identifiers from the live device
+                deviceConfig = new DeviceConfiguration
+                {
+                    LastKnownSinkName = currentDevice.Id,
+                    Identifiers = DeviceIdentifiersConfig.FromModel(currentDevice.Identifiers)
+                };
+            }
+            else
+            {
+                // Fallback to saved config if device already gone or has no identifiers
+                deviceConfig = _config.GetDeviceConfigBySinkName(context.Config.DeviceId);
+            }
+        }
+
+        // Check if player was playing before device loss (capture before we set state to Stopped)
+        var wasPlaying = context.State == Models.PlayerState.Playing ||
+                         context.State == Models.PlayerState.Buffering;
+
+        // IMPORTANT: Add to device-pending queue FIRST, before any operations that might
+        // trigger other handlers. This prevents the connection state handler from
+        // queueing for server reconnection.
+        _devicePendingPlayers[name] = new DevicePendingState(
+            persistedConfig,
+            deviceConfig,
+            DateTime.UtcNow,
+            wasPlaying);
+
+        _logger.LogInformation(
+            "Player '{Name}' queued for device reconnection. Device: {Device}, WasPlaying: {WasPlaying}, Identifiers: Serial={Serial}, BusPath={BusPath}",
+            name,
+            context.Config.DeviceId ?? "(default)",
+            wasPlaying,
+            deviceConfig?.Identifiers?.Serial ?? "(none)",
+            deviceConfig?.Identifiers?.BusPath ?? "(none)");
+
+        // Update player state for UI - show as Stopped with error message
+        // (not Reconnecting - we're waiting for the physical device, not the server)
+        context.State = Models.PlayerState.Stopped;
+        context.ErrorMessage = "Audio device disconnected. Will auto-restart when device is reconnected.";
+
+        // Stop the player properly
+        try
+        {
+            await context.Pipeline.StopAsync().WaitAsync(DisposalTimeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error stopping pipeline for '{Name}' after device loss", name);
+        }
+
+        try
+        {
+            await context.Client.DisconnectAsync("restart").WaitAsync(DisposalTimeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disconnecting client for '{Name}' after device loss", name);
+        }
+
+        _ = BroadcastStatusAsync();
+    }
+
+    /// <summary>
+    /// Called when PulseAudio reports a new sink appeared (e.g., USB device plugged in).
+    /// Triggers check for device-pending players after a short delay and notifies UI.
+    /// </summary>
+    private void OnSinkAppeared(object? sender, SinkEventArgs args)
+    {
+        _logger.LogDebug("Sink appeared (index={Index}), notifying UI and checking {Count} device-pending players",
+            args.Index, _devicePendingPlayers.Count);
+
+        // Small delay to let PulseAudio fully register the new sink
+        Task.Run(async () =>
+        {
+            await Task.Delay(500);
+
+            // Notify UI that device list has changed
+            await _hubContext.BroadcastDeviceListChangedAsync();
+
+            // Check if any pending players can now be restarted
+            // Use blocking wait to serialize sink events (don't drop events)
+            // The TryRemove check in CheckDevicePendingPlayersAsync prevents duplicate restarts
+            if (!_devicePendingPlayers.IsEmpty)
+            {
+                await _sinkEventLock.WaitAsync();
+                try
+                {
+                    await CheckDevicePendingPlayersAsync();
+                }
+                finally
+                {
+                    _sinkEventLock.Release();
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// Called when PulseAudio reports a sink disappeared (e.g., USB device unplugged).
+    /// Notifies UI and checks if any active players lost their device.
+    /// </summary>
+    private void OnSinkDisappeared(object? sender, SinkEventArgs args)
+    {
+        _logger.LogDebug("Sink disappeared (index={Index}), notifying UI and checking players", args.Index);
+
+        Task.Run(async () =>
+        {
+            // Notify UI that device list has changed
+            await _hubContext.BroadcastDeviceListChangedAsync();
+
+            // Check if any active players were using a sink that no longer exists
+            // Use blocking wait to serialize sink events (don't drop events)
+            await _sinkEventLock.WaitAsync();
+            try
+            {
+                await CheckPlayersForLostDeviceAsync();
+            }
+            finally
+            {
+                _sinkEventLock.Release();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Checks all active players to see if their device has disappeared.
+    /// Triggers device loss handling for any players whose sink no longer exists.
+    /// This handles the case where a device is unplugged while the player is idle (not streaming).
+    /// </summary>
+    private async Task CheckPlayersForLostDeviceAsync()
+    {
+        // Small delay to let PulseAudio fully process the sink removal
+        await Task.Delay(200);
+
+        foreach (var (name, context) in _players.ToArray())
+        {
+            if (_disposed) break;
+
+            // Skip players already in error/stopped state or already pending device reconnection
+            if (context.State == Models.PlayerState.Error ||
+                context.State == Models.PlayerState.Stopped ||
+                _devicePendingPlayers.ContainsKey(name) ||
+                _deviceLossGracePeriods.ContainsKey(name))
+            {
+                continue;
+            }
+
+            var deviceId = context.Config.DeviceId;
+            if (string.IsNullOrEmpty(deviceId))
+                continue;
+
+            // Check if the player's device still exists
+            if (!_backendFactory.ValidateDevice(deviceId, out _))
+            {
+                _logger.LogWarning(
+                    "Player '{Name}' device '{Device}' no longer available (detected via sink disappear event)",
+                    name, deviceId);
+
+                // Start the grace period - this handles debouncing and recovery attempts
+                StartDeviceLossGracePeriod(name, context, "sink-disappear");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks all device-pending players to see if their device has reappeared.
+    /// Uses DeviceMatchingService for robust matching by serial/bus path.
+    /// </summary>
+    private async Task CheckDevicePendingPlayersAsync()
+    {
+        foreach (var (name, state) in _devicePendingPlayers.ToArray())
+        {
+            if (_disposed) break;
+
+            try
+            {
+                string? newSinkName = null;
+
+                if (state.DeviceConfig?.Identifiers != null)
+                {
+                    // Use DeviceMatchingService for robust matching by serial/bus path
+                    var deviceMatching = new DeviceMatchingService(
+                        _loggerFactory.CreateLogger<DeviceMatchingService>(),
+                        _config,
+                        _backendFactory,
+                        null!, // customSinks not needed for matching
+                        null!  // alsaCapabilities not needed for matching
+                    );
+
+                    newSinkName = deviceMatching.FindCurrentSinkName(state.DeviceConfig);
+                }
+                else if (!string.IsNullOrEmpty(state.Config.Device))
+                {
+                    // No device config with identifiers - try exact sink name match
+                    var device = _backendFactory.GetDevice(state.Config.Device);
+                    if (device != null)
+                        newSinkName = device.Id;
+                }
+
+                if (newSinkName != null)
+                {
+                    // Remove from pending queue atomically - only proceed if WE removed it
+                    // This prevents race conditions where multiple sink events trigger
+                    // concurrent restart attempts for the same player
+                    if (!_devicePendingPlayers.TryRemove(name, out _))
+                    {
+                        _logger.LogDebug(
+                            "Player '{Name}' already being restarted by another task, skipping",
+                            name);
+                        continue;
+                    }
+
+                    _logger.LogInformation(
+                        "Device reappeared for player '{Name}': {SinkName}. Restarting player.",
+                        name, newSinkName);
+
+                    // Update config if sink name changed
+                    if (state.Config.Device != newSinkName)
+                    {
+                        _config.UpdatePlayerField(name, cfg => cfg.Device = newSinkName, save: true);
+                    }
+
+                    // Restart the player
+                    await RestartPlayerAfterDeviceReconnectAsync(name, state.Config, newSinkName, state.WasPlaying);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error checking device-pending player '{Name}'", name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Restarts a player after its audio device has reappeared.
+    /// </summary>
+    /// <param name="name">Player name.</param>
+    /// <param name="config">Player configuration.</param>
+    /// <param name="newSinkName">The sink name of the reconnected device.</param>
+    /// <param name="wasPlaying">Whether the player was playing before device loss.</param>
+    private async Task RestartPlayerAfterDeviceReconnectAsync(
+        string name,
+        PlayerConfiguration config,
+        string newSinkName,
+        bool wasPlaying)
+    {
+        try
+        {
+            // First, fully remove and dispose the existing player context
+            await RemoveAndDisposePlayerAsync(name);
+
+            // Create fresh player with the (possibly updated) device
+            var request = new PlayerCreateRequest
+            {
+                Name = config.Name,
+                Device = newSinkName,
+                ClientId = ClientIdGenerator.Generate(config.Name),
+                ServerUrl = config.Server,
+                Volume = config.Volume ?? 100,
+                DelayMs = config.DelayMs,
+                AdvertisedFormat = config.AdvertisedFormat,
+                Persist = false // Already persisted
+            };
+
+            await CreatePlayerAsync(request, CancellationToken.None);
+
+            _logger.LogInformation("Player '{Name}' restarted after device reconnection", name);
+
+            // Resume playback if was playing before device loss AND auto-resume is enabled
+            var autoResume = config.AutoResume;
+            if (wasPlaying && autoResume)
+            {
+                // Small delay to ensure player is fully connected before sending command
+                await Task.Delay(500);
+
+                if (_players.TryGetValue(name, out var newContext) && newContext.Client != null)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Player '{Name}' was playing before device loss, sending play command (auto-resume enabled)", name);
+                        await newContext.Client.SendCommandAsync("play");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send play command to resume playback for '{Name}'", name);
+                    }
+                }
+            }
+            else if (wasPlaying && !autoResume)
+            {
+                _logger.LogInformation("Player '{Name}' was playing before device loss but auto-resume is disabled, not resuming", name);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restart player '{Name}' after device reconnection", name);
+
+            // Re-queue for device reconnection on failure (preserve WasPlaying state)
+            var persistedConfig = _config.Players.TryGetValue(name, out var cfg) ? cfg : null;
+            if (persistedConfig != null)
+            {
+                _devicePendingPlayers[name] = new DevicePendingState(
+                    persistedConfig,
+                    null, // Device config may be stale
+                    DateTime.UtcNow,
+                    wasPlaying);
+            }
+        }
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Handles GroupState events from the SDK.
+    /// GroupState contains group-level data (average volume, muted, metadata).
+    /// This is for logging/diagnostics — individual player commands come via PlayerStateChanged.
+    /// </summary>
+    private EventHandler<GroupState> CreateGroupStateHandler(
+        string name, PlayerContext context)
+    {
+        return (_, group) =>
+        {
+            _logger.LogDebug(
+                "GROUPSTATE Player '{Name}': GroupId={GroupId} vol={GroupVol}% muted={GroupMuted} (local vol={LocalVol}%)",
+                name, group.GroupId, group.Volume, group.Muted, context.Config.Volume);
+        };
+    }
+
+    /// <summary>
+    /// Creates handler for server player-specific volume/mute commands (from Music Assistant UI, etc.).
+    /// This handler receives commands directed at this specific player, not group averages.
+    /// Implements grace period logic to preserve startup volume for 5 seconds after connection.
+    /// </summary>
+    /// <remarks>
+    /// SDK 5.4.0 change: PlayerStateChanged is for individual player commands.
+    /// GroupStateChanged now represents the average volume displayed to controllers.
+    /// SDK automatically acknowledges by sending client/state when applying commands.
+    /// </remarks>
+    private EventHandler<SdkPlayerState> CreatePlayerStateHandler(
+        string name, PlayerContext context)
+    {
+        return (_, playerState) =>
+        {
+            // Prevent feedback loops when we initiated the change
+            if (context.IsUpdatingFromServer)
+            {
+                _logger.LogDebug(
+                    "PLAYERSTATE Player '{Name}': ignoring echo (IsUpdatingFromServer=true)",
+                    name);
+                return;
+            }
+
+            _logger.LogInformation(
+                "PLAYERSTATE Player '{Name}': received vol={ServerVol}% muted={ServerMuted} (local vol={LocalVol}% muted={LocalMuted})",
+                name, playerState.Volume, playerState.Muted, context.Config.Volume, context.Player.IsMuted);
+
             // Clamp volume to valid range
-            var serverVolume = Math.Clamp(group.Volume, 0, 100);
+            var serverVolume = Math.Clamp(playerState.Volume, 0, 100);
 
             // Check if we're within the grace period after connection
             var isWithinGracePeriod = context.ConnectedAt.HasValue &&
                                      (DateTime.UtcNow - context.ConnectedAt.Value) < VolumeGracePeriod;
 
-            // Update volume if changed
+            // Handle volume changes
             if (serverVolume != context.Config.Volume)
             {
-                // During grace period, ignore MA's volume updates and push our startup volume back
                 if (isWithinGracePeriod)
                 {
                     var gracePeriodRemaining = VolumeGracePeriod - (DateTime.UtcNow - context.ConnectedAt!.Value);
@@ -1554,15 +2883,20 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                     {
                         try
                         {
+                            context.IsUpdatingFromServer = true;
                             await context.Client.SetVolumeAsync(context.Config.Volume);
-                            _logger.LogDebug("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% back to MA",
+                            _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% back to MA",
                                 name, context.Config.Volume);
                         }
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Failed to push startup volume for '{Name}'", name);
                         }
-                    }, $"Grace period volume push for '{name}'");
+                        finally
+                        {
+                            context.IsUpdatingFromServer = false;
+                        }
+                    }, $"Grace period volume push for '{name}'", _logger);
 
                     return; // Don't update local volume or broadcast
                 }
@@ -1571,43 +2905,53 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 _logger.LogInformation("VOLUME [ServerSync] Player '{Name}': {OldVol}% -> {NewVol}%",
                     name, context.Config.Volume, serverVolume);
 
-                // Update runtime config only (affects current playback)
-                // DO NOT persist to config file - MA has its own volume database
-                // If we persist, we create a fight between our config and MA's database
-                // The config file volume is only the INITIAL volume sent on connection
+                // Update runtime config
                 context.Config.Volume = serverVolume;
 
-                // Send player state back to MA to update its stored preference
-                // This uses SendPlayerStateAsync which is fire-and-forget and doesn't trigger GroupStateChanged
-                FireAndForget(async () =>
-                {
-                    try
-                    {
-                        await context.Client.SendPlayerStateAsync(serverVolume, context.Player.IsMuted);
-                        _logger.LogDebug("VOLUME [StateEcho] Player '{Name}': echoed client/state with {Volume}%",
-                            name, serverVolume);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to echo player state for '{Name}'", name);
-                    }
-                }, $"Player state echo for '{name}'");
+                // Apply volume locally - player is authoritative for its own volume
+                context.Player.Volume = serverVolume / 100.0f;
+
+                // Note: SDK 5.4.0 auto-acknowledges by sending client/state,
+                // so we don't need to call SendPlayerStateAsync manually
 
                 // Broadcast to UI so slider updates
                 _ = BroadcastStatusAsync();
+
+                // Persist volume to config so it survives restarts
+                _config.UpdatePlayerField(name, cfg => cfg.Volume = serverVolume, save: true);
+            }
+
+            // Handle mute state from server
+            if (playerState.Muted != context.Player.IsMuted)
+            {
+                // Check if within mute change grace period (500ms)
+                // This prevents MA's stale response from overriding our recent mute change
+                var muteGracePeriod = TimeSpan.FromMilliseconds(500);
+                var isWithinMuteGrace = context.LastMuteChangeAt.HasValue &&
+                    (DateTime.UtcNow - context.LastMuteChangeAt.Value) < muteGracePeriod;
+
+                if (isWithinMuteGrace && playerState.Muted != context.LastConfirmedMuted)
+                {
+                    _logger.LogDebug(
+                        "MUTE [ServerSync] Player '{Name}': ignoring server mute={ServerMuted} " +
+                        "(within grace period, last confirmed={LastConfirmed})",
+                        name, playerState.Muted, context.LastConfirmedMuted);
+                    return;
+                }
+
+                _logger.LogInformation("MUTE [ServerSync] Player '{Name}': {OldState} -> {NewState}",
+                    name,
+                    context.Player.IsMuted ? "muted" : "unmuted",
+                    playerState.Muted ? "muted" : "unmuted");
+
+                // Update local state
+                context.Pipeline.SetMuted(playerState.Muted);
+                context.Player.IsMuted = playerState.Muted;
+                context.LastConfirmedMuted = playerState.Muted;
+
+                _ = BroadcastStatusAsync();
             }
         };
-
-        // Subscribe to events
-        context.Client.ConnectionStateChanged += context.ConnectionStateHandler;
-        context.Pipeline.StateChanged += context.PipelineStateHandler;
-        context.Pipeline.ErrorOccurred += context.PipelineErrorHandler;
-        context.Player.ErrorOccurred += context.PlayerErrorHandler;
-        context.Client.GroupStateChanged += context.GroupStateHandler;
-
-        // Note: Issue #33 (players showing "Playing" after stream ends) should be handled by
-        // the PipelineStateHandler above when the pipeline transitions to Idle state.
-        // The SDK doesn't expose a StreamEnded event directly.
     }
 
     /// <summary>
@@ -1617,6 +2961,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     private void UnwireEvents(PlayerContext context)
     {
         // Unsubscribe in reverse order of subscription
+        // SDK 5.4.0: Unsubscribe PlayerStateChanged first (subscribed last)
+        if (context.PlayerStateHandler != null)
+        {
+            context.Client.PlayerStateChanged -= context.PlayerStateHandler;
+            context.PlayerStateHandler = null;
+        }
+
         if (context.GroupStateHandler != null)
         {
             context.Client.GroupStateChanged -= context.GroupStateHandler;
@@ -1655,6 +3006,18 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         // Check if player is pending reconnection
         var isPendingReconnection = _pendingReconnections.TryGetValue(name, out var reconnectState);
 
+        // During reconnection, override transitional/error states so the UI doesn't flicker
+        var displayState = context.State;
+        if (isPendingReconnection && !reconnectState!.WasUserStopped &&
+            displayState is Models.PlayerState.Starting or Models.PlayerState.Connecting
+                        or Models.PlayerState.Created or Models.PlayerState.Error
+                        or Models.PlayerState.Stopped)
+        {
+            displayState = reconnectState.MdnsOnly
+                ? Models.PlayerState.WaitingForServer
+                : Models.PlayerState.Reconnecting;
+        }
+
         // Get startup volume from persisted config (not runtime config which changes with MA)
         var startupVolume = _config.Players.TryGetValue(name, out var persistedConfig)
             ? persistedConfig.Volume ?? 100
@@ -1662,10 +3025,12 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         return new PlayerResponse(
             Name: name,
-            State: context.State,
+            State: displayState,
             Device: context.Config.DeviceId,
             ClientId: context.Capabilities.ClientId,
             ServerUrl: context.Config.ServerUrl,
+            ServerName: context.ServerName,
+            ConnectedAddress: context.ConnectedAddress,
             Volume: context.Config.Volume, // Runtime volume (synced with MA)
             StartupVolume: startupVolume,   // Startup volume (from persisted config)
             IsMuted: context.Player.IsMuted,
@@ -1673,7 +3038,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             OutputLatencyMs: context.Player.OutputLatencyMs,
             CreatedAt: context.CreatedAt,
             ConnectedAt: context.ConnectedAt,
-            ErrorMessage: context.ErrorMessage,
+            ErrorMessage: displayState is Models.PlayerState.Reconnecting or Models.PlayerState.WaitingForServer
+                ? null : context.ErrorMessage,
             IsClockSynced: context.Client.IsClockSynced,
             Metrics: bufferStats != null ? new PlayerMetrics(
                 BufferLevel: (int)bufferStats.BufferedMs,
@@ -1684,8 +3050,29 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             ) : null,
             DeviceCapabilities: context.DeviceCapabilities,
             IsPendingReconnection: isPendingReconnection,
+            AutoResume: persistedConfig?.AutoResume ?? false,
             ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
-            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null
+            NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
+            AdvertisedFormat: context.Config.AdvertisedFormat,
+            CurrentTrack: GetTrackInfo(context.Client.CurrentGroup?.Metadata)
+        );
+    }
+
+    /// <summary>
+    /// Converts SDK TrackMetadata to our TrackInfo model.
+    /// </summary>
+    private static TrackInfo? GetTrackInfo(Sendspin.SDK.Models.TrackMetadata? metadata)
+    {
+        if (metadata == null || string.IsNullOrEmpty(metadata.Title))
+            return null;
+
+        return new TrackInfo(
+            Title: metadata.Title,
+            Artist: metadata.Artist,
+            Album: metadata.Album,
+            ArtworkUrl: metadata.ArtworkUrl,
+            DurationSeconds: metadata.Duration,
+            PositionSeconds: metadata.Position
         );
     }
 
@@ -1699,156 +3086,14 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         if (!_players.TryGetValue(name, out var context))
             return null;
 
-        var bufferStats = context.Pipeline.BufferStats;
-        var clockStatus = context.ClockSync.GetStatus();
-        var inputFormat = context.Pipeline.CurrentFormat;
-
-        // Output format: Use SDK's OutputFormat if available, otherwise fall back to input format.
-        // We always output float32 at the input sample rate (no resampling).
-        // PulseAudio handles final conversion to device format.
-        var outputFormat = context.Pipeline.OutputFormat ?? inputFormat;
-
-        // Audio Format Stats
-        var audioFormat = new AudioFormatStats(
-            InputFormat: inputFormat != null
-                ? $"{inputFormat.Codec.ToUpperInvariant()} {inputFormat.SampleRate}Hz {inputFormat.Channels}ch"
-                : "--",
-            InputSampleRate: inputFormat?.SampleRate ?? 0,
-            InputChannels: inputFormat?.Channels ?? 0,
-            InputBitrate: inputFormat?.Bitrate > 0 ? $"{inputFormat.Bitrate}kbps" : null,
-            OutputFormat: outputFormat != null
-                ? $"FLOAT32 {outputFormat.SampleRate}Hz {outputFormat.Channels}ch"
-                : "--",
-            OutputSampleRate: outputFormat?.SampleRate ?? 0,
-            OutputChannels: outputFormat?.Channels ?? 2,
-            OutputBitDepth: 32  // Always float32 (PulseAudio converts to device format)
-        );
-
-        // Sync Stats (5ms threshold for correction)
-        const double SyncToleranceMs = 5.0;
-        var syncErrorMs = bufferStats?.SyncErrorMs ?? 0;
-        var sync = new SyncStats(
-            SyncErrorMs: syncErrorMs,
-            IsWithinTolerance: Math.Abs(syncErrorMs) < SyncToleranceMs,
-            IsPlaybackActive: bufferStats?.IsPlaybackActive ?? false
-        );
-
-        // Buffer Stats
-        var buffer = new BufferStatsInfo(
-            BufferedMs: (int)(bufferStats?.BufferedMs ?? 0),
-            TargetMs: (int)(bufferStats?.TargetMs ?? 0),
-            Underruns: bufferStats?.UnderrunCount ?? 0,
-            Overruns: bufferStats?.OverrunCount ?? 0
-        );
-
-        // Clock Sync Stats
-        // Note: Use Player.OutputLatencyMs directly instead of Pipeline.DetectedOutputLatencyMs
-        // because the pipeline's value may not reflect real-time measurements from pa_stream_get_latency()
-        var clockSync = new ClockSyncStats(
-            IsSynchronized: clockStatus.IsConverged,
-            ClockOffsetMs: clockStatus.OffsetMilliseconds,
-            UncertaintyMs: clockStatus.OffsetUncertaintyMicroseconds / 1000.0,
-            DriftRatePpm: clockStatus.DriftMicrosecondsPerSecond,
-            IsDriftReliable: clockStatus.IsDriftReliable,
-            MeasurementCount: clockStatus.MeasurementCount,
-            OutputLatencyMs: context.Player.OutputLatencyMs,
-            StaticDelayMs: (int)context.ClockSync.StaticDelayMs
-        );
-
-        // Throughput Stats
-        var throughput = new ThroughputStats(
-            SamplesWritten: bufferStats?.TotalSamplesWritten ?? 0,
-            SamplesRead: bufferStats?.TotalSamplesRead ?? 0,
-            SamplesDroppedOverflow: bufferStats?.DroppedSamples ?? 0
-        );
-
-        // Sync Correction Stats (frame drop/insert based on 5ms threshold)
-        var framesDropped = bufferStats?.SamplesDroppedForSync ?? 0;
-        var framesInserted = bufferStats?.SamplesInsertedForSync ?? 0;
-
-        // Determine correction mode based on CURRENT sync error, not cumulative totals
-        // Positive sync error = behind schedule (need to drop frames to catch up)
-        // Negative sync error = ahead of schedule (need to insert frames to slow down)
-        string correctionMode;
-        if (Math.Abs(syncErrorMs) <= SyncToleranceMs)
-        {
-            correctionMode = "None";
-        }
-        else if (syncErrorMs > 0)
-        {
-            correctionMode = "Dropping";
-        }
-        else
-        {
-            correctionMode = "Inserting";
-        }
-
-        var correction = new SyncCorrectionStats(
-            Mode: correctionMode,
-            FramesDropped: framesDropped,
-            FramesInserted: framesInserted,
-            ThresholdMs: 5  // Our 5ms threshold
-        );
-
-        // Buffer Diagnostics - helps debug why playback isn't starting
-        var bufferedMs = bufferStats?.BufferedMs ?? 0;
-        var targetMs = bufferStats?.TargetMs ?? 1;  // Avoid divide by zero
-        var fillPercent = (int)(bufferedMs / targetMs * 100);
-        var isPlaybackActive = bufferStats?.IsPlaybackActive ?? false;
-        var samplesRead = bufferStats?.TotalSamplesRead ?? 0;
-        var droppedOverflow = bufferStats?.DroppedSamples ?? 0;
-
-        // Determine buffer state for diagnostic purposes
-        string bufferState;
-        if (!isPlaybackActive && bufferedMs > 0 && samplesRead == 0)
-        {
-            bufferState = "Waiting for scheduled start";
-        }
-        else if (!isPlaybackActive && bufferedMs > 0 && samplesRead > 0 && droppedOverflow > 0)
-        {
-            bufferState = "Stalled (was playing, now dropping)";
-        }
-        else if (!isPlaybackActive && bufferedMs > 0)
-        {
-            bufferState = "Buffered but not playing";
-        }
-        else if (isPlaybackActive && bufferedMs > 0)
-        {
-            bufferState = "Playing";
-        }
-        else if (bufferedMs == 0)
-        {
-            bufferState = "Empty";
-        }
-        else
-        {
-            bufferState = "Unknown";
-        }
-
-        // Get pipeline state
-        var pipelineState = context.Pipeline.State.ToString();
-
-        var diagnostics = new BufferDiagnostics(
-            State: bufferState,
-            FillPercent: Math.Min(fillPercent, 100),
-            HasReceivedSamples: samplesRead > 0,
-            ElapsedSinceFirstReadMs: -1,  // Not available without BufferedAudioSampleSource ref
-            ElapsedSinceLastSuccessMs: -1,  // Not available without BufferedAudioSampleSource ref
-            DroppedOverflow: droppedOverflow,
-            PipelineState: pipelineState,
-            SmoothedSyncErrorUs: (long)(bufferStats?.SyncErrorMicroseconds ?? 0)
-        );
-
-        return new PlayerStatsResponse(
-            PlayerName: name,
-            AudioFormat: audioFormat,
-            Sync: sync,
-            Buffer: buffer,
-            ClockSync: clockSync,
-            Throughput: throughput,
-            Correction: correction,
-            Diagnostics: diagnostics
-        );
+        // Use cached device info (captured at player creation)
+        // This avoids running pactl every time stats are requested
+        return PlayerStatsMapper.BuildStats(
+            name,
+            context.Pipeline,
+            context.ClockSync,
+            context.Player,
+            context.CachedDevice);
     }
 
     private static string GenerateClientId(string name)
@@ -1867,13 +3112,81 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             new AudioFormat { Codec = "flac", SampleRate = 192000, Channels = 2 },
             new AudioFormat { Codec = "flac", SampleRate = 96000, Channels = 2 },
             new AudioFormat { Codec = "flac", SampleRate = 48000, Channels = 2 },
+            new AudioFormat { Codec = "flac", SampleRate = 44100, Channels = 2 },
             // Hi-res PCM
+            new AudioFormat { Codec = "pcm", SampleRate = 192000, Channels = 2, BitDepth = 32 },
+            new AudioFormat { Codec = "pcm", SampleRate = 96000, Channels = 2, BitDepth = 32 },
+            new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 32 },
             new AudioFormat { Codec = "pcm", SampleRate = 192000, Channels = 2, BitDepth = 24 },
             new AudioFormat { Codec = "pcm", SampleRate = 96000, Channels = 2, BitDepth = 24 },
+            new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 24 },
             new AudioFormat { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 16 },
+            new AudioFormat { Codec = "pcm", SampleRate = 44100, Channels = 2, BitDepth = 16 },
             // Opus for efficiency when streaming
             new AudioFormat { Codec = "opus", SampleRate = 48000, Channels = 2, Bitrate = 256 },
         };
+    }
+
+    /// <summary>
+    /// Filters advertised audio formats based on user preference.
+    /// Defaults to flac-48000 for maximum MA compatibility when no format specified.
+    /// </summary>
+    /// <param name="allFormats">List of all supported formats.</param>
+    /// <param name="advertisedFormat">Format preference string (e.g., "flac-192000", "pcm-96000-24"). If null/empty, defaults to "flac-48000".</param>
+    /// <returns>Filtered list containing only the preferred format, or all formats if preference is "all".</returns>
+    private List<AudioFormat> FilterFormatsByPreference(List<AudioFormat> allFormats, string? advertisedFormat)
+    {
+        // Default to flac-48000 for maximum compatibility with all MA builds
+        if (string.IsNullOrWhiteSpace(advertisedFormat))
+        {
+            advertisedFormat = "flac-48000";
+        }
+
+        // If explicitly set to "all", return all formats
+        if (advertisedFormat.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            return allFormats;
+        }
+
+        // Parse format string (e.g., "flac-192000" or "pcm-96000-24")
+        var parts = advertisedFormat.Split('-');
+        if (parts.Length < 2)
+        {
+            _logger.LogWarning("Invalid advertised format '{Format}', using all formats", advertisedFormat);
+            return allFormats;
+        }
+
+        var codec = parts[0].ToLowerInvariant();
+        if (!int.TryParse(parts[1], out var sampleRate))
+        {
+            _logger.LogWarning("Invalid sample rate in format '{Format}', using all formats", advertisedFormat);
+            return allFormats;
+        }
+
+        int? bitDepth = null;
+        if (parts.Length >= 3 && int.TryParse(parts[2], out var parsedBitDepth))
+        {
+            bitDepth = parsedBitDepth;
+        }
+
+        // Find matching format
+        var matchingFormat = allFormats.FirstOrDefault(f =>
+            f.Codec.Equals(codec, StringComparison.OrdinalIgnoreCase) &&
+            f.SampleRate == sampleRate &&
+            (bitDepth == null || f.BitDepth == bitDepth));
+
+        if (matchingFormat != null)
+        {
+            _logger.LogInformation(
+                "Advertising single format: {Codec} {SampleRate}Hz{BitDepth}",
+                matchingFormat.Codec,
+                matchingFormat.SampleRate,
+                matchingFormat.BitDepth.HasValue ? $" {matchingFormat.BitDepth}-bit" : "");
+            return new List<AudioFormat> { matchingFormat };
+        }
+
+        _logger.LogWarning("Format '{Format}' not found, using all formats", advertisedFormat);
+        return allFormats;
     }
 
     /// <summary>
@@ -1884,11 +3197,18 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     /// <param name="reason">The reason for stopping (error message).</param>
     private async Task StopPlayerInternalAsync(string name, string reason)
     {
+        // Cancel any pending device loss grace period for this player
+        if (_deviceLossGracePeriods.TryRemove(name, out var graceCts))
+        {
+            graceCts.Cancel();
+            graceCts.Dispose();
+        }
+
         if (!_players.TryGetValue(name, out var context))
             return;
 
         // Prevent re-entrancy if already stopping
-        if (context.State == PlayerState.Error || context.State == PlayerState.Stopped)
+        if (context.State == Models.PlayerState.Error || context.State == Models.PlayerState.Stopped)
         {
             _logger.LogDebug("Player '{Name}' already in {State} state, skipping internal stop", name, context.State);
             return;
@@ -1896,10 +3216,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
 
         _logger.LogInformation("Internal stop for player '{Name}': {Reason}", name, reason);
 
+        // Notify trigger service that player stopped
+        _triggerService.OnPlayerStopped(name, context.Config.DeviceId);
+
         try
         {
             // Update state to error first
-            context.State = PlayerState.Error;
+            context.State = Models.PlayerState.Error;
             context.ErrorMessage = reason;
 
             // Stop the pipeline gracefully
@@ -1959,59 +3282,53 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
     }
 
-    /// <summary>
-    /// Safely executes a fire-and-forget task, ensuring any exceptions are logged.
-    /// Use this when discarding a Task to prevent unobserved exceptions.
-    /// </summary>
-    /// <param name="task">The task to execute.</param>
-    /// <param name="context">Description of what the task is doing (for logging).</param>
-    private void FireAndForget(Task task, string context)
-    {
-        task.ContinueWith(
-            t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
-                {
-                    _logger.LogError(t.Exception.InnerException ?? t.Exception,
-                        "Unhandled exception in fire-and-forget task: {Context}", context);
-                }
-            },
-            TaskScheduler.Default);
-    }
-
-    /// <summary>
-    /// Fire-and-forget overload that accepts an async lambda.
-    /// </summary>
-    private void FireAndForget(Func<Task> taskFactory, string context)
-    {
-        FireAndForget(Task.Run(taskFactory), context);
-    }
-
     #region Reconnection Methods
 
     /// <summary>
     /// Queues a player for automatic reconnection.
     /// </summary>
-    private void QueueForReconnection(PlayerConfiguration config, bool isInitialFailure = false)
+    private void QueueForReconnection(PlayerConfiguration config, bool mdnsOnly = false)
     {
         if (_disposed)
             return;
 
         var state = _pendingReconnections.GetOrAdd(config.Name, _ => new ReconnectionState(config));
 
-        // Calculate next retry time with exponential backoff
-        var delay = CalculateBackoffDelay(state.RetryCount);
-        var nextRetry = DateTime.UtcNow.Add(delay);
-
-        _pendingReconnections[config.Name] = state with
+        if (mdnsOnly)
         {
-            RetryCount = state.RetryCount + 1,
-            NextRetryTime = nextRetry
-        };
+            // mDNS-only mode: no polling retries, just wait passively for mDNS watch.
+            // NextRetryTime set to MaxValue so the polling loop never picks this up.
+            _pendingReconnections[config.Name] = state with
+            {
+                RetryCount = 0,
+                NextRetryTime = DateTime.MaxValue,
+                MdnsOnly = true
+            };
 
-        _logger.LogInformation(
-            "Player '{Name}' queued for reconnection (attempt {Attempt}, next retry in {Delay:F0}s)",
-            config.Name, state.RetryCount + 1, delay.TotalSeconds);
+            _logger.LogInformation(
+                "Player '{Name}' waiting for server discovery via mDNS (no active retries)",
+                config.Name);
+        }
+        else
+        {
+            // Normal reconnection: exponential backoff polling + mDNS watch
+            var delay = CalculateBackoffDelay(state.RetryCount);
+            var nextRetry = DateTime.UtcNow.Add(delay);
+
+            _pendingReconnections[config.Name] = state with
+            {
+                RetryCount = state.RetryCount + 1,
+                NextRetryTime = nextRetry,
+                MdnsOnly = false
+            };
+
+            _logger.LogInformation(
+                "Player '{Name}' queued for reconnection (attempt {Attempt}, next retry in {Delay:F0}s)",
+                config.Name, state.RetryCount + 1, delay.TotalSeconds);
+        }
+
+        // Start mDNS watch to detect server reappearance immediately
+        StartMdnsWatch();
 
         // Broadcast status so UI shows reconnection state
         _ = BroadcastStatusAsync();
@@ -2025,7 +3342,96 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         if (_pendingReconnections.TryRemove(name, out _))
         {
             _logger.LogDebug("Player '{Name}' removed from reconnection queue", name);
+
+            // Stop mDNS watch if no more players are pending
+            if (_pendingReconnections.IsEmpty)
+            {
+                StopMdnsWatch();
+            }
         }
+    }
+
+    /// <summary>
+    /// Starts continuous mDNS discovery to detect when a server reappears.
+    /// When a server is found, all pending players' backoff timers are reset
+    /// to trigger immediate reconnection.
+    /// </summary>
+    private void StartMdnsWatch()
+    {
+        if (_mdnsWatchActive || _disposed)
+            return;
+
+        _mdnsWatchActive = true;
+        // Subscribe to both Found (new server) and Updated (returning server already in cache)
+        _serverDiscovery.ServerFound += OnMdnsServerFound;
+        _serverDiscovery.ServerUpdated += OnMdnsServerFound;
+        _serverDiscovery.StartAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                _logger.LogWarning(t.Exception, "Failed to start mDNS watch");
+            else
+                _logger.LogInformation("mDNS watch started - listening for server reappearance");
+        });
+    }
+
+    /// <summary>
+    /// Stops continuous mDNS discovery when no players are pending reconnection.
+    /// </summary>
+    private void StopMdnsWatch()
+    {
+        if (!_mdnsWatchActive)
+            return;
+
+        _mdnsWatchActive = false;
+        _serverDiscovery.ServerFound -= OnMdnsServerFound;
+        _serverDiscovery.ServerUpdated -= OnMdnsServerFound;
+        _serverDiscovery.StopAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                _logger.LogWarning(t.Exception, "Failed to stop mDNS watch");
+            else
+                _logger.LogDebug("mDNS watch stopped");
+        });
+    }
+
+    /// <summary>
+    /// Called when mDNS discovers a server while players are pending reconnection.
+    /// Resets all pending players' backoff timers to trigger immediate reconnection.
+    /// </summary>
+    private void OnMdnsServerFound(object? sender, DiscoveredServer server)
+    {
+        var pendingCount = _pendingReconnections.Count;
+        if (pendingCount == 0)
+            return;
+
+        _logger.LogInformation(
+            "mDNS discovered server '{Name}' at {Host}:{Port} - triggering immediate reconnection for {Count} player(s)",
+            server.Name, server.Host, server.Port, pendingCount);
+
+        // Stop watching now that we've found the server.
+        // If reconnection fails, QueueForReconnection will restart the watch.
+        StopMdnsWatch();
+
+        // Cache the discovered server URI so reconnection attempts use it directly
+        var host = server.IpAddresses.FirstOrDefault() ?? server.Host;
+        _cachedServerUri = new Uri($"ws://{host}:{server.Port}/sendspin");
+        _cachedServerUriExpiry = DateTime.UtcNow.Add(CachedServerTtl);
+
+        // Reset all pending players' backoff timers to now and clear mDNS-only mode.
+        // After mDNS discovery, if connection still fails, normal backoff retries kick in.
+        foreach (var kvp in _pendingReconnections)
+        {
+            _pendingReconnections[kvp.Key] = kvp.Value with
+            {
+                NextRetryTime = DateTime.UtcNow,
+                MdnsOnly = false
+            };
+        }
+
+        // Wake the reconnection loop immediately instead of waiting for the 1s poll
+        SignalReconnectionLoop();
+
+        _ = BroadcastStatusAsync();
     }
 
     /// <summary>
@@ -2040,7 +3446,19 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
     }
 
     /// <summary>
+    /// Wakes the reconnection loop to process pending players immediately.
+    /// Called by OnMdnsServerFound when a server is discovered.
+    /// </summary>
+    private void SignalReconnectionLoop()
+    {
+        // Release the semaphore if it's not already signaled (max count is 1)
+        try { _reconnectionSignal.Release(); }
+        catch (SemaphoreFullException) { /* Already signaled */ }
+    }
+
+    /// <summary>
     /// Background task that processes pending reconnection attempts.
+    /// Wakes on 1-second polling interval OR immediately when signaled (e.g. mDNS discovery).
     /// </summary>
     private async Task ProcessReconnectionsAsync(CancellationToken ct)
     {
@@ -2050,21 +3468,25 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                // Wait up to 1 second, but wake immediately if signaled
+                try { await _reconnectionSignal.WaitAsync(TimeSpan.FromSeconds(1), ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
 
                 var now = DateTime.UtcNow;
                 var playersToReconnect = _pendingReconnections
                     .Where(kvp => kvp.Value.NextRetryTime <= now && !kvp.Value.WasUserStopped)
-                    .Select(kvp => kvp.Key)
+                    .Select(kvp => (kvp.Key, kvp.Value))
                     .ToList();
 
-                foreach (var name in playersToReconnect)
+                if (playersToReconnect.Count == 0)
+                    continue;
+
+                // Reconnect all ready players concurrently
+                var tasks = new List<Task>();
+                foreach (var (name, state) in playersToReconnect)
                 {
                     if (ct.IsCancellationRequested || _disposed)
                         break;
-
-                    if (!_pendingReconnections.TryGetValue(name, out var state))
-                        continue;
 
                     // Check if max attempts reached (if configured)
                     if (MaxReconnectAttempts > 0 && state.RetryCount >= MaxReconnectAttempts)
@@ -2076,8 +3498,11 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                         continue;
                     }
 
-                    await TryReconnectPlayerAsync(name, state, ct);
+                    tasks.Add(TryReconnectPlayerAsync(name, state, ct));
                 }
+
+                if (tasks.Count > 0)
+                    await Task.WhenAll(tasks);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -2110,6 +3535,13 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 await RemoveAndDisposePlayerAsync(name);
             }
 
+            // Only invalidate cached server URI if the mDNS watch hasn't found a server.
+            // If the watch already found one, use that cached URI for fast reconnection.
+            if (!_mdnsWatchActive || _cachedServerUri == null)
+            {
+                _cachedServerUri = null;
+            }
+
             var request = new PlayerCreateRequest
             {
                 Name = state.Config.Name,
@@ -2118,17 +3550,28 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
                 ServerUrl = state.Config.Server,
                 Volume = state.Config.Volume ?? 100,
                 DelayMs = state.Config.DelayMs,
+                AdvertisedFormat = state.Config.AdvertisedFormat,
                 Persist = false // Already persisted
             };
 
             await CreatePlayerAsync(request, ct);
 
-            // Success - remove from queue
-            _pendingReconnections.TryRemove(name, out _);
-            _logger.LogInformation("Player '{Name}' reconnected successfully after {Attempts} attempt(s)",
-                name, state.RetryCount);
+            // CreatePlayerAsync returns before the connection completes (it's fire-and-forget).
+            // Wait for the actual connection to succeed or fail before deciding.
+            var connected = await WaitForPlayerConnectionAsync(name, TimeSpan.FromSeconds(20), ct);
+
+            if (connected)
+            {
+                _pendingReconnections.TryRemove(name, out _);
+                _logger.LogInformation("Player '{Name}' reconnected successfully after {Attempts} attempt(s)",
+                    name, state.RetryCount);
+            }
+            else
+            {
+                throw new InvalidOperationException("Connection did not succeed within timeout");
+            }
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
+        catch (EntityAlreadyExistsException)
         {
             // Player was created by another path, remove from queue
             _pendingReconnections.TryRemove(name, out _);
@@ -2145,12 +3588,46 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Reconnection attempt {Attempt} failed for player '{Name}'",
-                state.RetryCount, name);
+            _logger.LogWarning("Reconnection attempt {Attempt} failed for player '{Name}': {Message}",
+                state.RetryCount, name, ex.Message);
+            _logger.LogDebug(ex, "Player '{Name}' reconnection failure details", name);
 
-            // Queue next attempt
+            // Remove the failed player so the UI shows "Reconnecting (attempt N)"
+            // instead of "Error: ..." during the backoff period. Without this cleanup,
+            // the player sits in _players with Error state and the API shows the live
+            // player state instead of the reconnection queue state.
+            if (_players.ContainsKey(name))
+                await RemoveAndDisposePlayerAsync(name);
+
+            // Queue next attempt with incremented retry count
             QueueForReconnection(state.Config);
         }
+    }
+
+    /// <summary>
+    /// Waits for a player's background connection to reach a terminal state.
+    /// CreatePlayerAsync starts the connection via fire-and-forget, so we need
+    /// to poll the player state to know if it actually connected.
+    /// </summary>
+    private async Task<bool> WaitForPlayerConnectionAsync(string name, TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+
+        while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+        {
+            await Task.Delay(500, ct);
+
+            if (!_players.TryGetValue(name, out var ctx))
+                return false; // Player was removed (disposed during connection)
+
+            if (ctx.State is Models.PlayerState.Connected or Models.PlayerState.Playing or Models.PlayerState.Buffering)
+                return true;
+
+            if (ctx.State is Models.PlayerState.Error or Models.PlayerState.Stopped)
+                return false;
+        }
+
+        return false;
     }
 
     #endregion
@@ -2175,12 +3652,23 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Stop reconnection task
             _reconnectionCts?.Cancel();
             _pendingReconnections.Clear();
+            _devicePendingPlayers.Clear();
 
             // Take snapshot and clear while holding lock
             // This prevents race conditions with concurrent player operations
             contextsToDispose = _players.Values.ToList();
             _players.Clear();
         }
+
+        // Unsubscribe from device change events
+        if (_subscriptionService != null)
+        {
+            _subscriptionService.SinkAppeared -= OnSinkAppeared;
+            _subscriptionService.SinkDisappeared -= OnSinkDisappeared;
+        }
+
+        // Stop mDNS watch outside lock
+        StopMdnsWatch();
 
         // Dispose outside lock to avoid potential deadlocks
         foreach (var context in contextsToDispose)
@@ -2200,6 +3688,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
+        _reconnectionSignal.Dispose();
+        _sinkEventLock.Dispose();
         _logger.LogInformation("PlayerManagerService disposed");
     }
 
@@ -2219,12 +3709,23 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             // Stop reconnection task
             _reconnectionCts?.Cancel();
             _pendingReconnections.Clear();
+            _devicePendingPlayers.Clear();
 
             // Take snapshot and clear while holding lock
             // This prevents race conditions with concurrent player operations
             contextsToDispose = _players.Values.ToList();
             _players.Clear();
         }
+
+        // Unsubscribe from device change events
+        if (_subscriptionService != null)
+        {
+            _subscriptionService.SinkAppeared -= OnSinkAppeared;
+            _subscriptionService.SinkDisappeared -= OnSinkDisappeared;
+        }
+
+        // Stop mDNS watch outside lock
+        StopMdnsWatch();
 
         // Dispose outside lock to avoid potential deadlocks
         foreach (var context in contextsToDispose)
@@ -2242,6 +3743,8 @@ public class PlayerManagerService : IHostedService, IAsyncDisposable, IDisposabl
             }
         }
 
+        _reconnectionSignal.Dispose();
+        _sinkEventLock.Dispose();
         _logger.LogInformation("PlayerManagerService disposed asynchronously");
     }
 

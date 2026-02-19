@@ -2,10 +2,13 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using MultiRoomAudio.Models;
 
+// DeviceIdentifiers is used for card identifier extraction
+
 namespace MultiRoomAudio.Audio.PulseAudio;
 
 /// <summary>
 /// Enumerates PulseAudio sound cards and their profiles using pactl commands.
+/// Uses PactlCommandRunner for command execution with retry logic.
 /// </summary>
 public static partial class PulseAudioCardEnumerator
 {
@@ -17,6 +20,7 @@ public static partial class PulseAudioCardEnumerator
     public static void SetLogger(ILogger? logger)
     {
         _logger = logger;
+        PactlCommandRunner.SetLogger(logger);
     }
 
     /// <summary>
@@ -204,13 +208,57 @@ public static partial class PulseAudioCardEnumerator
         var activeMatch = ActiveProfileRegex().Match(block);
         var activeProfile = activeMatch.Success ? activeMatch.Groups[1].Value.Trim() : "";
 
+        // Extract stable device identifiers
+        var identifiers = ParseCardIdentifiers(block);
+
         return new PulseAudioCard(
             Index: index,
             Name: cardName,
             Driver: driver,
             Description: description,
             Profiles: profiles,
-            ActiveProfile: activeProfile
+            ActiveProfile: activeProfile,
+            Identifiers: identifiers
+        );
+    }
+
+    /// <summary>
+    /// Extracts stable device identifiers from the Properties section of a pactl card block.
+    /// These identifiers persist across reboots and can be used to re-match cards.
+    /// </summary>
+    private static DeviceIdentifiers? ParseCardIdentifiers(string block)
+    {
+        var serialMatch = DeviceSerialRegex().Match(block);
+        var busPathMatch = DeviceBusPathRegex().Match(block);
+        var vendorIdMatch = DeviceVendorIdRegex().Match(block);
+        var productIdMatch = DeviceProductIdRegex().Match(block);
+        var alsaLongCardNameMatch = AlsaLongCardNameRegex().Match(block);
+        // Try multiple property names for Bluetooth MAC (varies by PulseAudio version)
+        var bluetoothMacMatch = BluetoothMacRegex().Match(block);
+        if (!bluetoothMacMatch.Success)
+            bluetoothMacMatch = DeviceStringMacRegex().Match(block);
+
+        // Try multiple property names for Bluetooth codec
+        var bluetoothCodecMatch = BluetoothCodecRegex().Match(block);
+        if (!bluetoothCodecMatch.Success)
+            bluetoothCodecMatch = BluetoothCodecAltRegex().Match(block);
+
+        // Only create identifiers if we found at least one useful property
+        if (!serialMatch.Success && !busPathMatch.Success && !vendorIdMatch.Success &&
+            !productIdMatch.Success && !alsaLongCardNameMatch.Success &&
+            !bluetoothMacMatch.Success && !bluetoothCodecMatch.Success)
+        {
+            return null;
+        }
+
+        return new DeviceIdentifiers(
+            Serial: serialMatch.Success ? serialMatch.Groups[1].Value : null,
+            BusPath: busPathMatch.Success ? busPathMatch.Groups[1].Value : null,
+            VendorId: vendorIdMatch.Success ? vendorIdMatch.Groups[1].Value : null,
+            ProductId: productIdMatch.Success ? productIdMatch.Groups[1].Value : null,
+            AlsaLongCardName: alsaLongCardNameMatch.Success ? alsaLongCardNameMatch.Groups[1].Value : null,
+            BluetoothMac: bluetoothMacMatch.Success ? bluetoothMacMatch.Groups[1].Value : null,
+            BluetoothCodec: bluetoothCodecMatch.Success ? bluetoothCodecMatch.Groups[1].Value : null
         );
     }
 
@@ -264,13 +312,25 @@ public static partial class PulseAudioCardEnumerator
     }
 
     /// <summary>
-    /// Gets all sink names belonging to a specific card.
+    /// Gets all sink names belonging to a specific card by matching device identifiers.
+    /// Uses name-based matching instead of index-based matching for reliability.
     /// </summary>
-    /// <param name="cardIndex">The card index to find sinks for.</param>
+    /// <param name="cardName">The card name (e.g., "alsa_card.pci-0000_01_00.0").</param>
     /// <returns>List of sink names belonging to the card.</returns>
-    public static List<string> GetSinksByCard(int cardIndex)
+    public static List<string> GetSinksByCard(string cardName)
     {
         var sinks = new List<string>();
+
+        // Extract identifier from card name (e.g., "alsa_card.pci-0000_01_00.0" → "pci-0000_01_00.0")
+        // Also handle BlueZ cards (e.g., "bluez_card.6C_5C_3D_3B_15_3F" → "6C_5C_3D_3B_15_3F")
+        var identifier = cardName
+            .Replace("alsa_card.", "")
+            .Replace("bluez_card.", "");
+        if (string.IsNullOrEmpty(identifier))
+        {
+            _logger?.LogWarning("Could not extract identifier from card name '{CardName}'", cardName);
+            return sinks;
+        }
 
         try
         {
@@ -286,28 +346,21 @@ public static partial class PulseAudioCardEnumerator
                 if (!nameMatch.Success)
                     continue;
 
-                var cardMatch = Regex.Match(block, @"alsa\.card\s*=\s*""(\d+)""");
-                if (!cardMatch.Success)
-                {
-                    cardMatch = Regex.Match(block, @"device\.card\s*=\s*""(\d+)""");
-                }
+                var sinkName = nameMatch.Groups[1].Value.Trim();
 
-                if (!cardMatch.Success)
-                    continue;
-
-                if (int.TryParse(cardMatch.Groups[1].Value, out var sinkCard) && sinkCard == cardIndex)
+                // Match by identifier in sink name (e.g., "alsa_output.pci-0000_01_00.0.analog-stereo")
+                if (sinkName.Contains(identifier, StringComparison.OrdinalIgnoreCase))
                 {
-                    var sinkName = nameMatch.Groups[1].Value.Trim();
                     sinks.Add(sinkName);
-                    _logger?.LogDebug("Found sink '{Sink}' belonging to card {Card}", sinkName, cardIndex);
+                    _logger?.LogDebug("Found sink '{Sink}' belonging to card '{Card}'", sinkName, cardName);
                 }
             }
 
-            _logger?.LogDebug("Found {Count} sinks for card {Card}", sinks.Count, cardIndex);
+            _logger?.LogDebug("Found {Count} sinks for card '{Card}' (identifier: {Identifier})", sinks.Count, cardName, identifier);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to enumerate sinks for card {Card}", cardIndex);
+            _logger?.LogError(ex, "Failed to enumerate sinks for card '{Card}'", cardName);
         }
 
         return sinks;
@@ -348,97 +401,7 @@ public static partial class PulseAudioCardEnumerator
         return muteStates;
     }
 
-    /// <summary>
-    /// Maximum retries for pactl commands when PulseAudio is temporarily unavailable.
-    /// </summary>
-    private const int MaxPactlRetries = 3;
-
-    /// <summary>
-    /// Delay between pactl retry attempts in milliseconds.
-    /// </summary>
-    private const int PactlRetryDelayMs = 500;
-
-    private static string? RunPactl(string arguments)
-    {
-        Exception? lastException = null;
-        string? lastError = null;
-
-        for (int attempt = 1; attempt <= MaxPactlRetries; attempt++)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "pactl",
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(psi);
-                if (process == null)
-                {
-                    lastError = "Failed to start pactl process";
-                    continue;
-                }
-
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit(5000);
-
-                if (process.ExitCode != 0)
-                {
-                    lastError = error.Trim();
-
-                    // Check if this is a connection error that might be transient
-                    if (error.Contains("Connection refused") ||
-                        error.Contains("Connection failure") ||
-                        error.Contains("No PulseAudio daemon running"))
-                    {
-                        if (attempt < MaxPactlRetries)
-                        {
-                            _logger?.LogDebug(
-                                "pactl {Args} failed (attempt {Attempt}/{Max}): {Error}. Retrying...",
-                                arguments, attempt, MaxPactlRetries, lastError);
-                            Thread.Sleep(PactlRetryDelayMs);
-                            continue;
-                        }
-                    }
-
-                    _logger?.LogWarning("pactl {Args} failed: {Error}", arguments, lastError);
-                    return null;
-                }
-
-                // Success - return output
-                return output;
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-                if (attempt < MaxPactlRetries)
-                {
-                    _logger?.LogDebug(ex,
-                        "pactl {Args} threw exception (attempt {Attempt}/{Max}). Retrying...",
-                        arguments, attempt, MaxPactlRetries);
-                    Thread.Sleep(PactlRetryDelayMs);
-                }
-            }
-        }
-
-        // All retries exhausted
-        if (lastException != null)
-        {
-            _logger?.LogError(lastException, "Failed to run pactl {Args} after {Attempts} attempts", arguments, MaxPactlRetries);
-        }
-        else if (lastError != null)
-        {
-            _logger?.LogWarning("pactl {Args} failed after {Attempts} attempts: {Error}", arguments, MaxPactlRetries, lastError);
-        }
-
-        return null;
-    }
+    private static string? RunPactl(string arguments) => PactlCommandRunner.Run(arguments);
 
     // Regex patterns for parsing pactl output
 
@@ -471,4 +434,35 @@ public static partial class PulseAudioCardEnumerator
 
     [GeneratedRegex(@"^[a-zA-Z0-9_\-.:+]+$")]
     private static partial Regex ProfileNameValidationRegex();
+
+    // Regex patterns for stable device identifiers (from Properties section)
+    [GeneratedRegex(@"device\.serial\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex DeviceSerialRegex();
+
+    [GeneratedRegex(@"device\.bus_path\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex DeviceBusPathRegex();
+
+    [GeneratedRegex(@"device\.vendor\.id\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex DeviceVendorIdRegex();
+
+    [GeneratedRegex(@"device\.product\.id\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex DeviceProductIdRegex();
+
+    [GeneratedRegex(@"alsa\.long_card_name\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex AlsaLongCardNameRegex();
+
+    // Regex patterns for Bluetooth device identifiers
+    // Primary: PipeWire style
+    [GeneratedRegex(@"api\.bluez5\.address\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex BluetoothMacRegex();
+
+    [GeneratedRegex(@"api\.bluez5\.codec\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex BluetoothCodecRegex();
+
+    // Alternative: PulseAudio style - device.string contains MAC for Bluetooth devices
+    [GeneratedRegex(@"device\.string\s*=\s*""([0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2})""", RegexOptions.Multiline)]
+    private static partial Regex DeviceStringMacRegex();
+
+    [GeneratedRegex(@"bluetooth\.codec\s*=\s*""([^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex BluetoothCodecAltRegex();
 }

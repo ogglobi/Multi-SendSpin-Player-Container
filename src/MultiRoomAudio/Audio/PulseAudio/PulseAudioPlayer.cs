@@ -66,9 +66,11 @@ public class PulseAudioPlayer : IAudioPlayer
     private const int InitialLatencyEstimateMs = 70;
 
     /// <summary>
-    /// Frames to request per write. At 48kHz, 1024 frames = ~21ms.
+    /// Frames to request per write. At 48kHz, 6144 frames = ~128ms.
+    /// This accommodates large PA requests in VM environments where
+    /// callbacks may be delayed and PA compensates by requesting more data.
     /// </summary>
-    private const int FramesPerWrite = 1024;
+    private const int FramesPerWrite = 6144;
 
     /// <summary>
     /// Connection timeout in milliseconds.
@@ -89,12 +91,30 @@ public class PulseAudioPlayer : IAudioPlayer
     private int _underflowCount;
     private ulong _lastMeasuredLatencyUs;
 
+    // Latency lock-in: collect samples during startup, then freeze to median
+    // This prevents PulseAudio measurement jitter from causing constant sync corrections
+    private volatile bool _latencyLocked;
+    private List<int>? _latencySamples;
+    private const int LatencyLockSampleCount = 100;  // ~1 second at 10ms callbacks
+    private const int LatencyLockWarmupSamples = 20; // Skip first 20 (~200ms) for warmup
+    private const int MaxReasonableLatencyMs = 200;  // Cap unreasonable latency (e.g., Pi 4 reports 1000ms)
+    private const int HighVarianceThresholdMs = 200; // If range exceeds this, measurements are unreliable
+
     // Diagnostic counters for monitoring callback behavior
     private long _callbackCount;
     private long _silenceWriteCount;
     private long _zeroReadCount;
     private DateTime _playbackStartTime;
     private bool _hasLoggedFirstAudio;
+
+    // Audio clock: Unix epoch microseconds when playback started (captured at uncork time).
+    // Used to convert pa_stream_get_time() (relative) to absolute Unix time.
+    private long _playbackStartUnixMicroseconds;
+
+    // Stream time captured immediately after uncork.
+    // Subtracted from subsequent readings to get time since actual playback start.
+    // This handles any non-zero stream time that exists right after uncork.
+    private long _streamTimeAtUncorkMicroseconds;
 
     public AudioPlayerState State { get; private set; } = AudioPlayerState.Uninitialized;
 
@@ -115,8 +135,94 @@ public class PulseAudioPlayer : IAudioPlayer
 
     /// <summary>
     /// Gets the output latency in milliseconds, measured from write callbacks.
+    /// After the lock-in period (~1.2 seconds), this value freezes at the median
+    /// to prevent PulseAudio measurement jitter from causing constant sync corrections.
     /// </summary>
     public int OutputLatencyMs { get; private set; }
+
+    /// <summary>
+    /// Gets whether the output latency has stabilized and locked.
+    /// When true, OutputLatencyMs will no longer update until playback restarts.
+    /// </summary>
+    public bool IsLatencyLocked => _latencyLocked;
+
+    /// <summary>
+    /// Gets the current playback time from the PulseAudio stream in microseconds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This returns time in the sound card's clock domain via <c>pa_stream_get_time()</c>,
+    /// making it immune to VM wall clock issues. The time represents how much audio has
+    /// actually been played through the DAC.
+    /// </para>
+    /// <para>
+    /// Returns <c>null</c> when:
+    /// - Not currently playing
+    /// - Stream is not ready
+    /// - PulseAudio timing info is not available
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// Audio hardware clock time in microseconds, or <c>null</c> if not available.
+    /// </returns>
+    public long? GetAudioClockMicroseconds()
+    {
+        // THREAD SAFETY: Capture handles under lock to prevent race condition.
+        // The SDK calls this from its timing thread while playback may be stopping
+        // on another thread. Without the lock, _mainloop could become IntPtr.Zero
+        // after the null check but before ThreadedMainloopLock(), causing a segfault.
+        IntPtr mainloop;
+        IntPtr stream;
+        long startTimeUs;
+        long streamTimeAtUncork;
+
+        lock (_lock)
+        {
+            // Early exit if not in a valid state for timing queries
+            if (!_isPlaying || _disposed || _stream == IntPtr.Zero || _mainloop == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            // Capture handles and timing values while holding _lock
+            mainloop = _mainloop;
+            stream = _stream;
+            startTimeUs = _playbackStartUnixMicroseconds;
+            streamTimeAtUncork = _streamTimeAtUncorkMicroseconds;
+        }
+
+        // Check if we're already on the PulseAudio mainloop thread (i.e., called from a callback).
+        // If so, we must NOT call ThreadedMainloopLock() - the callback already holds the lock
+        // implicitly, and trying to lock again causes PulseAudio to abort with an assertion.
+        var inCallbackThread = ThreadedMainloopInThread(mainloop) != 0;
+
+        if (!inCallbackThread)
+        {
+            ThreadedMainloopLock(mainloop);
+        }
+
+        try
+        {
+            // StreamGetTime returns 0 on success, negative on error.
+            // The returned value is μs since stream started (relative time).
+            if (StreamGetTime(stream, out var streamTimeUs) == 0)
+            {
+                // Return Unix epoch microseconds: baseline + (current_stream_time - stream_time_at_uncork)
+                // This gives us elapsed time since playback actually started, converted to absolute time.
+                return startTimeUs + (long)streamTimeUs - streamTimeAtUncork;
+            }
+
+            // Timing info not available (PA_ERR_NODATA)
+            return null;
+        }
+        finally
+        {
+            if (!inCallbackThread)
+            {
+                ThreadedMainloopUnlock(mainloop);
+            }
+        }
+    }
 
     public event EventHandler<AudioPlayerState>? StateChanged;
     public event EventHandler<AudioPlayerError>? ErrorOccurred;
@@ -263,9 +369,10 @@ public class PulseAudioPlayer : IAudioPlayer
                         // TLength: Target buffer length (our latency target of 50ms).
                         TLength = targetLatencyBytes,
                         // PreBuf: Prebuffering amount before playback starts.
-                        // Set to 0 to start immediately when uncorked - we handle underflows gracefully.
-                        // Previously was targetLatencyBytes/2 which delayed startup by ~25ms.
-                        PreBuf = 0,
+                        // ~25ms prebuffer gives SDK time to reach scheduled start before PA requests samples.
+                        // Without this, PA requests immediately on uncork causing underflow while SDK waits.
+                        // This doesn't affect sync timing - SDK's scheduled start still controls playback.
+                        PreBuf = targetLatencyBytes / 2,
                         // MinReq: Minimum request size for write callbacks.
                         // Smaller = more frequent callbacks = better responsiveness to timing changes.
                         // ~10ms gives good balance between responsiveness and CPU overhead.
@@ -281,10 +388,13 @@ public class PulseAudioPlayer : IAudioPlayer
                     // InterpolateTiming + AutoTimingUpdate: Enable latency interpolation with automatic
                     // timing updates every 100ms, allowing accurate pa_stream_get_latency() calls.
                     // AdjustLatency: Tell PA to reconfigure hardware buffers to meet our target latency.
+                    // DontMove: Prevent PA from moving stream to fallback sink if target sink disappears.
+                    // This ensures player stops with error instead of continuing on wrong device.
                     var flags = StreamFlags.StartCorked |
                                 StreamFlags.InterpolateTiming |
                                 StreamFlags.AutoTimingUpdate |
-                                StreamFlags.AdjustLatency;
+                                StreamFlags.AdjustLatency |
+                                StreamFlags.DontMove;
 
                     if (StreamConnectPlayback(_stream, _sinkName, ref bufferAttr, flags, IntPtr.Zero, IntPtr.Zero) < 0)
                     {
@@ -386,13 +496,38 @@ public class PulseAudioPlayer : IAudioPlayer
             _hasLoggedFirstAudio = false;
             _playbackStartTime = DateTime.UtcNow;
 
-            // Uncork the stream to start/resume playback.
-            // Stream is connected with StartCorked flag, so we must uncork to begin.
-            // This also handles resume from pause (re-uncorking is safe).
+            // Uncork the stream and capture timing baseline IMMEDIATELY after.
+            // CRITICAL: Both Unix time and stream time must be captured right after uncork
+            // to establish an accurate baseline for audio clock synchronization.
             ThreadedMainloopLock(_mainloop);
             try
             {
+                // Uncork the stream to start/resume playback.
+                // Stream is connected with StartCorked flag, so we must uncork to begin.
                 StreamCork(_stream, 0, IntPtr.Zero, IntPtr.Zero);
+
+                // Capture Unix epoch time immediately after uncork.
+                // This is our baseline for converting stream time to absolute time.
+                _playbackStartUnixMicroseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
+
+                // Capture stream time immediately after uncork.
+                // pa_stream_get_time() may or may not reset on uncork depending on PulseAudio version.
+                // By capturing this value now and subtracting it from future readings,
+                // we measure time elapsed since playback actually started.
+                if (StreamGetTime(_stream, out var streamTimeAtUncork) == 0)
+                {
+                    _streamTimeAtUncorkMicroseconds = (long)streamTimeAtUncork;
+                    _logger.LogDebug("Audio clock baseline captured: Unix={UnixMs}ms, StreamTime={StreamTimeUs}μs ({StreamTimeMs:F1}ms)",
+                        _playbackStartUnixMicroseconds / 1000,
+                        _streamTimeAtUncorkMicroseconds,
+                        _streamTimeAtUncorkMicroseconds / 1000.0);
+                }
+                else
+                {
+                    _streamTimeAtUncorkMicroseconds = 0;
+                    _logger.LogDebug("Audio clock baseline captured: Unix={UnixMs}ms, StreamTime=unavailable",
+                        _playbackStartUnixMicroseconds / 1000);
+                }
             }
             finally
             {
@@ -467,6 +602,11 @@ public class PulseAudioPlayer : IAudioPlayer
 
         _sinkName = deviceId;
 
+        // Reset latency lock to re-learn for the new device
+        // Different audio devices have different latency characteristics
+        _latencyLocked = false;
+        _latencySamples = null;
+
         if (savedFormat != null)
         {
             try
@@ -517,7 +657,11 @@ public class PulseAudioPlayer : IAudioPlayer
         {
             _contextReady = false;
             ThreadedMainloopSignal(_mainloop, 0);
-            _logger.LogWarning("PulseAudio context disconnected: {State}", state);
+
+            if (state == ContextState.Terminated && (_disposed || !_isPlaying))
+                _logger.LogDebug("PulseAudio context disconnected (expected): {State}", state);
+            else
+                _logger.LogWarning("PulseAudio context disconnected: {State}", state);
         }
     }
 
@@ -541,8 +685,26 @@ public class PulseAudioPlayer : IAudioPlayer
 
             // Get actual error from PulseAudio context
             var errorMsg = _context != IntPtr.Zero ? GetContextError(_context) : "Unknown";
-            _logger.LogWarning("PulseAudio stream disconnected: {State}. Error: {Error}. Sink: {Sink}",
-                state, errorMsg, _sinkName ?? "default");
+
+            if (state == StreamState.Terminated && (_disposed || !_isPlaying))
+            {
+                _logger.LogDebug("PulseAudio stream disconnected (expected): {State}. Sink: {Sink}",
+                    state, _sinkName ?? "default");
+            }
+            else
+            {
+                _logger.LogWarning("PulseAudio stream disconnected: {State}. Error: {Error}. Sink: {Sink}",
+                    state, errorMsg, _sinkName ?? "default");
+
+                // Fire error event so PlayerManagerService can auto-stop the player.
+                // This handles device removal (USB unplug) - with DontMove flag, PA fails the
+                // stream instead of moving it to a fallback sink.
+                // IMPORTANT: Must dispatch off the PA thread - this callback runs with the
+                // mainloop lock held, and the error handler will try to stop the player
+                // which needs to acquire the same lock, causing a deadlock.
+                var error = $"Audio device lost: {errorMsg}";
+                ThreadPool.QueueUserWorkItem(_ => OnError(error));
+            }
         }
     }
 
@@ -584,12 +746,73 @@ public class PulseAudioPlayer : IAudioPlayer
             _lastMeasuredLatencyUs = latencyUs;
             var newLatencyMs = (int)(latencyUs / 1000);
 
-            // Hysteresis: Only update if change exceeds 5ms to avoid jitter in reported latency
-            if (Math.Abs(newLatencyMs - OutputLatencyMs) > 5)
+            if (!_latencyLocked)
             {
-                OutputLatencyMs = newLatencyMs;
-                _logger.LogDebug("Measured latency: {Latency}ms", newLatencyMs);
+                // During startup: collect samples for lock-in
+                // USB audio devices report jittery latency values (±25-50ms) due to
+                // PulseAudio's timer-based scheduling and USB isochronous transfer timing.
+                // We collect samples and lock to the median to avoid constant sync corrections.
+                //
+                // IMPORTANT: Skip 0ms or very low latency values (<5ms) - these occur when
+                // PA hasn't established accurate timing yet. Including them corrupts the median
+                // (e.g., range 0-38ms locks at 36ms when actual latency is ~70ms), causing
+                // multi-room sync issues when rooms join at different times.
+                if (newLatencyMs >= 5)
+                {
+                    _latencySamples ??= new List<int>(LatencyLockSampleCount + LatencyLockWarmupSamples);
+                    _latencySamples.Add(newLatencyMs);
+
+                    if (_latencySamples.Count >= LatencyLockSampleCount + LatencyLockWarmupSamples)
+                    {
+                        // Discard warmup samples, compute median of the rest
+                        var stableSamples = _latencySamples.Skip(LatencyLockWarmupSamples).OrderBy(x => x).ToList();
+                        var median = stableSamples[stableSamples.Count / 2];
+                        var minLatency = stableSamples.First();
+                        var maxLatency = stableSamples.Last();
+                        var range = maxLatency - minLatency;
+
+                        // Handle unreliable measurements (e.g., Pi 4 reporting 132-1376ms range)
+                        if (range > HighVarianceThresholdMs)
+                        {
+                            // Wide variance indicates unreliable timing from hardware.
+                            // Use minimum + small margin instead of median to avoid massive sync errors.
+                            OutputLatencyMs = Math.Min(minLatency + 20, MaxReasonableLatencyMs);
+                            _logger.LogWarning(
+                                "Latency range {Range}ms too wide (min={Min}ms, max={Max}ms). " +
+                                "Using {Latency}ms instead of median {Median}ms to avoid sync issues",
+                                range, minLatency, maxLatency, OutputLatencyMs, median);
+                        }
+                        else if (median > MaxReasonableLatencyMs)
+                        {
+                            // Even with stable measurements, cap at reasonable maximum
+                            OutputLatencyMs = MaxReasonableLatencyMs;
+                            _logger.LogWarning(
+                                "Measured latency {Median}ms exceeds maximum, capping to {Max}ms",
+                                median, MaxReasonableLatencyMs);
+                        }
+                        else
+                        {
+                            // Normal case: use median
+                            OutputLatencyMs = median;
+                            _logger.LogInformation(
+                                "Latency locked at {Latency}ms (median of {Count} samples, range: {Min}-{Max}ms)",
+                                OutputLatencyMs, stableSamples.Count, minLatency, maxLatency);
+                        }
+
+                        _latencyLocked = true;
+                        _latencySamples = null; // Free memory
+                    }
+                    else
+                    {
+                        // During collection: use current measurement (with hysteresis)
+                        if (Math.Abs(newLatencyMs - OutputLatencyMs) > 5)
+                        {
+                            OutputLatencyMs = newLatencyMs;
+                        }
+                    }
+                }
             }
+            // After lock: OutputLatencyMs stays frozen, no updates
         }
 
         // Read volatile fields into locals for consistent access within this callback.
@@ -618,9 +841,12 @@ public class PulseAudioPlayer : IAudioPlayer
         var bytesPerSample = sizeof(float);
         var samplesRequested = bytesRequested / bytesPerSample;
 
-        // Cap request to our pre-allocated buffer size
+        // Warn if PA requests more than our buffer (shouldn't happen with larger buffer)
         if (samplesRequested > sampleBuffer.Length)
         {
+            _logger.LogWarning(
+                "PA requested {Requested} samples but buffer is {BufferSize}. Capping request.",
+                samplesRequested, sampleBuffer.Length);
             samplesRequested = sampleBuffer.Length;
         }
 

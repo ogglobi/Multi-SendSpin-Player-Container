@@ -5,13 +5,13 @@
 // It guides users through device discovery, identification, naming, and player creation.
 
 // Sanitize a string to be a valid player name
-// Player names can only contain: alphanumeric, spaces, hyphens, underscores, apostrophes
+// Player names can contain any printable characters except control characters
 // This matches the backend validation in PlayerManagerService.ValidatePlayerName()
 function sanitizePlayerName(name) {
     if (!name) return '';
 
-    // Remove any characters that aren't alphanumeric, space, hyphen, underscore, or apostrophe
-    let sanitized = name.replace(/[^a-zA-Z0-9\s\-_']/g, '');
+    // Remove only control characters (allow international characters, symbols, etc.)
+    let sanitized = name.replace(/[\x00-\x1F\x7F]/g, '');
 
     // Collapse multiple spaces into one
     sanitized = sanitized.replace(/\s+/g, ' ').trim();
@@ -80,7 +80,7 @@ const Wizard = {
     // Note: 'cards' step is conditionally shown only if there are cards with multiple profiles
     STEPS: [
         { id: 'welcome', title: 'Welcome' },
-        { id: 'cards', title: 'Cards' },
+        { id: 'cards', title: 'Devices' },
         { id: 'identify', title: 'Identify' },
         { id: 'sinks', title: 'Sinks' },
         { id: 'players', title: 'Players' },
@@ -389,13 +389,18 @@ const Wizard = {
             const activeProfile = availableProfiles.find(p => p.name === card.activeProfile);
             const activeDesc = activeProfile?.description || card.activeProfile;
 
+            // Get bus type icon for the card
+            const busType = getCardBusType(card.name, card.activeProfile);
+            const busIcon = getBusTypeIcon(busType);
+            const busLabel = getBusTypeLabel(busType);
+
             return `
                 <div class="card mb-3" id="card-${card.index}">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
                                 <h6 class="mb-1">
-                                    <i class="fas fa-sd-card text-primary me-2"></i>
+                                    <i class="${busIcon} text-primary me-2" title="${busLabel}"></i>
                                     ${escapeHtml(card.description || card.name)}
                                 </h6>
                                 <small class="text-muted">${escapeHtml(card.driver)}</small>
@@ -409,7 +414,7 @@ const Wizard = {
                             <label class="form-label small text-muted mb-1">Audio Profile</label>
                             <select class="form-select"
                                     id="profile-select-${card.index}"
-                                    onchange="Wizard.setCardProfile('${escapeHtml(card.name)}', this.value, ${card.index})">
+                                    onchange="Wizard.setCardProfile('${escapeJsString(card.name)}', this.value, ${card.index})">
                                 ${profileOptions}
                             </select>
                         </div>
@@ -422,15 +427,15 @@ const Wizard = {
 
         return `
             <div>
-                <h4><i class="fas fa-sd-card me-2"></i>Sound Card Configuration</h4>
+                <h4><i class="fas fa-sd-card me-2"></i>Audio Device Configuration</h4>
                 <p class="text-muted">
-                    Some of your sound cards support multiple output modes. Choose the profile that matches
-                    how you want to use each card (e.g., stereo, surround, or multi-channel output).
+                    Some of your audio devices support multiple output modes. Choose the profile that matches
+                    how you want to use each device (e.g., stereo, surround, or multi-channel output).
                 </p>
 
                 <div class="alert alert-info mb-3">
                     <i class="fas fa-info-circle me-2"></i>
-                    <strong>Tip:</strong> Built-in sound cards often support 5.1 or 7.1 surround profiles that expose
+                    <strong>Tip:</strong> Built-in audio devices often support 5.1 or 7.1 surround profiles that expose
                     multiple outputs. Multi-channel USB interfaces can also use surround profiles to access individual
                     channel pairs as separate stereo outputs.
                 </div>
@@ -525,8 +530,13 @@ const Wizard = {
 
         const deviceHtml = this.devices.map(device => {
             const isHidden = this.deviceState[device.id]?.hidden || device.hidden || false;
-            const alias = this.deviceState[device.id]?.alias || '';
+            const alias = this.deviceState[device.id]?.alias || device.alias || '';
             const portHint = parseUsbPortHint(device.identifiers?.busPath);
+
+            // Use device.name directly - it already contains the correct name from PulseAudio sink description
+            // (Previous code tried to look up card by cardIndex, but cardIndex is ALSA card number
+            // while card.index is PulseAudio card index - different numbering systems!)
+            const displayName = device.name;
 
             return `
                 <div class="list-group-item position-relative ${isHidden ? 'device-hidden' : ''}" id="device-row-${escapeHtml(device.id)}">
@@ -534,29 +544,30 @@ const Wizard = {
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-grow-1 me-3">
                             <h6 class="mb-1">
-                                ${escapeHtml(device.alias || device.name)}
+                                ${escapeHtml(displayName)}
                                 ${device.isDefault ? '<span class="badge bg-primary ms-2">Default</span>' : ''}
                                 ${isHidden ? '<span class="badge bg-secondary ms-2">Hidden</span>' : ''}
                             </h6>
                             <small class="text-muted d-block">${device.maxChannels}ch, ${formatSampleRate(device.defaultSampleRate)}${portHint ? ` · <i class="fab fa-usb"></i> ${portHint}` : ''}</small>
-                            <div class="input-group input-group-sm mt-2" style="max-width: 300px;">
+                            <div class="input-group input-group-sm mt-2 alias-input-group">
                                 <input type="text" class="form-control"
                                        placeholder="e.g., Kitchen Speaker"
                                        id="alias-${escapeHtml(device.id)}"
                                        value="${escapeHtml(alias)}"
                                        ${isHidden ? 'disabled' : ''}
-                                       onchange="Wizard.setAlias('${escapeHtml(device.id)}', this.value)">
+                                       onchange="Wizard.setAlias('${escapeJsString(device.id)}', this.value)"
+                                       onkeydown="Wizard.handleAliasKeydown(event, '${escapeJsString(device.id)}', this)">
                             </div>
                         </div>
                         <div class="btn-group-vertical">
                             <button class="btn btn-outline-primary btn-sm"
-                                    onclick="Wizard.playTestTone('${escapeHtml(device.id)}')"
+                                    onclick="Wizard.playTestTone('${escapeJsString(device.id)}')"
                                     id="tone-btn-${escapeHtml(device.id)}"
                                     ${isHidden ? 'disabled' : ''}>
                                 <i class="fas fa-volume-up me-1"></i>Test
                             </button>
                             <button class="btn ${isHidden ? 'btn-secondary' : 'btn-outline-secondary'} btn-sm"
-                                    onclick="Wizard.toggleHidden('${escapeHtml(device.id)}')"
+                                    onclick="Wizard.toggleHidden('${escapeJsString(device.id)}')"
                                     id="hide-btn-${escapeHtml(device.id)}">
                                 <i class="fas fa-${isHidden ? 'eye' : 'eye-slash'} me-1"></i>${isHidden ? 'Show' : 'Hide'}
                             </button>
@@ -614,8 +625,8 @@ const Wizard = {
                 </div>
             `).join('');
 
-        // Build device options for remap sink (exclude hidden)
-        const multiChannelDevices = visibleDevices.filter(d => d.maxChannels >= 4);
+        // Build device options for remap sink (exclude hidden and remap sinks)
+        const multiChannelDevices = visibleDevices.filter(d => d.maxChannels >= 4 && d.sinkType !== 'Remap');
         const deviceOptions = multiChannelDevices.map(d => `
             <option value="${escapeHtml(d.id)}" data-channels="${d.maxChannels}">
                 ${escapeHtml(this.deviceState[d.id]?.alias || d.alias || d.name)} (${d.maxChannels}ch)
@@ -636,12 +647,12 @@ const Wizard = {
                     <div class="btn-group btn-group-sm">
                         <button class="btn btn-outline-primary"
                                 id="sink-tone-btn-${escapeHtml(sink.name)}"
-                                onclick="Wizard.playTestToneForSink('${escapeHtml(sink.name)}')"
+                                onclick="Wizard.playTestToneForSink('${escapeJsString(sink.name)}')"
                                 title="Play test tone">
                             <i class="fas fa-volume-up"></i>
                         </button>
                         <button class="btn btn-outline-danger"
-                                onclick="Wizard.removeCustomSink('${escapeHtml(sink.id)}')">
+                                onclick="Wizard.removeCustomSink('${escapeJsString(sink.id)}')">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -758,17 +769,33 @@ const Wizard = {
                                     <div class="col-md-6">
                                         <div class="mb-3">
                                             <label class="form-label">Left Channel</label>
-                                            <select class="form-select" id="wizardRemapLeft">
-                                                <option value="front-left">Front Left</option>
-                                                <option value="front-right">Front Right</option>
-                                            </select>
+                                            <div class="d-flex align-items-center">
+                                                <select class="form-select" id="wizardRemapLeft">
+                                                    <option value="front-left">Front Left</option>
+                                                    <option value="front-right">Front Right</option>
+                                                </select>
+                                                <button class="btn btn-outline-primary btn-sm ms-2"
+                                                        id="wizardRemapLeftTestBtn"
+                                                        onclick="Wizard.playRemapChannelTestTone('left')"
+                                                        title="Play test tone">
+                                                    <i class="fas fa-volume-up"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">Right Channel</label>
-                                            <select class="form-select" id="wizardRemapRight">
-                                                <option value="front-left">Front Left</option>
-                                                <option value="front-right" selected>Front Right</option>
-                                            </select>
+                                            <div class="d-flex align-items-center">
+                                                <select class="form-select" id="wizardRemapRight">
+                                                    <option value="front-left">Front Left</option>
+                                                    <option value="front-right" selected>Front Right</option>
+                                                </select>
+                                                <button class="btn btn-outline-primary btn-sm ms-2"
+                                                        id="wizardRemapRightTestBtn"
+                                                        onclick="Wizard.playRemapChannelTestTone('right')"
+                                                        title="Play test tone">
+                                                    <i class="fas fa-volume-up"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1037,7 +1064,7 @@ const Wizard = {
                     <small class="text-muted d-block">${escapeHtml(sink.description || '')}</small>
                 </div>
                 <button class="btn btn-outline-danger btn-sm"
-                        onclick="Wizard.removeCustomSink('${escapeHtml(sink.id)}')"
+                        onclick="Wizard.removeCustomSink('${escapeJsString(sink.id)}')"
                         title="Remove this sink">
                     <i class="fas fa-trash"></i>
                 </button>
@@ -1047,7 +1074,7 @@ const Wizard = {
 
     // Remove a custom sink
     async removeCustomSink(sinkId) {
-        if (!confirm(`Remove sink "${sinkId}"? This will unload it from PulseAudio.`)) {
+        if (!await showConfirm('Remove Sink', `Remove sink "${sinkId}"? This will unload it from PulseAudio.`, 'Remove', 'btn-danger')) {
             return;
         }
 
@@ -1103,11 +1130,11 @@ const Wizard = {
                             </div>
                             <div class="d-flex align-items-center">
                                 <label class="me-2 text-muted small">Vol:</label>
-                                <input type="range" class="form-range" style="width: 80px;"
+                                <input type="range" class="form-range wizard-volume-slider"
                                        min="0" max="100" value="75"
                                        id="volume-${escapeHtml(device.id)}"
                                        oninput="document.getElementById('volume-label-${escapeHtml(device.id)}').textContent = this.value + '%'">
-                                <span class="ms-2 text-muted small" id="volume-label-${escapeHtml(device.id)}" style="width: 35px;">75%</span>
+                                <span class="ms-2 text-muted small wizard-volume-label" id="volume-label-${escapeHtml(device.id)}">75%</span>
                             </div>
                         </div>
                     </div>
@@ -1295,6 +1322,49 @@ const Wizard = {
         }
     },
 
+    // Play test tone for a specific channel in wizard remap sink
+    async playRemapChannelTestTone(channel) {
+        const masterSelect = document.getElementById('wizardRemapMaster');
+        const channelSelect = document.getElementById(channel === 'left' ? 'wizardRemapLeft' : 'wizardRemapRight');
+        const btn = document.getElementById(channel === 'left' ? 'wizardRemapLeftTestBtn' : 'wizardRemapRightTestBtn');
+
+        if (!masterSelect.value) {
+            showAlert('Please select a master device first', 'warning');
+            return;
+        }
+
+        if (!btn) return;
+
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        btn.disabled = true;
+        btn.classList.add('playing');
+
+        try {
+            const response = await fetch(`./api/devices/${encodeURIComponent(masterSelect.value)}/test-tone`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    frequencyHz: 1000,
+                    durationMs: 1500,
+                    channelName: channelSelect.value
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to play test tone');
+            }
+        } catch (error) {
+            console.error('Failed to play channel test tone:', error);
+            showAlert(`Test tone failed: ${error.message}`, 'danger');
+        } finally {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+            btn.classList.remove('playing');
+        }
+    },
+
     // Toggle device hidden state
     async toggleHidden(deviceId) {
         if (!this.deviceState[deviceId]) {
@@ -1323,12 +1393,32 @@ const Wizard = {
         }
     },
 
-    // Set device alias
-    setAlias(deviceId, alias) {
+    // Set device alias - persists immediately to API
+    async setAlias(deviceId, alias) {
         if (!this.deviceState[deviceId]) {
             this.deviceState[deviceId] = { alias: '', hidden: false };
         }
         this.deviceState[deviceId].alias = alias;
+
+        // Persist to server immediately (same pattern as toggleHidden)
+        try {
+            await fetch(`./api/devices/${encodeURIComponent(deviceId)}/alias`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alias: alias })
+            });
+        } catch (error) {
+            console.error(`Failed to save alias for ${deviceId}:`, error);
+        }
+    },
+
+    // Handle Enter key in alias input - save and exit edit mode
+    handleAliasKeydown(event, deviceId, input) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            this.setAlias(deviceId, input.value);
+            input.blur();
+        }
     },
 
     // Suggest a name for a device

@@ -7,7 +7,7 @@ namespace MultiRoomAudio.Utilities;
 /// Runs PulseAudio (pactl) commands for loading/unloading audio modules.
 /// Provides secure command execution to prevent shell injection attacks.
 /// </summary>
-public partial class PaModuleRunner
+public partial class PaModuleRunner : IPaModuleRunner
 {
     private readonly ILogger<PaModuleRunner> _logger;
 
@@ -71,20 +71,27 @@ public partial class PaModuleRunner
 
     /// <summary>
     /// Sanitizes a description string for use in device.description property.
-    /// Handles special characters that could cause issues in PulseAudio property values.
+    /// PulseAudio has a known bug where property values with spaces fail to parse
+    /// (see https://gitlab.freedesktop.org/pulseaudio/pulseaudio/-/issues/615).
+    /// We replace spaces with underscores as the standard workaround.
+    /// The original description with spaces is preserved in YAML/UI.
     /// </summary>
     private static string SanitizeDescription(string description)
     {
         if (string.IsNullOrWhiteSpace(description))
             return description;
 
-        // Sanitize for PulseAudio property values (single-quoted strings)
-        // Escape single quotes: ' -> '\'' (end quote, escaped quote, start quote)
+        // Sanitize for PulseAudio property values
+        // PulseAudio has a bug where spaces in property values cause "Failed to parse proplist"
+        // See: https://gitlab.freedesktop.org/pulseaudio/pulseaudio/-/issues/615
+        // Replace spaces with underscores as the workaround
         return description
-            .Replace("\\", "")      // Remove backslashes
-            .Replace("'", @"'\''")  // Escape single quotes for shell-style quoting
+            .Replace("\\", "")      // Remove backslashes (escape character)
             .Replace("\"", "")      // Remove double quotes
-            .Replace("\n", " ")     // Replace newlines with spaces
+            .Replace("'", "")       // Remove single quotes
+            .Replace(" ", "_")      // Replace spaces with underscores (PulseAudio bug workaround)
+            .Replace("&", "_and_")  // Replace & with _and_ for readability
+            .Replace("\n", "_")     // Replace newlines with underscores
             .Replace("\r", "")      // Remove carriage returns
             .Replace("\0", "")      // Remove null chars
             .Trim();
@@ -139,10 +146,12 @@ public partial class PaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            args.Add($"sink_properties=device.description='{safeDesc}'");
+            // No quotes needed - spaces are replaced with underscores due to PulseAudio bug
+            args.Add($"sink_properties=device.description={safeDesc}");
         }
 
-        _logger.LogInformation("Loading combine-sink '{SinkName}' with {SlaveCount} slaves", sinkName, slaveList.Count);
+        _logger.LogInformation("Loading combine-sink '{SinkName}' with {SlaveCount} slaves. Args: {Args}",
+            sinkName, slaveList.Count, string.Join(" | ", args));
 
         var result = await RunPactlAsync(args.ToArray(), cancellationToken);
 
@@ -234,11 +243,12 @@ public partial class PaModuleRunner
         if (!string.IsNullOrWhiteSpace(description))
         {
             var safeDesc = SanitizeDescription(description);
-            args.Add($"sink_properties=device.description='{safeDesc}'");
+            // No quotes needed - spaces are replaced with underscores due to PulseAudio bug
+            args.Add($"sink_properties=device.description={safeDesc}");
         }
 
-        _logger.LogInformation("Loading remap-sink '{SinkName}' from master '{Master}' with {Channels} channels",
-            sinkName, masterSink, channels);
+        _logger.LogInformation("Loading remap-sink '{SinkName}' from master '{Master}' with {Channels} channels. Args: {Args}",
+            sinkName, masterSink, channels, string.Join(" | ", args));
 
         var result = await RunPactlAsync(args.ToArray(), cancellationToken);
 
@@ -330,6 +340,80 @@ public partial class PaModuleRunner
         }
 
         return modules;
+    }
+
+    /// <summary>
+    /// Load module-mmkbd-evdev to capture HID volume/mute button events from an input device.
+    /// This module listens to /dev/input/eventX devices and translates volume/mute key events
+    /// to PulseAudio sink volume/mute changes.
+    /// </summary>
+    /// <param name="inputDevice">Path to input device (e.g., /dev/input/by-id/usb-...-event-if03).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Module index on success, null on failure.</returns>
+    public async Task<int?> LoadMmkbdEvdevAsync(
+        string inputDevice,
+        string sinkName,
+        CancellationToken cancellationToken = default)
+    {
+        // Validate input device path - must be a device path
+        if (string.IsNullOrWhiteSpace(inputDevice))
+        {
+            _logger.LogWarning("Input device path cannot be empty");
+            return null;
+        }
+
+        // Basic validation - must start with /dev/input
+        if (!inputDevice.StartsWith("/dev/input/", StringComparison.Ordinal))
+        {
+            _logger.LogWarning("Invalid input device path: {Path} (must start with /dev/input/)", inputDevice);
+            return null;
+        }
+
+        // Check for dangerous characters in device path
+        if (inputDevice.IndexOfAny(DangerousChars) >= 0)
+        {
+            _logger.LogWarning("Input device path contains invalid characters: {Path}", inputDevice);
+            return null;
+        }
+
+        // Validate sink name
+        if (!ValidateName(sinkName, out var sinkError))
+        {
+            _logger.LogWarning("Invalid sink name for module-mmkbd-evdev: {Error}", sinkError);
+            return null;
+        }
+
+        // Build module arguments
+        var args = new List<string>
+        {
+            "load-module",
+            "module-mmkbd-evdev",
+            $"device={inputDevice}",
+            $"sink={sinkName}"
+        };
+
+        _logger.LogInformation("Loading module-mmkbd-evdev for input device '{Device}' with sink '{Sink}'",
+            inputDevice, sinkName);
+
+        var result = await RunPactlAsync(args.ToArray(), cancellationToken);
+
+        if (result.ExitCode != 0)
+        {
+            _logger.LogError("Failed to load module-mmkbd-evdev for '{Device}': {Error}", inputDevice, result.Error);
+            return null;
+        }
+
+        // Parse module index from output
+        if (int.TryParse(result.Output.Trim(), out var moduleIndex))
+        {
+            _logger.LogInformation("Successfully loaded module-mmkbd-evdev for '{Device}' with module index {Index}",
+                inputDevice, moduleIndex);
+            return moduleIndex;
+        }
+
+        _logger.LogWarning("Loaded module-mmkbd-evdev for '{Device}' but could not parse module index from: {Output}",
+            inputDevice, result.Output);
+        return null;
     }
 
     /// <summary>

@@ -8,12 +8,12 @@ namespace MultiRoomAudio.Models;
 public class PlayerCreateRequest
 {
     /// <summary>
-    /// The name of the player. Must be 1-100 characters and contain only
-    /// letters, numbers, spaces, hyphens, underscores, and apostrophes.
+    /// The name of the player. Must be 1-100 characters and not contain control characters.
+    /// Supports international characters, symbols, and special characters.
     /// </summary>
     [Required(ErrorMessage = "Player name is required.")]
     [StringLength(100, MinimumLength = 1, ErrorMessage = "Player name must be between 1 and 100 characters.")]
-    [RegularExpression(@"^[a-zA-Z0-9\s\-_']+$", ErrorMessage = "Player name can only contain letters, numbers, spaces, hyphens, underscores, and apostrophes.")]
+    [RegularExpression(@"^[^\x00-\x1F\x7F]+$", ErrorMessage = "Player name cannot contain control characters.")]
     public required string Name { get; set; }
 
     /// <summary>
@@ -67,6 +67,14 @@ public class PlayerCreateRequest
     /// Persisted players will autostart on next launch.
     /// </summary>
     public bool Persist { get; set; } = true;
+
+    /// <summary>
+    /// Specific audio format to advertise. If null or empty, defaults to "flac-48000" for maximum MA compatibility.
+    /// Format string: "codec-samplerate-bitdepth" (e.g., "flac-192000", "pcm-96000-24").
+    /// UI selection only available when ENABLE_ADVANCED_FORMATS is enabled.
+    /// </summary>
+    [StringLength(50, ErrorMessage = "AdvertisedFormat cannot exceed 50 characters.")]
+    public string? AdvertisedFormat { get; set; }
 }
 
 /// <summary>
@@ -82,6 +90,12 @@ public record DeviceSwitchRequest(
 /// </summary>
 /// <param name="Muted">True to mute the player, false to unmute.</param>
 public record MuteRequest(bool Muted);
+
+/// <summary>
+/// Request to enable/disable auto-resume on device reconnection.
+/// </summary>
+/// <param name="Enabled">True to enable auto-resume, false to disable.</param>
+public record AutoResumeRequest(bool Enabled);
 
 /// <summary>
 /// Request to set volume.
@@ -106,7 +120,7 @@ public record OffsetRequest(
 public record RenameRequest(
     [property: Required(ErrorMessage = "New player name is required.")]
     [property: StringLength(100, MinimumLength = 1, ErrorMessage = "Player name must be between 1 and 100 characters.")]
-    [property: RegularExpression(@"^[a-zA-Z0-9\s\-_']+$", ErrorMessage = "Player name can only contain letters, numbers, spaces, hyphens, underscores, and apostrophes.")]
+    [property: RegularExpression(@"^[^\x00-\x1F\x7F]+$", ErrorMessage = "Player name cannot contain control characters.")]
     string NewName);
 
 /// <summary>
@@ -119,7 +133,7 @@ public class PlayerUpdateRequest
     /// New name for the player. If provided, the player will be renamed.
     /// </summary>
     [StringLength(100, MinimumLength = 1, ErrorMessage = "Player name must be between 1 and 100 characters.")]
-    [RegularExpression(@"^[a-zA-Z0-9\s\-_']+$", ErrorMessage = "Player name can only contain letters, numbers, spaces, hyphens, underscores, and apostrophes.")]
+    [RegularExpression(@"^[^\x00-\x1F\x7F]+$", ErrorMessage = "Player name cannot contain control characters.")]
     public string? Name { get; set; }
 
     /// <summary>
@@ -138,6 +152,20 @@ public class PlayerUpdateRequest
     /// </summary>
     [Range(0, 100, ErrorMessage = "Volume must be between 0 and 100.")]
     public int? Volume { get; set; }
+
+    /// <summary>
+    /// Buffer size in milliseconds.
+    /// </summary>
+    [Range(10, 10000, ErrorMessage = "BufferSizeMs must be between 10 and 10000 milliseconds.")]
+    public int? BufferSizeMs { get; set; }
+
+    /// <summary>
+    /// Specific audio format to advertise. If null or empty, defaults to "flac-48000" for maximum MA compatibility.
+    /// Format string: "codec-samplerate-bitdepth" (e.g., "flac-192000", "pcm-96000-24").
+    /// UI selection only available when ENABLE_ADVANCED_FORMATS is enabled.
+    /// </summary>
+    [StringLength(50, ErrorMessage = "AdvertisedFormat cannot exceed 50 characters.")]
+    public string? AdvertisedFormat { get; set; }
 }
 
 /// <summary>
@@ -155,4 +183,53 @@ public class PlayerConfig
     public int BufferSizeMs { get; set; } = 100;
     public int Volume { get; set; } = 75;
     public bool IsMuted { get; set; }
+    public string? AdvertisedFormat { get; set; }
+}
+
+/// <summary>
+/// Request for batch player creation.
+/// </summary>
+public record BatchCreatePlayersRequest(List<BatchPlayerRequest>? Players);
+
+/// <summary>
+/// Single player creation request for batch operations.
+/// </summary>
+public record BatchPlayerRequest(
+    string Name,
+    string? Device = null,
+    int? Volume = null,
+    bool? Autostart = null);
+
+/// <summary>
+/// Represents a failed player creation in a batch operation.
+/// </summary>
+public record BatchPlayerFailure(string Name, string Error);
+
+/// <summary>
+/// Result of a batch player creation operation.
+/// </summary>
+public record BatchCreatePlayersResult(
+    List<string> Created,
+    List<string> Started,
+    List<BatchPlayerFailure> Failed)
+{
+    /// <summary>
+    /// Whether all requested players were created successfully.
+    /// </summary>
+    public bool Success => Failed.Count == 0;
+
+    /// <summary>
+    /// The total number of players that were created (saved to config).
+    /// </summary>
+    public int CreatedCount => Created.Count;
+
+    /// <summary>
+    /// The total number of players that were started successfully.
+    /// </summary>
+    public int StartedCount => Started.Count;
+
+    /// <summary>
+    /// The total number of players that failed to create.
+    /// </summary>
+    public int FailedCount => Failed.Count;
 }
