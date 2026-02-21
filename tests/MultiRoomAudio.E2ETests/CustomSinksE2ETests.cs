@@ -173,11 +173,12 @@ public class CustomSinksE2ETests : IAsyncLifetime
             }
 
             // Select devices (if multi-select is available)
-            var deviceCheckboxes = await _page.Locator("input[type='checkbox'][name*='device'], input[type='checkbox'][data-device]").AllAsync();
-            if (deviceCheckboxes.Count >= 2)
+            var deviceLocator = _page.Locator("input[type='checkbox'][name*='device'], input[type='checkbox'][data-device]");
+            var deviceCount = await deviceLocator.CountAsync();
+            if (deviceCount >= 2)
             {
-                await deviceCheckboxes[0].CheckAsync();
-                await deviceCheckboxes[1].CheckAsync();
+                await deviceLocator.Nth(0).CheckAsync();
+                await deviceLocator.Nth(1).CheckAsync();
             }
 
             // Submit the form
