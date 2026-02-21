@@ -10,22 +10,24 @@ public class PlaywrightFixture : IAsyncLifetime
     private IPlaywright? _playwright;
     public IBrowser? Browser { get; private set; }
     public HttpClient HttpClient { get; private set; } = new HttpClient { BaseAddress = new Uri("http://localhost:8096") };
-    private IBrowserContext? _context;
-    private IPage? _page;
-
     public Task<IPage> CreatePageAsync()
     {
-        if (_page == null) throw new InvalidOperationException("Page not initialized");
-        return Task.FromResult(_page);
+        if (Browser == null) throw new InvalidOperationException("Browser not initialized");
+        // Create a fresh context and page for each test to avoid shared-state and
+        // parallelization issues where the page/context may be closed unexpectedly.
+        return Task.Run(async () =>
+        {
+            var context = await Browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = HttpClient.BaseAddress.ToString() });
+            var page = await context.NewPageAsync();
+            return page;
+        });
     }
 
         public async Task InitializeAsync()
         {
             _playwright = await Playwright.CreateAsync();
             Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
-            // Set the Playwright context base URL so page.GotoAsync("/") resolves correctly
-            _context = await Browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = HttpClient.BaseAddress.ToString() });
-            _page = await _context.NewPageAsync();
+                // Nothing more to do here — pages/contexts are created per-test in CreatePageAsync
         }
 
     public async Task DisposeAsync()
