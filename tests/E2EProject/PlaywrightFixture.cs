@@ -43,7 +43,11 @@ public class PlaywrightFixture : IAsyncLifetime
         public async Task InitializeAsync()
         {
             _playwright = await Playwright.CreateAsync();
-            Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            {
+                Headless = true,
+                Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" }
+            });
                 // Nothing more to do here — pages/contexts are created per-test in CreatePageAsync
         }
 
