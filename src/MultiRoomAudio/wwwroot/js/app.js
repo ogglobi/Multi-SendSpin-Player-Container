@@ -4840,9 +4840,12 @@ function renderTriggers() {
         errorDiv.classList.add('d-none');
     }
 
-    // Build sink options HTML
-    const sinkOptions = customSinksList.map(sink =>
-        `<option value="${escapeHtml(sink.name)}">${escapeHtml(sink.description || sink.name)}</option>`
+    // Build sink options HTML for multi-select (checkboxes)
+    const sinkCheckboxesHtml = customSinksList.map(sink =>
+        `<label class="dropdown-item d-flex align-items-center" style="white-space: normal;">
+            <input type="checkbox" class="me-2 sink-checkbox" value="${escapeHtml(sink.name)}">
+            <span>${escapeHtml(sink.description || sink.name)}</span>
+        </label>`
     ).join('');
 
     // Build accordion for each board
@@ -4883,6 +4886,12 @@ function renderTriggers() {
             const onBtnClass = isOn ? 'btn btn-success btn-sm' : 'btn btn-outline-secondary btn-sm';
             const offBtnClass = !isOn && trigger.relayState === 'Off' ? 'btn btn-secondary btn-sm' : 'btn btn-outline-secondary btn-sm';
 
+            // Build selected sinks display
+            const selectedSinks = trigger.customSinkNames || [];
+            const selectedDisplay = selectedSinks.length > 0 
+                ? selectedSinks.map(s => escapeHtml(s)).join(', ')
+                : '<span class="text-muted">Not assigned</span>';
+            
             return `
                 <tr>
                     <td>
@@ -4890,13 +4899,30 @@ function renderTriggers() {
                         ${activeStatus}
                     </td>
                     <td>
-                        <select class="form-select form-select-sm"
-                                id="trigger-sink-${boardIdSafe}-${trigger.channel}"
-                                onchange="updateTriggerSink('${boardId}', ${trigger.channel}, this.value)"
-                                ${controlsDisabled ? 'disabled' : ''}>
-                            <option value="">Not assigned</option>
-                            ${sinkOptions}
-                        </select>
+                        <div class="dropdown">
+                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
+                                    type="button"
+                                    id="trigger-sink-btn-${boardIdSafe}-${trigger.channel}"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                    ${controlsDisabled ? 'disabled' : ''}>
+                                <span class="sink-display text-truncate" style="max-width: 150px;">${selectedDisplay}</span>
+                            </button>
+                            <div class="dropdown-menu sink-dropdown-menu" aria-labelledby="trigger-sink-btn-${boardIdSafe}-${trigger.channel}" 
+                                 data-board-id="${boardId}" data-channel="${trigger.channel}">
+                                <div class="px-2 py-1 border-bottom bg-light">
+                                    <small class="text-muted">Select sinks:</small>
+                                </div>
+                                ${sinkCheckboxesHtml || '<div class="px-2 py-1 text-muted small">No custom sinks available</div>'}
+                                <div class="dropdown-divider"></div>
+                                <button type="button" class="dropdown-item text-primary" onclick="saveTriggerSinks('${boardId}', ${trigger.channel})">
+                                    <i class="fas fa-check me-1"></i> Apply
+                                </button>
+                                <button type="button" class="dropdown-item text-danger" onclick="clearTriggerSinks('${boardId}', ${trigger.channel})">
+                                    <i class="fas fa-times me-1"></i> Clear All
+                                </button>
+                            </div>
+                        </div>
                     </td>
                     <td>
                         <div class="input-group input-group-sm">
@@ -5015,13 +5041,17 @@ function renderTriggers() {
 
     container.innerHTML = accordionHtml;
 
-    // Set selected values for sink dropdowns
+    // Set selected values for sink checkboxes
     triggersData.boards.forEach(board => {
         const boardIdSafe = board.boardId.replace(/[^a-zA-Z0-9]/g, '_');
         board.triggers.forEach(trigger => {
-            const select = document.getElementById(`trigger-sink-${boardIdSafe}-${trigger.channel}`);
-            if (select && trigger.customSinkName) {
-                select.value = trigger.customSinkName;
+            const dropdown = document.querySelector(`.sink-dropdown-menu[data-board-id="${board.boardId}"][data-channel="${trigger.channel}"]`);
+            if (dropdown) {
+                const selectedSinks = trigger.customSinkNames || [];
+                const checkboxes = dropdown.querySelectorAll('.sink-checkbox');
+                checkboxes.forEach(cb => {
+                    cb.checked = selectedSinks.includes(cb.value);
+                });
             }
         });
     });
@@ -5467,8 +5497,72 @@ async function reconnectBoard(boardId) {
     }
 }
 
-// Update trigger sink assignment (multi-board)
+// Save trigger sinks from multi-select dropdown
+async function saveTriggerSinks(boardId, channel) {
+    const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
+    const dropdown = document.querySelector(`.sink-dropdown-menu[data-board-id="${boardId}"][data-channel="${channel}"]`);
+    if (!dropdown) return;
+
+    const checkboxes = dropdown.querySelectorAll('.sink-checkbox:checked');
+    const sinkNames = Array.from(checkboxes).map(cb => cb.value);
+    
+    const delayInput = document.getElementById(`trigger-delay-${boardIdSafe}-${channel}`);
+    const delay = delayInput ? parseInt(delayInput.value, 10) : 60;
+
+    try {
+        // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
+        const url = boardId.includes('/')
+            ? `./api/triggers/boards/channel?boardId=${encodeURIComponent(boardId)}&channel=${channel}`
+            : `./api/triggers/boards/${encodeURIComponent(boardId)}/${channel}`;
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                customSinkNames: sinkNames,
+                offDelaySeconds: delay
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update trigger');
+        }
+
+        // Update button display
+        const btn = document.getElementById(`trigger-sink-btn-${boardIdSafe}-${channel}`);
+        if (btn) {
+            const display = btn.querySelector('.sink-display');
+            if (display) {
+                display.innerHTML = sinkNames.length > 0 
+                    ? sinkNames.map(s => escapeHtml(s)).join(', ')
+                    : '<span class="text-muted">Not assigned</span>';
+            }
+        }
+
+        showAlert(`Trigger updated`, 'success', 2000);
+    } catch (error) {
+        console.error('Error updating trigger:', error);
+        showAlert(`Failed to update trigger: ${error.message}`, 'danger');
+    }
+}
+
+// Clear all trigger sinks
+async function clearTriggerSinks(boardId, channel) {
+    const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
+    const dropdown = document.querySelector(`.sink-dropdown-menu[data-board-id="${boardId}"][data-channel="${channel}"]`);
+    if (dropdown) {
+        const checkboxes = dropdown.querySelectorAll('.sink-checkbox');
+        checkboxes.forEach(cb => cb.checked = false);
+    }
+    
+    await saveTriggerSinks(boardId, channel);
+}
+
+// Update trigger sink assignment (multi-board) - kept for backward compatibility
 async function updateTriggerSink(boardId, channel, sinkName) {
+    // Convert single sink to array format
+    const sinkNames = sinkName ? [sinkName] : [];
+    
     const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
     const delayInput = document.getElementById(`trigger-delay-${boardIdSafe}-${channel}`);
     const delay = delayInput ? parseInt(delayInput.value, 10) : 60;
@@ -5482,8 +5576,7 @@ async function updateTriggerSink(boardId, channel, sinkName) {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                channel,
-                customSinkName: sinkName || null,
+                customSinkNames: sinkNames,
                 offDelaySeconds: delay
             })
         });
@@ -5503,8 +5596,11 @@ async function updateTriggerSink(boardId, channel, sinkName) {
 // Update trigger off delay (multi-board)
 async function updateTriggerDelay(boardId, channel, delay) {
     const boardIdSafe = boardId.replace(/[^a-zA-Z0-9]/g, '_');
-    const sinkSelect = document.getElementById(`trigger-sink-${boardIdSafe}-${channel}`);
-    const sinkName = sinkSelect ? sinkSelect.value : null;
+    
+    // Get selected sinks from checkboxes
+    const dropdown = document.querySelector(`.sink-dropdown-menu[data-board-id="${boardId}"][data-channel="${channel}"]`);
+    const checkboxes = dropdown ? dropdown.querySelectorAll('.sink-checkbox:checked') : [];
+    const sinkNames = Array.from(checkboxes).map(cb => cb.value);
 
     try {
         // Use query params for board IDs that contain slashes (e.g., LCUS:/dev/ttyUSB0)
@@ -5515,8 +5611,7 @@ async function updateTriggerDelay(boardId, channel, delay) {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                channel,
-                customSinkName: sinkName || null,
+                customSinkNames: sinkNames,
                 offDelaySeconds: parseInt(delay, 10)
             })
         });
@@ -5640,5 +5735,137 @@ async function reconnectTriggerBoard() {
     } catch (error) {
         console.error('Error reconnecting:', error);
         showAlert(`Failed to reconnect: ${error.message}`, 'danger');
+    }
+}
+
+// ========================================
+// Volume Scale Functions
+// ========================================
+
+// Open Volume Scale Modal
+async function openVolumeScaleModal() {
+    try {
+        // Load current settings
+        const response = await fetch('./api/settings');
+        if (!response.ok) {
+            throw new Error('Failed to load settings');
+        }
+        const settings = await response.json();
+        
+        // Set global volume scale slider (convert from 0.0-1.0 to 1-100 percentage)
+        const globalSlider = document.getElementById('globalVolumeScaleSlider');
+        const globalDisplay = document.getElementById('globalVolumeScaleDisplay');
+        if (globalSlider && globalDisplay) {
+            const scaleValue = settings.globalVolumeScale || 1.0;
+            globalSlider.value = Math.round(scaleValue * 100);
+            globalDisplay.textContent = Math.round(scaleValue * 100) + '%';
+        }
+        
+        // Load per-player volume scales
+        await loadPlayerVolumeScales();
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('volumeScaleModal'));
+        modal.show();
+    } catch (error) {
+        console.error('Error opening volume scale modal:', error);
+        showAlert('Failed to load volume scale settings: ' + error.message, 'danger');
+    }
+}
+
+// Update global volume scale display while dragging
+function updateGlobalVolumeScaleDisplay(value) {
+    const display = document.getElementById('globalVolumeScaleDisplay');
+    if (display) {
+        display.textContent = Math.round(value * 100) + '%';
+    }
+}
+
+// Set global volume scale
+async function setGlobalVolumeScale(value) {
+    try {
+        const response = await fetch(`./api/settings/volume-scale?volumeScale=${value}`, {
+            method: 'PUT'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to set global volume scale');
+        }
+        
+        showAlert('Global volume scale set to ' + Math.round(value * 100) + '%', 'success', 2000);
+    } catch (error) {
+        console.error('Error setting global volume scale:', error);
+        showAlert('Failed to set global volume scale: ' + error.message, 'danger');
+    }
+}
+
+// Load per-player volume scales
+async function loadPlayerVolumeScales() {
+    const container = document.getElementById('playerVolumeScalesContainer');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="text-center"><span class="spinner-border spinner-border-sm" role="status"></span> Loading players...</div>';
+    
+    try {
+        const response = await fetch('./api/players');
+        if (!response.ok) {
+            throw new Error('Failed to load players');
+        }
+        const data = await response.json();
+        const players = data.players || [];
+        
+        if (!players || players.length === 0) {
+            container.innerHTML = '<div class="text-muted text-center">No players configured</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        players.forEach(player => {
+            const scale = player.volumeScale || 1.0;
+            const safeName = player.name.replace(/[^a-zA-Z0-9]/g, '_');
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'mb-3';
+            playerDiv.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label mb-0">${player.name}</label>
+                    <span id="playerVolumeScaleDisplay_${safeName}" class="badge bg-secondary">${Math.round(scale * 100)}%</span>
+                </div>
+                <input type="range" class="form-range" min="1" max="100" value="${Math.round(scale * 100)}"
+                    oninput="updatePlayerVolumeScaleDisplay('${safeName}', this.value)"
+                    onchange="setPlayerVolumeScale('${player.name}', this.value / 100)">
+            `;
+            container.appendChild(playerDiv);
+        });
+    } catch (error) {
+        console.error('Error loading player volume scales:', error);
+        container.innerHTML = '<div class="text-danger">Failed to load players: ' + error.message + '</div>';
+    }
+}
+
+// Update player volume scale display while dragging
+function updatePlayerVolumeScaleDisplay(playerName, value) {
+    const display = document.getElementById(`playerVolumeScaleDisplay_${playerName}`);
+    if (display) {
+        display.textContent = Math.round(value) + '%';
+    }
+}
+
+// Set player volume scale
+async function setPlayerVolumeScale(playerName, value) {
+    try {
+        const response = await fetch(`./api/players/${encodeURIComponent(playerName)}/volume-scale?volumeScale=${value}`, {
+            method: 'PUT'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to set player volume scale');
+        }
+        
+        showAlert(`Volume scale for ${playerName} set to ${Math.round(value * 100)}%`, 'success', 2000);
+    } catch (error) {
+        console.error('Error setting player volume scale:', error);
+        showAlert('Failed to set player volume scale: ' + error.message, 'danger');
     }
 }

@@ -499,6 +499,54 @@ The Denkovi 4-channel board uses **odd pins only** (D1, D3, D5, D7), not sequent
   - Channel 8 ON: `A0 08 01 A9`
 - Requires `dialout` group membership for serial port access
 
+---
+
+## Systemd Service Setup (Non-Docker)
+
+When running directly on a Linux host (not in Docker), the application requires specific environment variables:
+
+### Required Environment Variables
+
+```ini
+[Unit]
+Description=Multi-Room Audio Controller
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/multiroom-audio/app
+ExecStart=/opt/multiroom-audio/app/MultiRoomAudio
+Restart=always
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=PULSE_SERVER=unix:/var/run/pulse/native
+Environment=LC_ALL=C
+Environment=LANG=C
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Key Points
+
+1. **PULSE_SERVER**: Must point to the PulseAudio system socket (usually `/var/run/pulse/native` when PulseAudio runs in system mode)
+
+2. **LC_ALL=C / LANG=C**: **CRITICAL** - PulseAudio's `pactl` outputs localized text. The parser expects English output:
+   - English: `Sink #0` → German: `Ziel #0`
+   - English: `Name:` → German: `Name:` (same)
+   - Without English locale, device enumeration returns 0 devices
+
+3. **PulseAudio System Mode**: When running as a systemd service under root, PulseAudio must run in system mode:
+   ```bash
+   pulseaudio --system --daemonize
+   ```
+
+### Troubleshooting
+
+If devices are not detected:
+1. Check `pactl list sinks` returns English output
+2. Verify PULSE_SERVER socket exists: `ls -la /var/run/pulse/native`
+3. Test connectivity: `PULSE_SERVER=unix:/var/run/pulse/native pactl list sinks`
+
 ### CH340 Device Detection
 
 CH340-based boards (Modbus and LCUS) share the same USB VID:PID. During enumeration:

@@ -74,17 +74,25 @@ public static partial class PulseAudioDeviceEnumerator
     /// </summary>
     public static AudioDevice? GetDevice(string deviceId)
     {
-        // Try to parse as index first
+        // First, search by name (exact match on ID, partial match on Name)
+        // This takes priority over index lookup to handle sinks with numeric names like "2"
+        var device = GetOutputDevices()
+            .FirstOrDefault(d =>
+                d.Id.Equals(deviceId, StringComparison.OrdinalIgnoreCase) ||
+                d.Name.Contains(deviceId, StringComparison.OrdinalIgnoreCase));
+        
+        if (device != null)
+        {
+            return device;
+        }
+
+        // Only try to parse as index if no name match found
         if (int.TryParse(deviceId, out var index))
         {
             return GetOutputDevices().FirstOrDefault(d => d.Index == index);
         }
 
-        // Search by name (exact match on ID, partial match on Name)
-        return GetOutputDevices()
-            .FirstOrDefault(d =>
-                d.Id.Equals(deviceId, StringComparison.OrdinalIgnoreCase) ||
-                d.Name.Contains(deviceId, StringComparison.OrdinalIgnoreCase));
+        return null;
     }
 
     /// <summary>

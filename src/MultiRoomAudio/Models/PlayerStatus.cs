@@ -50,7 +50,8 @@ public record PlayerResponse(
     int? ReconnectionAttempts = null,
     DateTime? NextReconnectionAttempt = null,
     string? AdvertisedFormat = null,
-    TrackInfo? CurrentTrack = null
+    TrackInfo? CurrentTrack = null,
+    decimal VolumeScale = 1.0m
 );
 
 /// <summary>

@@ -113,7 +113,8 @@ public static class ValidChannelCounts
 
 /// <summary>
 /// Configuration for a single trigger channel (1-16).
-/// Maps a relay to a custom sink with configurable off-delay.
+/// Maps a relay to one or more custom sinks with configurable off-delay.
+/// Multiple sinks use OR logic: relay activates when ANY sink is playing.
 /// </summary>
 public class TriggerConfiguration
 {
@@ -126,8 +127,17 @@ public class TriggerConfiguration
     /// <summary>
     /// Name of the custom sink that triggers this relay.
     /// Null or empty means this trigger is not assigned.
+    /// Legacy property - use CustomSinkNames for multi-sink support.
     /// </summary>
+    [Obsolete("Use CustomSinkNames instead. This property is only for config migration.")]
     public string? CustomSinkName { get; set; }
+
+    /// <summary>
+    /// Names of custom sinks that trigger this relay (OR logic).
+    /// Relay activates when ANY of these sinks is playing.
+    /// Empty or null means this trigger is not assigned.
+    /// </summary>
+    public List<string> CustomSinkNames { get; set; } = new();
 
     /// <summary>
     /// Delay in seconds before turning off the relay after playback stops.
@@ -141,6 +151,44 @@ public class TriggerConfiguration
     /// </summary>
     [StringLength(100)]
     public string? ZoneName { get; set; }
+
+    /// <summary>
+    /// Check if this config uses the legacy single-sink format and needs migration.
+    /// </summary>
+    public bool NeedsMigration
+    {
+        get
+        {
+#pragma warning disable CS0618 // Obsolete - intentional for migration check
+            return !string.IsNullOrEmpty(CustomSinkName) && CustomSinkNames.Count == 0;
+#pragma warning restore CS0618
+        }
+    }
+
+    /// <summary>
+    /// Migrate from legacy single-sink format to multi-sink format.
+    /// </summary>
+    public void MigrateFromLegacy()
+    {
+        if (!NeedsMigration)
+            return;
+
+#pragma warning disable CS0618 // Obsolete - intentional for migration
+        CustomSinkNames = new List<string> { CustomSinkName! };
+        CustomSinkName = null;
+#pragma warning restore CS0618
+    }
+
+    /// <summary>
+    /// Get all sink names (for backwards compatibility).
+    /// Returns CustomSinkNames if populated, otherwise migrates and returns legacy CustomSinkName.
+    /// </summary>
+    public List<string> GetSinkNames()
+    {
+        if (NeedsMigration)
+            MigrateFromLegacy();
+        return CustomSinkNames;
+    }
 }
 
 /// <summary>
@@ -295,7 +343,18 @@ public record TriggerResponse(
     bool IsActive,
     DateTime? LastActivated,
     DateTime? ScheduledOffTime
-);
+)
+{
+    /// <summary>
+    /// Names of all custom sinks assigned to this trigger (multi-sink support).
+    /// </summary>
+    public List<string> CustomSinkNames { get; init; } = new();
+    
+    /// <summary>
+    /// Display names of all custom sinks (for UI).
+    /// </summary>
+    public List<string> CustomSinkDisplayNames { get; init; } = new();
+}
 
 /// <summary>
 /// Response for a single relay board status.
@@ -403,16 +462,24 @@ public class TriggerConfigureRequest
 {
     /// <summary>
     /// Channel number (1-16).
+    /// Optional when passed as query parameter.
     /// </summary>
-    [Required]
     [Range(1, 16, ErrorMessage = "Channel must be between 1 and 16.")]
-    public int Channel { get; set; }
+    public int? Channel { get; set; }
 
     /// <summary>
-    /// Custom sink name to assign to this trigger.
+    /// Custom sink name to assign to this trigger (legacy, single sink).
     /// Set to null or empty to unassign.
+    /// Use CustomSinkNames for multi-sink support.
     /// </summary>
     public string? CustomSinkName { get; set; }
+
+    /// <summary>
+    /// Custom sink names to assign to this trigger (multi-sink, OR logic).
+    /// Relay activates when ANY of these sinks is playing.
+    /// Set to empty list to unassign.
+    /// </summary>
+    public List<string>? CustomSinkNames { get; set; }
 
     /// <summary>
     /// Off delay in seconds (0-3600).

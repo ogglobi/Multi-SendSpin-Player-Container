@@ -1,0 +1,18 @@
+[Unit]
+Description=Multi-Room Audio Controller
+After=network.target
+
+[Service]
+Type=simple
+User=multiroom-audio
+Group=multiroom-audio
+WorkingDirectory=/opt/multiroom-audio/app
+ExecStart=/opt/multiroom-audio/app/MultiRoomAudio
+Restart=always
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=LC_ALL=C
+Environment=LANG=C
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=multi-user.target

@@ -878,6 +878,31 @@ h1, h2, h3, h4, h5, h6 {
 .sink-type-badge {
     font-size: 0.625rem;
     text-transform: uppercase;
+
+/* Multi-sink dropdown for triggers */
+.sink-dropdown-menu {
+    max-height: 300px;
+    overflow-y: auto;
+    min-width: 200px;
+}
+
+.sink-dropdown-menu .dropdown-item {
+    padding: 0.375rem 0.75rem;
+    cursor: pointer;
+}
+
+.sink-dropdown-menu .dropdown-item:hover {
+    background-color: var(--bs-light);
+}
+
+.sink-dropdown-menu .sink-checkbox {
+    cursor: pointer;
+}
+
+/* Prevent dropdown from closing when clicking inside */
+.sink-dropdown-menu.show {
+    pointer-events: auto;
+}
     letter-spacing: 0.05em;
     font-weight: 600;
 }

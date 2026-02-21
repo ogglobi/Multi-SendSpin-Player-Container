@@ -376,7 +376,7 @@ public static class TriggersEndpoint
         group.MapPut("/boards/{boardId}/{channel:int}", (
             string boardId,
             int channel,
-            TriggerConfigureRequest request,
+            [FromBody] TriggerConfigureRequest request,
             TriggerService service,
             ILoggerFactory lf) =>
         {
@@ -396,10 +396,14 @@ public static class TriggersEndpoint
 
             try
             {
-                var success = service.ConfigureTrigger(
+                // Support both single-sink (legacy) and multi-sink modes
+                var sinkNames = request.CustomSinkNames ?? 
+                    (string.IsNullOrEmpty(request.CustomSinkName) ? null : new List<string> { request.CustomSinkName });
+                
+                var success = service.ConfigureTriggerMultiSink(
                     boardId,
                     channel,
-                    request.CustomSinkName,
+                    sinkNames ?? new List<string>(),
                     request.OffDelaySeconds,
                     request.ZoneName);
 
@@ -414,13 +418,13 @@ public static class TriggersEndpoint
             }
         })
         .WithName("ConfigureBoardTrigger")
-        .WithDescription("Configure a trigger channel mapping on a specific board");
+        .WithDescription("Configure a trigger channel mapping on a specific board (supports multi-sink OR logic)");
 
         // PUT /api/triggers/boards/channel - Configure a trigger channel (query params for boardId with slashes)
         group.MapPut("/boards/channel", (
             [FromQuery(Name = "boardId")] string boardId,
             [FromQuery(Name = "channel")] int channel,
-            TriggerConfigureRequest request,
+            [FromBody] TriggerConfigureRequest request,
             TriggerService service,
             ILoggerFactory lf) =>
         {
@@ -440,10 +444,14 @@ public static class TriggersEndpoint
 
             try
             {
-                var success = service.ConfigureTrigger(
+                // Support both single-sink (legacy) and multi-sink modes
+                var sinkNames = request.CustomSinkNames ?? 
+                    (string.IsNullOrEmpty(request.CustomSinkName) ? null : new List<string> { request.CustomSinkName });
+                
+                var success = service.ConfigureTriggerMultiSink(
                     boardId,
                     channel,
-                    request.CustomSinkName,
+                    sinkNames ?? new List<string>(),
                     request.OffDelaySeconds,
                     request.ZoneName);
 

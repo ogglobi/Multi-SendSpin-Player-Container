@@ -124,7 +124,7 @@ public class RemapSinkCreateRequest
     /// <summary>
     /// Whether to remix (false = no mixing, just routing).
     /// </summary>
-    public bool Remix { get; set; } = false;
+    public bool Remix { get; set; } = true;
 }
 
 /// <summary>
@@ -246,7 +246,7 @@ public class CustomSinkConfiguration
     /// <summary>
     /// Whether to remix (for remap-sink).
     /// </summary>
-    public bool Remix { get; set; } = false;
+    public bool Remix { get; set; } = true;
 }
 
 /// <summary>

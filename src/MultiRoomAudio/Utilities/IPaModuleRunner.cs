@@ -18,7 +18,7 @@ public interface IPaModuleRunner
         int channels,
         string channelMap,
         string masterChannelMap,
-        bool remix = false,
+        bool remix = true,
         string? description = null,
         CancellationToken cancellationToken = default);
 

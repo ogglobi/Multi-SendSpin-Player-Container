@@ -61,6 +61,9 @@
                             <li><a class="dropdown-item" href="#" onclick="openTriggersModal(); return false;">
                                 <i class="fas fa-bolt me-2"></i>12V Triggers
                             </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="openVolumeScaleModal(); return false;">
+                                <i class="fas fa-sliders-h me-2"></i>Volume Scale
+                            </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" onclick="runSetupWizard(); return false;">
                                 <i class="fas fa-magic me-2"></i>Run Setup Wizard
@@ -518,6 +521,63 @@
                                 <span class="visually-hidden">Loading...</span>
                             </div>
                             <p class="mt-2 text-muted">Loading sinks...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Volume Scale Modal -->
+    <div class="modal fade" id="volumeScaleModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-sliders-h me-2"></i>Volume Scale Settings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">
+                        Volume scale reduces the maximum loudness of players. This is useful to prevent clipping
+                        or to balance volume levels between different zones. The effective volume is calculated as:
+                        <code>Volume × Global Scale × Player Scale</code>
+                    </p>
+                    
+                    <!-- Global Volume Scale -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <i class="fas fa-globe me-2"></i>Global Volume Scale
+                        </div>
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <input type="range" class="form-range" id="globalVolumeScaleSlider"
+                                           min="1" max="100" value="100" step="1"
+                                           oninput="updateGlobalVolumeScaleDisplay(this.value / 100)"
+                                           onchange="setGlobalVolumeScale(this.value / 100)">
+                                </div>
+                                <div class="col-auto">
+                                    <span id="globalVolumeScaleDisplay" class="badge bg-primary fs-6">100%</span>
+                                </div>
+                            </div>
+                            <div class="form-text">
+                                Applies to all players. Set to 100% for no reduction.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Per-Player Volume Scale -->
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-users me-2"></i>Per-Player Volume Scale
+                        </div>
+                        <div class="card-body">
+                            <div id="playerVolumeScalesContainer">
+                                <p class="text-muted">Loading players...</p>
+                            </div>
                         </div>
                     </div>
                 </div>
