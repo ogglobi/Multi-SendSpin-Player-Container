@@ -24,7 +24,7 @@ public class PlaywrightFixture : IAsyncLifetime
             _playwright = await Playwright.CreateAsync();
             Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
             // Set the Playwright context base URL so page.GotoAsync("/") resolves correctly
-            _context = await Browser.NewContextAsync(new BrowserNewContextOptions { BaseUrl = HttpClient.BaseAddress.ToString() });
+            _context = await Browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = HttpClient.BaseAddress.ToString() });
             _page = await _context.NewPageAsync();
         }
 
