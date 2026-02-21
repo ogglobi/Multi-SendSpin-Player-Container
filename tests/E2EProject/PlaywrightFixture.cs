@@ -18,7 +18,20 @@ public class PlaywrightFixture : IAsyncLifetime
         return Task.Run(async () =>
         {
             var context = await Browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = HttpClient.BaseAddress.ToString() });
+            // Ensure a traces directory exists
+            try { System.IO.Directory.CreateDirectory("/tmp/playwright-traces"); } catch { }
+            var traceId = Guid.NewGuid().ToString("N");
+            await context.Tracing.StartAsync(new TracingStartOptions { Screenshots = true, Snapshots = true, Sources = true });
             var page = await context.NewPageAsync();
+            // Stop tracing and save when the page is closed (context close/page close)
+            page.Close += async (_, _) =>
+            {
+                try
+                {
+                    await context.Tracing.StopAsync(new TracingStopOptions { Path = $"/tmp/playwright-traces/trace-{traceId}.zip" });
+                }
+                catch { }
+            };
             return page;
         });
     }
