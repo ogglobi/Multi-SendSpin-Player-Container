@@ -46,7 +46,8 @@ public class PlaywrightFixture : IAsyncLifetime
             Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
                 Headless = true,
-                Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" }
+                Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" },
+                DumpIO = true
             });
                 // Nothing more to do here — pages/contexts are created per-test in CreatePageAsync
         }
