@@ -255,6 +255,21 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
+    /// Calculates the effective volume after applying global and per-player volume scales.
+    /// Formula: EffectiveVolume = Volume × GlobalScale × PlayerScale
+    /// </summary>
+    /// <param name="volume">The base volume (0-100).</param>
+    /// <param name="playerVolumeScale">Optional per-player volume scale (0.01-1.0), null uses 1.0.</param>
+    /// <returns>The effective volume as a float (0.0-1.0).</returns>
+    private float CalculateEffectiveVolume(int volume, decimal? playerVolumeScale = null)
+    {
+        var globalScale = _config.GlobalVolumeScale;
+        var playerScale = playerVolumeScale ?? 1.0m;
+        var effectiveVolume = (volume / 100.0f) * (float)globalScale * (float)playerScale;
+        return Math.Clamp(effectiveVolume, 0.0f, 1.0f);
+    }
+
+    /// <summary>
     /// Disposes all resources for a player context in the correct order.
     /// Used by RemoveAndDisposePlayerAsync, Dispose, and DisposeAsync.
     /// Ensures all resources are disposed even if some throw exceptions.
@@ -342,9 +357,11 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         {
             // Prevent feedback loop with PlayerStateChanged handler
             context.IsUpdatingFromServer = true;
-            _logger.LogInformation("VOLUME [PushToServer] Player '{Name}': {Volume}%",
-                name, context.Config.Volume);
-            await context.Client.SetVolumeAsync(context.Config.Volume);
+            // Use effective volume (with scale applied) for MA
+            var volumeForMa = (int)(context.Player.Volume * 100);
+            _logger.LogInformation("VOLUME [PushToServer] Player '{Name}': {Volume}% (scaled)",
+                name, volumeForMa);
+            await context.Client.SetVolumeAsync(volumeForMa);
         }
         catch (Exception ex)
         {
@@ -1038,11 +1055,15 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
     /// <param name="delayMs">Delay offset in milliseconds.</param>
     private void InitializeAndConnectPlayer(string name, PlayerContext context, int delayMs)
     {
-        // Apply startup volume locally - player is authoritative for its own volume
+        // Apply startup volume locally with volume scale applied
         // Hardware volume is set to 80% on container startup to avoid clipping
-        context.Player.Volume = context.Config.Volume / 100.0f;
-        _logger.LogInformation("VOLUME [Create] Player '{Name}': startup volume {Volume}% applied locally",
-            name, context.Config.Volume);
+        var playerConfig = _config.GetPlayer(name);
+        var playerVolumeScale = playerConfig?.VolumeScale;
+        var volume = context.Config.Volume > 0 ? context.Config.Volume : 75;
+        var effectiveVolume = CalculateEffectiveVolume(volume, playerVolumeScale);
+        context.Player.Volume = effectiveVolume;
+        _logger.LogInformation("VOLUME [Create] Player '{Name}': startup volume {Volume}% × GlobalScale {GlobalScale} × PlayerScale {PlayerScale} = {EffectiveVolume:F2}",
+            name, volume, _config.GlobalVolumeScale, playerVolumeScale ?? 1.0m, effectiveVolume);
 
         // Apply delay offset from user configuration
         context.ClockSync.StaticDelayMs = delayMs;
@@ -1241,7 +1262,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
             NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
             AdvertisedFormat: config.AdvertisedFormat,
-            CurrentTrack: null
+            CurrentTrack: null,
+            VolumeScale: config.VolumeScale ?? 1.0m
         );
     }
 
@@ -1327,7 +1349,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                     ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
                     NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
                     AdvertisedFormat: config.AdvertisedFormat,
-                    CurrentTrack: null
+                    CurrentTrack: null,
+                    VolumeScale: config.VolumeScale ?? 1.0m
                 ));
             }
         }
@@ -1384,10 +1407,17 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         // 1. Update local config (always)
         context.Config.Volume = volume;
 
-        // 2. Apply volume locally - player is authoritative for its own volume
-        context.Player.Volume = volume / 100.0f;
+        // 2. Apply volume locally with volume scale applied
+        var playerConfig = _config.GetPlayer(name);
+        var playerVolumeScale = playerConfig?.VolumeScale;
+        var effectiveVolume = CalculateEffectiveVolume(volume, playerVolumeScale);
+        context.Player.Volume = effectiveVolume;
+        _logger.LogDebug("VOLUME [Set] Player '{Name}': {Volume}% × GlobalScale {GlobalScale} × PlayerScale {PlayerScale} = {EffectiveVolume:F2}",
+            name, volume, _config.GlobalVolumeScale, playerVolumeScale ?? 1.0m, effectiveVolume);
 
         // 3. Inform MA of our volume (command + state echo)
+        // Convert effectiveVolume (0.0-1.0) to int (0-100) for MA
+        var volumeForMa = (int)(effectiveVolume * 100);
         if (IsPlayerInActiveState(context.State))
         {
             FireAndForget(async () =>
@@ -1396,12 +1426,12 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                 {
                     // Prevent feedback loop with PlayerStateChanged handler
                     context.IsUpdatingFromServer = true;
-                    // Command MA to update its displayed volume
-                    await context.Client.SetVolumeAsync(volume);
+                    // Command MA to update its displayed volume (with scale applied)
+                    await context.Client.SetVolumeAsync(volumeForMa);
                     // SDK 5.4.0 auto-acknowledges, but we still echo state for full sync
-                    await context.Client.SendPlayerStateAsync(volume, context.Player.IsMuted);
-                    _logger.LogInformation("VOLUME [Sync] Player '{Name}': sent {Volume}% to MA",
-                        name, volume);
+                    await context.Client.SendPlayerStateAsync(volumeForMa, context.Player.IsMuted);
+                    _logger.LogInformation("VOLUME [Sync] Player '{Name}': sent {Volume}% (scaled) to MA",
+                        name, volumeForMa);
                 }
                 catch (Exception ex)
                 {
@@ -1423,6 +1453,30 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         return Task.FromResult(true);
     }
 
+    /// <summary>
+    /// Refreshes a player's volume by re-applying the current volume with updated scale factors.
+    /// Called when global or per-player volume scale changes.
+    /// </summary>
+    public void RefreshPlayerVolume(string name)
+    {
+        if (!_players.TryGetValue(name, out var context))
+        {
+            _logger.LogDebug("RefreshPlayerVolume: Player '{Name}' not active", name);
+            return;
+        }
+
+        var playerConfig = _config.GetPlayer(name);
+        var playerVolumeScale = playerConfig?.VolumeScale;
+        var volume = context.Config.Volume;
+        var effectiveVolume = CalculateEffectiveVolume(volume, playerVolumeScale);
+        context.Player.Volume = effectiveVolume;
+        
+        _logger.LogInformation("VOLUME [Refresh] Player '{Name}': {Volume}% × GlobalScale {GlobalScale} × PlayerScale {PlayerScale} = {EffectiveVolume:F2}",
+            name, volume, _config.GlobalVolumeScale, playerVolumeScale ?? 1.0m, effectiveVolume);
+
+        // Broadcast status update to reflect new effective volume
+        _ = BroadcastStatusAsync();
+    }
 
     /// <summary>
     /// Sets the mute state for a player.
@@ -1455,10 +1509,11 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             {
                 // Prevent feedback loop with PlayerStateChanged handler
                 context.IsUpdatingFromServer = true;
-                await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
+                var volumeForMa = (int)(context.Player.Volume * 100);
+                await context.Client.SendPlayerStateAsync(volumeForMa, muted);
                 context.LastConfirmedMuted = muted;
-                _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server",
-                    name, muted ? "muted" : "unmuted");
+                _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server (scaled {Volume}%)",
+                    name, muted ? "muted" : "unmuted", volumeForMa);
             }
             catch (Exception ex)
             {
@@ -1492,10 +1547,14 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         // 1. Update local config
         context.Config.Volume = volume;
 
-        // 2. Apply volume locally - player is authoritative for its own volume
-        context.Player.Volume = volume / 100.0f;
+        // 2. Apply volume locally with volume scale applied
+        var playerConfig = _config.GetPlayer(name);
+        var playerVolumeScale = playerConfig?.VolumeScale;
+        var effectiveVolume = CalculateEffectiveVolume(volume, playerVolumeScale);
+        context.Player.Volume = effectiveVolume;
 
-        // 3. Inform MA of our volume
+        // 3. Inform MA of our volume (with scale applied)
+        var volumeForMa = (int)(effectiveVolume * 100);
         if (IsPlayerInActiveState(context.State))
         {
             FireAndForget(async () =>
@@ -1503,10 +1562,10 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                 try
                 {
                     context.IsUpdatingFromServer = true;
-                    await context.Client.SetVolumeAsync(volume);
-                    await context.Client.SendPlayerStateAsync(volume, context.Player.IsMuted);
-                    _logger.LogInformation("VOLUME [Hardware->MA] Player '{Name}': synced {Volume}% to MA",
-                        name, volume);
+                    await context.Client.SetVolumeAsync(volumeForMa);
+                    await context.Client.SendPlayerStateAsync(volumeForMa, context.Player.IsMuted);
+                    _logger.LogInformation("VOLUME [Hardware->MA] Player '{Name}': synced {Volume}% (scaled) to MA",
+                        name, volumeForMa);
                 }
                 catch (Exception ex)
                 {
@@ -1553,10 +1612,11 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             try
             {
                 context.IsUpdatingFromServer = true;
-                await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
+                var volumeForMa = (int)(context.Player.Volume * 100);
+                await context.Client.SendPlayerStateAsync(volumeForMa, muted);
                 context.LastConfirmedMuted = muted;
-                _logger.LogInformation("MUTE [Hardware->MA] Player '{Name}': synced {State} to server",
-                    name, muted ? "muted" : "unmuted");
+                _logger.LogInformation("MUTE [Hardware->MA] Player '{Name}': synced {State} to server (scaled {Volume}%)",
+                    name, muted ? "muted" : "unmuted", volumeForMa);
             }
             catch (Exception ex)
             {
@@ -2881,15 +2941,16 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                         "VOLUME [GracePeriod] Player '{Name}': ignoring MA volume {NewVol}% (within grace period, keeping startup volume {OldVol}%, {Remaining:F1}s remaining)",
                         name, serverVolume, context.Config.Volume, gracePeriodRemaining.TotalSeconds);
 
-                    // Push our startup volume back to MA aggressively
+                    // Push our startup volume back to MA aggressively (with scale applied)
                     FireAndForget(async () =>
                     {
                         try
                         {
                             context.IsUpdatingFromServer = true;
-                            await context.Client.SetVolumeAsync(context.Config.Volume);
-                            _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% back to MA",
-                                name, context.Config.Volume);
+                            var volumeForMa = (int)(context.Player.Volume * 100);
+                            await context.Client.SetVolumeAsync(volumeForMa);
+                            _logger.LogInformation("VOLUME [GracePeriod] Player '{Name}': pushed startup volume {Volume}% (scaled) back to MA",
+                                name, volumeForMa);
                         }
                         catch (Exception ex)
                         {
@@ -2911,8 +2972,11 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
                 // Update runtime config
                 context.Config.Volume = serverVolume;
 
-                // Apply volume locally - player is authoritative for its own volume
-                context.Player.Volume = serverVolume / 100.0f;
+                // Apply volume locally with volume scale applied
+                var playerConfig = _config.GetPlayer(name);
+                var playerVolumeScale = playerConfig?.VolumeScale;
+                var effectiveVolume = CalculateEffectiveVolume(serverVolume, playerVolumeScale);
+                context.Player.Volume = effectiveVolume;
 
                 // Note: SDK 5.4.0 auto-acknowledges by sending client/state,
                 // so we don't need to call SendPlayerStateAsync manually
@@ -3057,7 +3121,8 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             ReconnectionAttempts: isPendingReconnection ? reconnectState!.RetryCount : null,
             NextReconnectionAttempt: isPendingReconnection ? reconnectState!.NextRetryTime : null,
             AdvertisedFormat: context.Config.AdvertisedFormat,
-            CurrentTrack: GetTrackInfo(context.Client.CurrentGroup?.Metadata)
+            CurrentTrack: GetTrackInfo(context.Client.CurrentGroup?.Metadata),
+            VolumeScale: persistedConfig?.VolumeScale ?? 1.0m
         );
     }
 
@@ -3399,7 +3464,7 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Called when mDNS discovers a server while players are pending reconnection.
-    /// Resets all pending players' backoff timers to trigger immediate reconnection.
+    /// Only triggers reconnection for players whose configured server matches the discovered server.
     /// </summary>
     private void OnMdnsServerFound(object? sender, DiscoveredServer server)
     {
@@ -3407,22 +3472,43 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         if (pendingCount == 0)
             return;
 
+        // Get the discovered server's host and port
+        var discoveredHost = server.IpAddresses.FirstOrDefault() ?? server.Host;
+        var discoveredPort = server.Port;
+
+        // Find players that match this server
+        var matchingPlayers = new List<KeyValuePair<string, ReconnectionState>>();
+        foreach (var kvp in _pendingReconnections)
+        {
+            if (ServerMatches(kvp.Value.Config.Server, discoveredHost, discoveredPort))
+            {
+                matchingPlayers.Add(kvp);
+            }
+        }
+
+        if (matchingPlayers.Count == 0)
+        {
+            _logger.LogDebug(
+                "mDNS discovered server '{Name}' at {Host}:{Port} - no matching players (skipping)",
+                server.Name, discoveredHost, discoveredPort);
+            return;
+        }
+
         _logger.LogInformation(
-            "mDNS discovered server '{Name}' at {Host}:{Port} - triggering immediate reconnection for {Count} player(s)",
-            server.Name, server.Host, server.Port, pendingCount);
+            "mDNS discovered server '{Name}' at {Host}:{Port} - triggering immediate reconnection for {Count} matching player(s)",
+            server.Name, discoveredHost, discoveredPort, matchingPlayers.Count);
 
         // Stop watching now that we've found the server.
         // If reconnection fails, QueueForReconnection will restart the watch.
         StopMdnsWatch();
 
         // Cache the discovered server URI so reconnection attempts use it directly
-        var host = server.IpAddresses.FirstOrDefault() ?? server.Host;
-        _cachedServerUri = new Uri($"ws://{host}:{server.Port}/sendspin");
+        _cachedServerUri = new Uri($"ws://{discoveredHost}:{discoveredPort}/sendspin");
         _cachedServerUriExpiry = DateTime.UtcNow.Add(CachedServerTtl);
 
-        // Reset all pending players' backoff timers to now and clear mDNS-only mode.
+        // Reset only matching players' backoff timers to now and clear mDNS-only mode.
         // After mDNS discovery, if connection still fails, normal backoff retries kick in.
-        foreach (var kvp in _pendingReconnections)
+        foreach (var kvp in matchingPlayers)
         {
             _pendingReconnections[kvp.Key] = kvp.Value with
             {
@@ -3435,6 +3521,35 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
         SignalReconnectionLoop();
 
         _ = BroadcastStatusAsync();
+    }
+
+    /// <summary>
+    /// Checks if a player's configured server matches the discovered mDNS server.
+    /// </summary>
+    /// <param name="configuredServer">The player's configured server (e.g., "192.168.10.218:7090" or null for auto-discovery)</param>
+    /// <param name="discoveredHost">The discovered server's host/IP</param>
+    /// <param name="discoveredPort">The discovered server's port</param>
+    /// <returns>True if the server matches or if the player uses auto-discovery</returns>
+    private bool ServerMatches(string? configuredServer, string discoveredHost, int discoveredPort)
+    {
+        // If player has no configured server, it uses auto-discovery - match any server
+        if (string.IsNullOrEmpty(configuredServer))
+            return true;
+
+        // Parse the configured server (format: "host:port" or just "host")
+        var parts = configuredServer.Split(':');
+        var configHost = parts[0];
+        var configPort = parts.Length > 1 && int.TryParse(parts[1], out var port) ? port : 7090; // Default port is 7090
+
+        // Check if host matches (case-insensitive)
+        var hostMatches = string.Equals(configHost, discoveredHost, StringComparison.OrdinalIgnoreCase) ||
+                          discoveredHost.Contains(configHost) ||
+                          configHost.Contains(discoveredHost);
+
+        // Check if port matches
+        var portMatches = configPort == discoveredPort;
+
+        return hostMatches && portMatches;
     }
 
     /// <summary>

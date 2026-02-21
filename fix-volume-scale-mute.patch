@@ -1,0 +1,41 @@
+*** Begin Patch
+*** Update File: src/MultiRoomAudio/Services/PlayerManagerService.cs
+@@
+-                try
+-                {
+-                    // Prevent feedback loop with PlayerStateChanged handler
+-                    context.IsUpdatingFromServer = true;
+-                    await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
+-                    context.LastConfirmedMuted = muted;
+-                    _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server",
+-                        name, muted ? "muted" : "unmuted");
+-                }
++                try
++                {
++                    // Prevent feedback loop with PlayerStateChanged handler
++                    context.IsUpdatingFromServer = true;
++                    var volumeForMa = (int)(context.Player.Volume * 100);
++                    await context.Client.SendPlayerStateAsync(volumeForMa, muted);
++                    context.LastConfirmedMuted = muted;
++                    _logger.LogInformation("MUTE [StateEcho] Player '{Name}': synced {State} to server (scaled {Volume}%)",
++                        name, muted ? "muted" : "unmuted", volumeForMa);
++                }
+@@
+-            try
+-            {
+-                context.IsUpdatingFromServer = true;
+-                await context.Client.SendPlayerStateAsync(context.Config.Volume, muted);
+-                context.LastConfirmedMuted = muted;
+-                _logger.LogInformation("MUTE [Hardware->MA] Player '{Name}': synced {State} to server",
+-                    name, muted ? "muted" : "unmuted");
+-            }
++            try
++            {
++                context.IsUpdatingFromServer = true;
++                var volumeForMa = (int)(context.Player.Volume * 100);
++                await context.Client.SendPlayerStateAsync(volumeForMa, muted);
++                context.LastConfirmedMuted = muted;
++                _logger.LogInformation("MUTE [Hardware->MA] Player '{Name}': synced {State} to server (scaled {Volume}%)",
++                    name, muted ? "muted" : "unmuted", volumeForMa);
++            }
+*** End Patch
