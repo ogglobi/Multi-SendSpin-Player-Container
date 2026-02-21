@@ -19,13 +19,14 @@ public class PlaywrightFixture : IAsyncLifetime
         return Task.FromResult(_page);
     }
 
-    public async Task InitializeAsync()
-    {
-        _playwright = await Playwright.CreateAsync();
-        Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
-        _context = await Browser.NewContextAsync();
-        _page = await _context.NewPageAsync();
-    }
+        public async Task InitializeAsync()
+        {
+            _playwright = await Playwright.CreateAsync();
+            Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            // Set the Playwright context base URL so page.GotoAsync("/") resolves correctly
+            _context = await Browser.NewContextAsync(new BrowserNewContextOptions { BaseUrl = HttpClient.BaseAddress.ToString() });
+            _page = await _context.NewPageAsync();
+        }
 
     public async Task DisposeAsync()
     {
