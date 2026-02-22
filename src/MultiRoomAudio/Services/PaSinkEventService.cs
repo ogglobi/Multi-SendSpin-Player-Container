@@ -120,8 +120,9 @@ public partial class PaSinkEventService : BackgroundService
         _logger.LogInformation("Started pactl subscribe (PID: {Pid})", _subscribeProcess.Id);
         IsConnected = true;
 
-        // Read lines from stdout
+        // Read lines from stdout while also capturing stderr to log on exit
         using var reader = _subscribeProcess.StandardOutput;
+        var stderrTask = _subscribeProcess.StandardError.ReadToEndAsync();
 
         while (!stoppingToken.IsCancellationRequested && !_subscribeProcess.HasExited)
         {
@@ -160,8 +161,34 @@ public partial class PaSinkEventService : BackgroundService
 
         await _subscribeProcess.WaitForExitAsync(stoppingToken);
 
+        // Capture stderr output and include it in logs to aid debugging
+        string stderr = string.Empty;
+        try
+        {
+            stderr = await stderrTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed reading pactl stderr");
+        }
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            _logger.LogWarning("pactl subscribe stderr: {Stderr}", stderr.Trim());
+        }
+
         _logger.LogInformation("pactl subscribe process exited with code {ExitCode}", _subscribeProcess.ExitCode);
         IsConnected = false;
+
+        // Short backoff to avoid tight respawn loops
+        try
+        {
+            await Task.Delay(1000, stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // shutting down
+        }
 
         lock (_processLock)
         {

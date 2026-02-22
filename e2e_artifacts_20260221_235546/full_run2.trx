@@ -1,0 +1,946 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="72395e86-569c-4e40-941e-a6f94b2b0cea" name="@multiroom-audio 2026-02-21 23:51:06" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-02-21T23:51:06.7327639+01:00" queuing="2026-02-21T23:51:06.7327640+01:00" start="2026-02-21T23:51:04.5586534+01:00" finish="2026-02-21T23:51:16.5685796+01:00" />
+  <TestSettings name="default" id="59d57915-b846-49c0-8862-adecdd5a94af">
+    <Deployment runDeploymentRoot="_multiroom-audio_2026-02-21_23_51_06" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="d646aa5f-a120-4c44-835e-2df40e4037ca" testId="cc9a8707-1371-9ddb-1c2f-9dd411daddcf" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreatePlayerWithCustomSink_ViaUI_HandledGracefully" computerName="multiroom-audio" duration="00:00:03.2967500" startTime="2026-02-21T23:51:10.2423463+01:00" endTime="2026-02-21T23:51:10.2423464+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d646aa5f-a120-4c44-835e-2df40e4037ca" />
+    <UnitTestResult executionId="7775a1f6-c3d0-4fb8-b8c0-ff7255b03e04" testId="63990d20-b9da-0cf2-966a-5ef7214d0687" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDevicePatternInput" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4450535+01:00" endTime="2026-02-21T23:51:16.4450536+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7775a1f6-c3d0-4fb8-b8c0-ff7255b03e04">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="3be913cb-c341-4472-960e-14cdea9b3edd" testId="7c1ba016-2410-aca4-670f-7308ffecb84d" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_ShowsChannelList" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4399787+01:00" endTime="2026-02-21T23:51:16.4399788+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3be913cb-c341-4472-960e-14cdea9b3edd">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="bf38d794-4138-4fcb-a526-e6530bc7e56e" testId="ad1bf641-9648-e493-7ab5-651629e4249a" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeviceDropdown_ContainsCustomSinks" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4228430+01:00" endTime="2026-02-21T23:51:16.4228431+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bf38d794-4138-4fcb-a526-e6530bc7e56e">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="dc3962fb-5a57-4fc2-a402-86eae03901a7" testId="f70c8e97-41eb-b17f-92e9-e2235077ef07" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.OpenRemapSinkForm_HasChannelMappingUI" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.3370383+01:00" endTime="2026-02-21T23:51:16.3370384+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="dc3962fb-5a57-4fc2-a402-86eae03901a7">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="29498747-4545-4cc6-8d8d-55e0c0d7a255" testId="399755f4-4185-32bd-8cf7-d78ff8d1b058" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_VisibleInCustomSinksModal" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4480056+01:00" endTime="2026-02-21T23:51:16.4480057+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="29498747-4545-4cc6-8d8d-55e0c0d7a255">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="3e113826-0cd0-4201-bac4-5f3848d59c83" testId="e1ee9e90-c349-2326-a0d5-3adc7e5180de" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreatePlayerWithCustomSink_ViaAPI_ReturnsError" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.3290308+01:00" endTime="2026-02-21T23:51:16.3290310+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3e113826-0cd0-4201-bac4-5f3848d59c83">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="8908d8d6-1c5f-48b1-8dea-bf8a24eeda26" testId="0cba1dd5-7e8f-6de9-b1cf-c41724768699" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_HasCreateButtons" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4303154+01:00" endTime="2026-02-21T23:51:16.4303154+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8908d8d6-1c5f-48b1-8dea-bf8a24eeda26">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="ebbb6e41-abc7-45d5-b2a3-6c077a47045b" testId="655b7bb1-49d5-5597-f259-f9f5b67776b2" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateRemapSink_ViaAPI_AppearsInUI" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4335580+01:00" endTime="2026-02-21T23:51:16.4335581+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ebbb6e41-abc7-45d5-b2a3-6c077a47045b">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="c0756c57-3ba6-4b52-b487-51ca4e410a61" testId="f3d7d72f-15f7-03e5-6ef6-8d7b479c90dd" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannelMapping_ToCustomSink_Works" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4696810+01:00" endTime="2026-02-21T23:51:16.4696812+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c0756c57-3ba6-4b52-b487-51ca4e410a61">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="c9b13aa5-9b54-490b-aa14-359cb6fc673f" testId="7aad2193-14bc-3d67-9ac5-9e8630ad6b77" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerOffDelay_RejectsNegativeValues" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4461845+01:00" endTime="2026-02-21T23:51:16.4461846+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c9b13aa5-9b54-490b-aa14-359cb6fc673f">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="8cfcf906-cdd2-4eba-aa51-0c31b2bb2a82" testId="ae8eaf3b-165e-522e-07e7-213d913db5e0" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.AllChannels_DisplayedInUI" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4734967+01:00" endTime="2026-02-21T23:51:16.4734967+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8cfcf906-cdd2-4eba-aa51-0c31b2bb2a82">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="6ddb0a76-79c6-40cd-8381-1af2a16b3b29" testId="e09f12bd-db58-e528-5340-7d1e4ba80472" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeleteSink_ViaUI_RemovesFromList" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.3336515+01:00" endTime="2026-02-21T23:51:16.3336539+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6ddb0a76-79c6-40cd-8381-1af2a16b3b29">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="5f880b57-3654-4504-9022-0633eff06c24" testId="c928f9b4-149a-4d71-b69b-2bae1f0f2606" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_DetectionShown" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4418093+01:00" endTime="2026-02-21T23:51:16.4418094+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5f880b57-3654-4504-9022-0633eff06c24">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="c514419e-4b27-45cc-8dd6-2a560ea4eaab" testId="54edb374-24db-ec8e-d662-04af5560ac9a" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaAPI_AppearsInUI" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.3374246+01:00" endTime="2026-02-21T23:51:16.3374247+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c514419e-4b27-45cc-8dd6-2a560ea4eaab">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="808e97b8-fdc9-4a1c-9ca7-66cf53d6ffa3" testId="7950bb25-50b1-5a7b-414e-d26bf0cdf287" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_InvalidChannel_ReturnsBadRequest" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4650429+01:00" endTime="2026-02-21T23:51:16.4650429+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="808e97b8-fdc9-4a1c-9ca7-66cf53d6ffa3">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="f9ee8746-0ecf-44b7-9ae7-c82be9b16ece" testId="6b75fbd5-9bd4-6bd9-d995-0268b8d600e6" testName="E2EProject.UnitTest1.Test1" computerName="multiroom-audio" duration="00:00:00.0138659" startTime="2026-02-21T23:51:05.8462265+01:00" endTime="2026-02-21T23:51:05.8462523+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f9ee8746-0ecf-44b7-9ae7-c82be9b16ece" />
+    <UnitTestResult executionId="c2d1273b-52c7-4e83-aa1d-94b51a87faac" testId="fb4c01bd-911a-267c-f5b5-3d286e15e006" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_ShowsChannelState" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4541008+01:00" endTime="2026-02-21T23:51:16.4541009+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c2d1273b-52c7-4e83-aa1d-94b51a87faac">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="02e12671-8cdf-48ad-83fe-18f87ba412f7" testId="ad99b9ac-f24d-ebc6-9ea1-ea06d8930582" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_ShowsValidationErrors" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4511640+01:00" endTime="2026-02-21T23:51:16.4511641+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="02e12671-8cdf-48ad-83fe-18f87ba412f7">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="b2f0259b-0d77-4321-a1d6-4f3f39217d8e" testId="93c9e8a5-74d0-b703-6c62-3f79be6f01fd" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.GetTriggers_ViaAPI_ReturnsStatus" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4382629+01:00" endTime="2026-02-21T23:51:16.4382639+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b2f0259b-0d77-4321-a1d6-4f3f39217d8e">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="d8360359-b625-40d8-ae8b-6ecc23ada9ed" testId="6f7a7f03-77af-7ad8-b1d1-0e9d9a667a61" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.ConfigureTrigger_ViaAPI_Succeeds" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4370519+01:00" endTime="2026-02-21T23:51:16.4370519+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d8360359-b625-40d8-ae8b-6ecc23ada9ed">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="e980fb0b-37f2-4bad-9050-7e5b7d522b19" testId="7ce2c1b4-10d4-8f1e-4879-03c210f410cf" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaUI_ShowsInList" computerName="multiroom-audio" duration="00:00:05.2934651" startTime="2026-02-21T23:51:15.6308789+01:00" endTime="2026-02-21T23:51:15.6308790+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e980fb0b-37f2-4bad-9050-7e5b7d522b19" />
+    <UnitTestResult executionId="6b0551a6-2234-4230-bf3f-4fef8869a82b" testId="3cbb389e-4e47-4807-09f2-8631fabb4351" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_OpensFromNavbar" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4245655+01:00" endTime="2026-02-21T23:51:16.4245656+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6b0551a6-2234-4230-bf3f-4fef8869a82b">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="0f5fcb3d-ca4f-4c00-aae7-1ab80ce9ce71" testId="9555f52a-d4b8-3db2-045d-3ed9532cefe9" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_Exists" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4476916+01:00" endTime="2026-02-21T23:51:16.4476917+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0f5fcb3d-ca4f-4c00-aae7-1ab80ce9ce71">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="55957d6f-57b5-4de7-87ad-ffca1fb3b71d" testId="e86efa64-9b7e-97a7-fbc8-0c76712f16c2" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ViaAPI_Succeeds" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4339739+01:00" endTime="2026-02-21T23:51:16.4339740+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="55957d6f-57b5-4de7-87ad-ffca1fb3b71d">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="c6add497-044b-443e-8a48-e2ed9e2b36f9" testId="6d40e6d2-0353-5eb3-faa7-297a0e3cc659" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.MultipleChannels_IndependentConfiguration" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4496481+01:00" endTime="2026-02-21T23:51:16.4496482+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c6add497-044b-443e-8a48-e2ed9e2b36f9">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="1bca28a0-e752-43b0-a856-2eeaebb6dcf7" testId="62d77142-b586-ab41-07d4-a71b4d76b900" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState" computerName="multiroom-audio" duration="00:00:00.5218149" startTime="2026-02-21T23:51:16.3130430+01:00" endTime="2026-02-21T23:51:16.3130431+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1bca28a0-e752-43b0-a856-2eeaebb6dcf7">
+      <Output>
+        <ErrorInfo>
+          <Message>System.AggregateException : One or more errors occurred. (System.Collections.Generic.KeyNotFoundException: The given key 'tracing@476245a18f0cfcfa817dd0f17048a87f' was not present in the dictionary.
+   at System.Collections.Concurrent.ConcurrentDictionary`2.ThrowKeyNotFoundException(TKey key)
+   at System.Collections.Concurrent.ConcurrentDictionary`2.get_Item(TKey key)
+   at Microsoft.Playwright.Transport.Connection.CreateRemoteObject(String parentGuid, ChannelOwnerType type, String guid, Nullable`1 initializer) in /_/src/Playwright/Transport/Connection.cs:line 274
+   at Microsoft.Playwright.Transport.Connection.Dispatch(PlaywrightServerMessage message) in /_/src/Playwright/Transport/Connection.cs:line 202) (Connection disposed)
+---- Microsoft.Playwright.PlaywrightException : System.Collections.Generic.KeyNotFoundException: The given key 'tracing@476245a18f0cfcfa817dd0f17048a87f' was not present in the dictionary.
+   at System.Collections.Concurrent.ConcurrentDictionary`2.ThrowKeyNotFoundException(TKey key)
+   at System.Collections.Concurrent.ConcurrentDictionary`2.get_Item(TKey key)
+   at Microsoft.Playwright.Transport.Connection.CreateRemoteObject(String parentGuid, ChannelOwnerType type, String guid, Nullable`1 initializer) in /_/src/Playwright/Transport/Connection.cs:line 274
+   at Microsoft.Playwright.Transport.Connection.Dispatch(PlaywrightServerMessage message) in /_/src/Playwright/Transport/Connection.cs:line 202
+---- Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>
+----- Inner Stack Trace #1 (Microsoft.Playwright.PlaywrightException) -----
+   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 129
+--- End of stack trace from previous location ---
+----- Inner Stack Trace #2 (Microsoft.Playwright.PlaywrightException) -----
+   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.BrowserContext.CloseAsync() in /_/src/Playwright/Core/BrowserContext.cs:line 202
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.DisposeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 41</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="e78a27a4-7b9d-460b-ac72-edc03a289ae5" testId="97b311f1-d335-9151-d723-e998656b2133" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_StatusEndpoint_Returns" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4731472+01:00" endTime="2026-02-21T23:51:16.4731473+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e78a27a4-7b9d-460b-ac72-edc03a289ae5">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="b05d90b1-2dc5-4987-89df-d794f3dedb2c" testId="5da5cc5a-8355-7316-3f3b-05ed0cbf08a4" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_SaveButton_Works" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4453825+01:00" endTime="2026-02-21T23:51:16.4453826+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b05d90b1-2dc5-4987-89df-d794f3dedb2c">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="15372b94-8fa6-4701-b179-c7190ca7fd3d" testId="e8e5d6e5-ede2-a9e4-0c80-3e1374cfcec5" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerOffDelay_AcceptsValidValues" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4757408+01:00" endTime="2026-02-21T23:51:16.4757409+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="15372b94-8fa6-4701-b179-c7190ca7fd3d">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="5d4ee7d7-690f-496d-bcd9-71a133bbacf7" testId="417be7b5-1569-3a4b-234e-d08b99c4301c" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_EnablesDisables" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4646968+01:00" endTime="2026-02-21T23:51:16.4646968+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5d4ee7d7-690f-496d-bcd9-71a133bbacf7">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="e3a6bea0-7376-4771-84d9-ce4769948a28" testId="afe6e088-eaa2-ba2e-3152-bfd171fa6fad" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_UpdatesInRealTime" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4464580+01:00" endTime="2026-02-21T23:51:16.4464580+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e3a6bea0-7376-4771-84d9-ce4769948a28">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="b4189dc3-bb2d-4632-b924-749390f8e38d" testId="048b5c70-0487-6884-396e-36bf9dfbf048" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasSinkSelector" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4716358+01:00" endTime="2026-02-21T23:51:16.4716359+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b4189dc3-bb2d-4632-b924-749390f8e38d">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="c8a85b2f-bff7-4077-b2f8-ea4ae349b237" testId="d66f3c1a-6733-66bb-e2f6-54f419cb69f9" testName="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDelayInput" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4402853+01:00" endTime="2026-02-21T23:51:16.4402853+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c8a85b2f-bff7-4077-b2f8-ea4ae349b237">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="f1f59691-84fd-4aec-9023-0e550a99b8f5" testId="f1df4d1f-b290-4b59-9acc-e89aa7d002af" testName="MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ButtonExists" computerName="multiroom-audio" duration="00:00:00.0010000" startTime="2026-02-21T23:51:16.4258572+01:00" endTime="2026-02-21T23:51:16.4258573+01:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f1f59691-84fd-4aec-9023-0e550a99b8f5">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Playwright.PlaywrightException : Connection disposed</Message>
+          <StackTrace>   at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 108
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options) in /_/src/Playwright/Core/Browser.cs:line 98
+   at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0() in /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs:line 23
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 23</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDelayInput" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="d66f3c1a-6733-66bb-e2f6-54f419cb69f9">
+      <Execution id="c8a85b2f-bff7-4077-b2f8-ea4ae349b237" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerChannel_HasDelayInput" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ViaAPI_Succeeds" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="e86efa64-9b7e-97a7-fbc8-0c76712f16c2">
+      <Execution id="55957d6f-57b5-4de7-87ad-ffca1fb3b71d" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="PlayTestTone_ViaAPI_Succeeds" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreatePlayerWithCustomSink_ViaUI_HandledGracefully" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="cc9a8707-1371-9ddb-1c2f-9dd411daddcf">
+      <Execution id="d646aa5f-a120-4c44-835e-2df40e4037ca" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CreatePlayerWithCustomSink_ViaUI_HandledGracefully" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeviceDropdown_ContainsCustomSinks" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="ad1bf641-9648-e493-7ab5-651629e4249a">
+      <Execution id="bf38d794-4138-4fcb-a526-e6530bc7e56e" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="DeviceDropdown_ContainsCustomSinks" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_OpensFromNavbar" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="3cbb389e-4e47-4807-09f2-8631fabb4351">
+      <Execution id="6b0551a6-2234-4230-bf3f-4fef8869a82b" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CustomSinksModal_OpensFromNavbar" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_StatusEndpoint_Returns" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="97b311f1-d335-9151-d723-e998656b2133">
+      <Execution id="e78a27a4-7b9d-460b-ac72-edc03a289ae5" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="RelayHardware_StatusEndpoint_Returns" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ButtonExists" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="f1df4d1f-b290-4b59-9acc-e89aa7d002af">
+      <Execution id="f1f59691-84fd-4aec-9023-0e550a99b8f5" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="PlayTestTone_ButtonExists" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_HasCreateButtons" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="0cba1dd5-7e8f-6de9-b1cf-c41724768699">
+      <Execution id="8908d8d6-1c5f-48b1-8dea-bf8a24eeda26" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CustomSinksModal_HasCreateButtons" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="62d77142-b586-ab41-07d4-a71b4d76b900">
+      <Execution id="1bca28a0-e752-43b0-a856-2eeaebb6dcf7" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CustomSinksModal_ShowsEmptyState" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.ConfigureTrigger_ViaAPI_Succeeds" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="6f7a7f03-77af-7ad8-b1d1-0e9d9a667a61">
+      <Execution id="d8360359-b625-40d8-ae8b-6ecc23ada9ed" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="ConfigureTrigger_ViaAPI_Succeeds" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateRemapSink_ViaAPI_AppearsInUI" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="655b7bb1-49d5-5597-f259-f9f5b67776b2">
+      <Execution id="ebbb6e41-abc7-45d5-b2a3-6c077a47045b" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CreateRemapSink_ViaAPI_AppearsInUI" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaAPI_AppearsInUI" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="54edb374-24db-ec8e-d662-04af5560ac9a">
+      <Execution id="c514419e-4b27-45cc-8dd6-2a560ea4eaab" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CreateCombineSink_ViaAPI_AppearsInUI" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDevicePatternInput" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="63990d20-b9da-0cf2-966a-5ef7214d0687">
+      <Execution id="7775a1f6-c3d0-4fb8-b8c0-ff7255b03e04" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerChannel_HasDevicePatternInput" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_ShowsChannelList" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="7c1ba016-2410-aca4-670f-7308ffecb84d">
+      <Execution id="3be913cb-c341-4472-960e-14cdea9b3edd" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggersSection_ShowsChannelList" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_VisibleInCustomSinksModal" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="399755f4-4185-32bd-8cf7-d78ff8d1b058">
+      <Execution id="29498747-4545-4cc6-8d8d-55e0c0d7a255" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggersSection_VisibleInCustomSinksModal" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_UpdatesInRealTime" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="afe6e088-eaa2-ba2e-3152-bfd171fa6fad">
+      <Execution id="e3a6bea0-7376-4771-84d9-ce4769948a28" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerStatus_UpdatesInRealTime" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerOffDelay_AcceptsValidValues" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="e8e5d6e5-ede2-a9e4-0c80-3e1374cfcec5">
+      <Execution id="15372b94-8fa6-4701-b179-c7190ca7fd3d" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerOffDelay_AcceptsValidValues" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_SaveButton_Works" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="5da5cc5a-8355-7316-3f3b-05ed0cbf08a4">
+      <Execution id="b05d90b1-2dc5-4987-89df-d794f3dedb2c" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerConfig_SaveButton_Works" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.MultipleChannels_IndependentConfiguration" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="6d40e6d2-0353-5eb3-faa7-297a0e3cc659">
+      <Execution id="c6add497-044b-443e-8a48-e2ed9e2b36f9" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="MultipleChannels_IndependentConfiguration" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeleteSink_ViaUI_RemovesFromList" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="e09f12bd-db58-e528-5340-7d1e4ba80472">
+      <Execution id="6ddb0a76-79c6-40cd-8381-1af2a16b3b29" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="DeleteSink_ViaUI_RemovesFromList" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_Exists" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="9555f52a-d4b8-3db2-045d-3ed9532cefe9">
+      <Execution id="0f5fcb3d-ca4f-4c00-aae7-1ab80ce9ce71" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerMasterToggle_Exists" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaUI_ShowsInList" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="7ce2c1b4-10d4-8f1e-4879-03c210f410cf">
+      <Execution id="e980fb0b-37f2-4bad-9050-7e5b7d522b19" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CreateCombineSink_ViaUI_ShowsInList" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.AllChannels_DisplayedInUI" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="ae8eaf3b-165e-522e-07e7-213d913db5e0">
+      <Execution id="8cfcf906-cdd2-4eba-aa51-0c31b2bb2a82" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="AllChannels_DisplayedInUI" />
+    </UnitTest>
+    <UnitTest name="E2EProject.UnitTest1.Test1" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="6b75fbd5-9bd4-6bd9-d995-0268b8d600e6">
+      <Execution id="f9ee8746-0ecf-44b7-9ae7-c82be9b16ece" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="E2EProject.UnitTest1" name="Test1" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannelMapping_ToCustomSink_Works" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="f3d7d72f-15f7-03e5-6ef6-8d7b479c90dd">
+      <Execution id="c0756c57-3ba6-4b52-b487-51ca4e410a61" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerChannelMapping_ToCustomSink_Works" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_EnablesDisables" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="417be7b5-1569-3a4b-234e-d08b99c4301c">
+      <Execution id="5d4ee7d7-690f-496d-bcd9-71a133bbacf7" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerMasterToggle_EnablesDisables" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_DetectionShown" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="c928f9b4-149a-4d71-b69b-2bae1f0f2606">
+      <Execution id="5f880b57-3654-4504-9022-0633eff06c24" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="RelayHardware_DetectionShown" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_InvalidChannel_ReturnsBadRequest" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="7950bb25-50b1-5a7b-414e-d26bf0cdf287">
+      <Execution id="808e97b8-fdc9-4a1c-9ca7-66cf53d6ffa3" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerChannel_InvalidChannel_ReturnsBadRequest" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.OpenRemapSinkForm_HasChannelMappingUI" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="f70c8e97-41eb-b17f-92e9-e2235077ef07">
+      <Execution id="dc3962fb-5a57-4fc2-a402-86eae03901a7" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="OpenRemapSinkForm_HasChannelMappingUI" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerOffDelay_RejectsNegativeValues" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="7aad2193-14bc-3d67-9ac5-9e8630ad6b77">
+      <Execution id="c9b13aa5-9b54-490b-aa14-359cb6fc673f" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerOffDelay_RejectsNegativeValues" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasSinkSelector" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="048b5c70-0487-6884-396e-36bf9dfbf048">
+      <Execution id="b4189dc3-bb2d-4632-b924-749390f8e38d" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerChannel_HasSinkSelector" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.GetTriggers_ViaAPI_ReturnsStatus" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="93c9e8a5-74d0-b703-6c62-3f79be6f01fd">
+      <Execution id="b2f0259b-0d77-4321-a1d6-4f3f39217d8e" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="GetTriggers_ViaAPI_ReturnsStatus" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreatePlayerWithCustomSink_ViaAPI_ReturnsError" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="e1ee9e90-c349-2326-a0d5-3adc7e5180de">
+      <Execution id="3e113826-0cd0-4201-bac4-5f3848d59c83" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.CustomSinksE2ETests" name="CreatePlayerWithCustomSink_ViaAPI_ReturnsError" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_ShowsChannelState" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="fb4c01bd-911a-267c-f5b5-3d286e15e006">
+      <Execution id="c2d1273b-52c7-4e83-aa1d-94b51a87faac" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerStatus_ShowsChannelState" />
+    </UnitTest>
+    <UnitTest name="MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_ShowsValidationErrors" storage="/opt/multiroom-repo/tests/e2eproject/bin/debug/net8.0/e2eproject.dll" id="ad99b9ac-f24d-ebc6-9ea1-ea06d8930582">
+      <Execution id="02e12671-8cdf-48ad-83fe-18f87ba412f7" />
+      <TestMethod codeBase="/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="MultiRoomAudio.E2ETests.TriggersE2ETests" name="TriggerConfig_ShowsValidationErrors" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="cc9a8707-1371-9ddb-1c2f-9dd411daddcf" executionId="d646aa5f-a120-4c44-835e-2df40e4037ca" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="63990d20-b9da-0cf2-966a-5ef7214d0687" executionId="7775a1f6-c3d0-4fb8-b8c0-ff7255b03e04" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7c1ba016-2410-aca4-670f-7308ffecb84d" executionId="3be913cb-c341-4472-960e-14cdea9b3edd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ad1bf641-9648-e493-7ab5-651629e4249a" executionId="bf38d794-4138-4fcb-a526-e6530bc7e56e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f70c8e97-41eb-b17f-92e9-e2235077ef07" executionId="dc3962fb-5a57-4fc2-a402-86eae03901a7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="399755f4-4185-32bd-8cf7-d78ff8d1b058" executionId="29498747-4545-4cc6-8d8d-55e0c0d7a255" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e1ee9e90-c349-2326-a0d5-3adc7e5180de" executionId="3e113826-0cd0-4201-bac4-5f3848d59c83" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0cba1dd5-7e8f-6de9-b1cf-c41724768699" executionId="8908d8d6-1c5f-48b1-8dea-bf8a24eeda26" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="655b7bb1-49d5-5597-f259-f9f5b67776b2" executionId="ebbb6e41-abc7-45d5-b2a3-6c077a47045b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f3d7d72f-15f7-03e5-6ef6-8d7b479c90dd" executionId="c0756c57-3ba6-4b52-b487-51ca4e410a61" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7aad2193-14bc-3d67-9ac5-9e8630ad6b77" executionId="c9b13aa5-9b54-490b-aa14-359cb6fc673f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ae8eaf3b-165e-522e-07e7-213d913db5e0" executionId="8cfcf906-cdd2-4eba-aa51-0c31b2bb2a82" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e09f12bd-db58-e528-5340-7d1e4ba80472" executionId="6ddb0a76-79c6-40cd-8381-1af2a16b3b29" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c928f9b4-149a-4d71-b69b-2bae1f0f2606" executionId="5f880b57-3654-4504-9022-0633eff06c24" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="54edb374-24db-ec8e-d662-04af5560ac9a" executionId="c514419e-4b27-45cc-8dd6-2a560ea4eaab" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7950bb25-50b1-5a7b-414e-d26bf0cdf287" executionId="808e97b8-fdc9-4a1c-9ca7-66cf53d6ffa3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6b75fbd5-9bd4-6bd9-d995-0268b8d600e6" executionId="f9ee8746-0ecf-44b7-9ae7-c82be9b16ece" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fb4c01bd-911a-267c-f5b5-3d286e15e006" executionId="c2d1273b-52c7-4e83-aa1d-94b51a87faac" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ad99b9ac-f24d-ebc6-9ea1-ea06d8930582" executionId="02e12671-8cdf-48ad-83fe-18f87ba412f7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="93c9e8a5-74d0-b703-6c62-3f79be6f01fd" executionId="b2f0259b-0d77-4321-a1d6-4f3f39217d8e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6f7a7f03-77af-7ad8-b1d1-0e9d9a667a61" executionId="d8360359-b625-40d8-ae8b-6ecc23ada9ed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7ce2c1b4-10d4-8f1e-4879-03c210f410cf" executionId="e980fb0b-37f2-4bad-9050-7e5b7d522b19" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3cbb389e-4e47-4807-09f2-8631fabb4351" executionId="6b0551a6-2234-4230-bf3f-4fef8869a82b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9555f52a-d4b8-3db2-045d-3ed9532cefe9" executionId="0f5fcb3d-ca4f-4c00-aae7-1ab80ce9ce71" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e86efa64-9b7e-97a7-fbc8-0c76712f16c2" executionId="55957d6f-57b5-4de7-87ad-ffca1fb3b71d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6d40e6d2-0353-5eb3-faa7-297a0e3cc659" executionId="c6add497-044b-443e-8a48-e2ed9e2b36f9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="62d77142-b586-ab41-07d4-a71b4d76b900" executionId="1bca28a0-e752-43b0-a856-2eeaebb6dcf7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="97b311f1-d335-9151-d723-e998656b2133" executionId="e78a27a4-7b9d-460b-ac72-edc03a289ae5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5da5cc5a-8355-7316-3f3b-05ed0cbf08a4" executionId="b05d90b1-2dc5-4987-89df-d794f3dedb2c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e8e5d6e5-ede2-a9e4-0c80-3e1374cfcec5" executionId="15372b94-8fa6-4701-b179-c7190ca7fd3d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="417be7b5-1569-3a4b-234e-d08b99c4301c" executionId="5d4ee7d7-690f-496d-bcd9-71a133bbacf7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="afe6e088-eaa2-ba2e-3152-bfd171fa6fad" executionId="e3a6bea0-7376-4771-84d9-ce4769948a28" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="048b5c70-0487-6884-396e-36bf9dfbf048" executionId="b4189dc3-bb2d-4632-b924-749390f8e38d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d66f3c1a-6733-66bb-e2f6-54f419cb69f9" executionId="c8a85b2f-bff7-4077-b2f8-ea4ae349b237" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f1df4d1f-b290-4b59-9acc-e89aa7d002af" executionId="f1f59691-84fd-4aec-9023-0e550a99b8f5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Ergebnisse nicht in einer Liste" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Alle geladenen Ergebnisse" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="35" executed="35" passed="3" failed="32" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.4.5+1caef2f33e (64-bit .NET 8.0.24)
+[xUnit.net 00:00:00.60]   Discovering: E2EProject
+[xUnit.net 00:00:00.63]   Discovered:  E2EProject
+[xUnit.net 00:00:00.63]   Starting:    E2EProject
+[xUnit.net 00:00:11.21]       System.AggregateException : One or more errors occurred. (System.Collections.Generic.KeyNotFoundException: The given key 'tracing@476245a18f0cfcfa817dd0f17048a87f' was not present in the dictionary.
+[xUnit.net 00:00:11.21]          at System.Collections.Concurrent.ConcurrentDictionary`2.ThrowKeyNotFoundException(TKey key)
+[xUnit.net 00:00:11.21]          at System.Collections.Concurrent.ConcurrentDictionary`2.get_Item(TKey key)
+[xUnit.net 00:00:11.21]          at Microsoft.Playwright.Transport.Connection.CreateRemoteObject(String parentGuid, ChannelOwnerType type, String guid, Nullable`1 initializer) in /_/src/Playwright/Transport/Connection.cs:line 274
+[xUnit.net 00:00:11.21]          at Microsoft.Playwright.Transport.Connection.Dispatch(PlaywrightServerMessage message) in /_/src/Playwright/Transport/Connection.cs:line 202) (Connection disposed)
+[xUnit.net 00:00:11.21]       ---- Microsoft.Playwright.PlaywrightException : System.Collections.Generic.KeyNotFoundException: The given key 'tracing@476245a18f0cfcfa817dd0f17048a87f' was not present in the dictionary.
+[xUnit.net 00:00:11.21]          at System.Collections.Concurrent.ConcurrentDictionary`2.ThrowKeyNotFoundException(TKey key)
+[xUnit.net 00:00:11.21]          at System.Collections.Concurrent.ConcurrentDictionary`2.get_Item(TKey key)
+[xUnit.net 00:00:11.21]          at Microsoft.Playwright.Transport.Connection.CreateRemoteObject(String parentGuid, ChannelOwnerType type, String guid, Nullable`1 initializer) in /_/src/Playwright/Transport/Connection.cs:line 274
+[xUnit.net 00:00:11.21]          at Microsoft.Playwright.Transport.Connection.Dispatch(PlaywrightServerMessage message) in /_/src/Playwright/Transport/Connection.cs:line 202
+[xUnit.net 00:00:11.21]       ---- Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.21]       Stack Trace:
+[xUnit.net 00:00:11.21]         
+[xUnit.net 00:00:11.21]         ----- Inner Stack Trace #1 (Microsoft.Playwright.PlaywrightException) -----
+[xUnit.net 00:00:11.21]         /_/src/Playwright/Transport/Connection.cs(163,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.21]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.21]         /_/src/Playwright/Core/Frame.cs(544,0): at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options)
+[xUnit.net 00:00:11.21]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(129,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState()
+[xUnit.net 00:00:11.21]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:11.21]         ----- Inner Stack Trace #2 (Microsoft.Playwright.PlaywrightException) -----
+[xUnit.net 00:00:11.21]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.21]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.21]         /_/src/Playwright/Core/BrowserContext.cs(202,0): at Microsoft.Playwright.Core.BrowserContext.CloseAsync()
+[xUnit.net 00:00:11.21]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(41,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.DisposeAsync()
+[xUnit.net 00:00:11.23]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.23]       Stack Trace:
+[xUnit.net 00:00:11.23]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.23]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.23]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.23]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.23]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.23]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.23]       Stack Trace:
+[xUnit.net 00:00:11.23]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.23]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.23]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.23]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.24]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.24]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.24]       Stack Trace:
+[xUnit.net 00:00:11.24]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.24]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.24]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.24]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.24]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.24]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.24]       Stack Trace:
+[xUnit.net 00:00:11.24]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.24]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.24]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.24]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.24]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.32]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.32]       Stack Trace:
+[xUnit.net 00:00:11.32]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.32]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.32]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.32]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.32]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.33]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.33]       Stack Trace:
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.33]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.33]       Stack Trace:
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.33]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.33]       Stack Trace:
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.33]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.33]       Stack Trace:
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.33]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.33]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.CustomSinksE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.34]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.34]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.34]       Stack Trace:
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.34]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.35]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.35]       Stack Trace:
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.35]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.35]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.36]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.36]       Stack Trace:
+[xUnit.net 00:00:11.36]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.36]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.36]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.36]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.36]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.37]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.37]       Stack Trace:
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.37]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.37]       Stack Trace:
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.37]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.37]       Stack Trace:
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.37]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.37]       Stack Trace:
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.37]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.37]       Stack Trace:
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.37]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.37]       Stack Trace:
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.37]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.37]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.38]       Microsoft.Playwright.PlaywrightException : Connection disposed
+[xUnit.net 00:00:11.38]       Stack Trace:
+[xUnit.net 00:00:11.38]         /_/src/Playwright/Transport/Connection.cs(108,0): at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args)
+[xUnit.net 00:00:11.38]         /_/src/Playwright/Transport/Connection.cs(482,0): at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal)
+[xUnit.net 00:00:11.38]         /_/src/Playwright/Core/Browser.cs(98,0): at Microsoft.Playwright.Core.Browser.NewContextAsync(BrowserNewContextOptions options)
+[xUnit.net 00:00:11.38]         /opt/multiroom-repo/tests/E2EProject/PlaywrightFixture.cs(23,0): at MultiRoomAudio.E2ETests.PlaywrightFixture.&lt;CreatePageAsync&gt;b__10_0()
+[xUnit.net 00:00:11.38]         /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs(23,0): at MultiRoomAudio.E2ETests.TriggersE2ETests.InitializeAsync()
+[xUnit.net 00:00:11.39]   Finished:    E2EProject
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.3061630+01:00">
+        <Text>[xUnit.net 00:00:11.19]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.3293065+01:00">
+        <Text>[xUnit.net 00:00:11.23]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreatePlayerWithCustomSink_ViaAPI_ReturnsError [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.3345162+01:00">
+        <Text>[xUnit.net 00:00:11.23]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeleteSink_ViaUI_RemovesFromList [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.3375044+01:00">
+        <Text>[xUnit.net 00:00:11.24]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.OpenRemapSinkForm_HasChannelMappingUI [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.3379038+01:00">
+        <Text>[xUnit.net 00:00:11.24]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaAPI_AppearsInUI [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4222175+01:00">
+        <Text>[xUnit.net 00:00:11.32]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeviceDropdown_ContainsCustomSinks [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4240762+01:00">
+        <Text>[xUnit.net 00:00:11.33]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_OpensFromNavbar [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4255016+01:00">
+        <Text>[xUnit.net 00:00:11.33]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ButtonExists [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4333968+01:00">
+        <Text>[xUnit.net 00:00:11.33]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_HasCreateButtons [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4490755+01:00">
+        <Text>[xUnit.net 00:00:11.33]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateRemapSink_ViaAPI_AppearsInUI [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4491102+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ViaAPI_Succeeds [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4491441+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.TriggersE2ETests.ConfigureTrigger_ViaAPI_Succeeds [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4491900+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.TriggersE2ETests.GetTriggers_ViaAPI_ReturnsStatus [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4492204+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_ShowsChannelList [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4492657+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDelayInput [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4492877+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_DetectionShown [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4501921+01:00">
+        <Text>[xUnit.net 00:00:11.34]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDevicePatternInput [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4518060+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_SaveButton_Works [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4580420+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerOffDelay_RejectsNegativeValues [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4580753+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_UpdatesInRealTime [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4580958+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_Exists [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4581186+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_VisibleInCustomSinksModal [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4581443+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.MultipleChannels_IndependentConfiguration [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4581642+01:00">
+        <Text>[xUnit.net 00:00:11.35]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_ShowsValidationErrors [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4581838+01:00">
+        <Text>[xUnit.net 00:00:11.36]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_ShowsChannelState [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4674918+01:00">
+        <Text>[xUnit.net 00:00:11.37]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_EnablesDisables [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4675414+01:00">
+        <Text>[xUnit.net 00:00:11.37]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_InvalidChannel_ReturnsBadRequest [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4701368+01:00">
+        <Text>[xUnit.net 00:00:11.37]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannelMapping_ToCustomSink_Works [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4751971+01:00">
+        <Text>[xUnit.net 00:00:11.37]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasSinkSelector [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4752454+01:00">
+        <Text>[xUnit.net 00:00:11.37]     MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_StatusEndpoint_Returns [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4752875+01:00">
+        <Text>[xUnit.net 00:00:11.37]     MultiRoomAudio.E2ETests.TriggersE2ETests.AllChannels_DisplayedInUI [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="multiroom-audio" outcome="Error" timestamp="2026-02-21T23:51:16.4784277+01:00">
+        <Text>[xUnit.net 00:00:11.38]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerOffDelay_AcceptsValidValues [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

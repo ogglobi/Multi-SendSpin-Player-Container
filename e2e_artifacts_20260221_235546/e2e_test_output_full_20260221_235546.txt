@@ -1,0 +1,240 @@
+  Wiederherzustellende Projekte werden ermittelt...
+  Alle Projekte sind für die Wiederherstellung auf dem neuesten Stand.
+  E2EProject -> /opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll
+Testlauf für "/opt/multiroom-repo/tests/E2EProject/bin/Debug/net8.0/E2EProject.dll" (.NETCoreApp,Version=v8.0)
+VSTest-Version 17.11.1 (x64)
+
+Die Testausführung wird gestartet, bitte warten...
+Insgesamt 1 Testdateien stimmten mit dem angegebenen Muster überein.
+[xUnit.net 00:00:05.15]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaUI_ShowsInList [FAIL]
+[xUnit.net 00:00:05.16]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState [FAIL]
+[xUnit.net 00:00:05.19]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeleteSink_ViaUI_RemovesFromList [FAIL]
+[xUnit.net 00:00:05.19]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.OpenRemapSinkForm_HasChannelMappingUI [FAIL]
+[xUnit.net 00:00:05.20]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaAPI_AppearsInUI [FAIL]
+[xUnit.net 00:00:05.21]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeviceDropdown_ContainsCustomSinks [FAIL]
+[xUnit.net 00:00:05.22]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_OpensFromNavbar [FAIL]
+[xUnit.net 00:00:05.23]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ButtonExists [FAIL]
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaUI_ShowsInList [11 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaUI_ShowsInList() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 154
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_ShowsEmptyState() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 129
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeleteSink_ViaUI_RemovesFromList [6 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeleteSink_ViaUI_RemovesFromList() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 328
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.OpenRemapSinkForm_HasChannelMappingUI [5 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.OpenRemapSinkForm_HasChannelMappingUI() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 280
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaAPI_AppearsInUI [6 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateCombineSink_ViaAPI_AppearsInUI() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 219
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeviceDropdown_ContainsCustomSinks [8 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.DeviceDropdown_ContainsCustomSinks() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 556
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_OpensFromNavbar [3 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_OpensFromNavbar() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 88
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ButtonExists [6 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.PlayTestTone_ButtonExists() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 377
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.24]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_HasCreateButtons [FAIL]
+[xUnit.net 00:00:05.26]     MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateRemapSink_ViaAPI_AppearsInUI [FAIL]
+[xUnit.net 00:00:05.48]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_ShowsChannelList [FAIL]
+[xUnit.net 00:00:05.49]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDelayInput [FAIL]
+[xUnit.net 00:00:05.50]     MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_DetectionShown [FAIL]
+[xUnit.net 00:00:05.51]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDevicePatternInput [FAIL]
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_HasCreateButtons [5 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CustomSinksModal_HasCreateButtons() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 108
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateRemapSink_ViaAPI_AppearsInUI [15 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.CustomSinksE2ETests.CreateRemapSink_ViaAPI_AppearsInUI() in /opt/multiroom-repo/tests/E2EProject/CustomSinksE2ETests.cs:line 261
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_ShowsChannelList [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_ShowsChannelList() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 106
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDelayInput [3 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDelayInput() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 226
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_DetectionShown [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.RelayHardware_DetectionShown() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 455
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDevicePatternInput [3 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasDevicePatternInput() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 186
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.53]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_SaveButton_Works [FAIL]
+[xUnit.net 00:00:05.54]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_UpdatesInRealTime [FAIL]
+[xUnit.net 00:00:05.56]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_Exists [FAIL]
+[xUnit.net 00:00:05.57]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_VisibleInCustomSinksModal [FAIL]
+[xUnit.net 00:00:05.59]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_ShowsValidationErrors [FAIL]
+[xUnit.net 00:00:05.60]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_ShowsChannelState [FAIL]
+[xUnit.net 00:00:05.61]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_EnablesDisables [FAIL]
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_SaveButton_Works [3 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_SaveButton_Works() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 387
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_UpdatesInRealTime [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_UpdatesInRealTime() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 316
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_Exists [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_Exists() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 130
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_VisibleInCustomSinksModal [3 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggersSection_VisibleInCustomSinksModal() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 86
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_ShowsValidationErrors [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerConfig_ShowsValidationErrors() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 407
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_ShowsChannelState [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerStatus_ShowsChannelState() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 295
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_EnablesDisables [3 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerMasterToggle_EnablesDisables() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 150
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.64]     MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasSinkSelector [FAIL]
+[xUnit.net 00:00:05.65]     MultiRoomAudio.E2ETests.TriggersE2ETests.AllChannels_DisplayedInUI [FAIL]
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasSinkSelector [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.TriggerChannel_HasSinkSelector() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 206
+--- End of stack trace from previous location ---
+  Fehler MultiRoomAudio.E2ETests.TriggersE2ETests.AllChannels_DisplayedInUI [2 ms]
+  Fehlermeldung:
+   Microsoft.Playwright.PlaywrightException : Target page, context or browser has been closed
+  Stapelverfolgung:
+     at Microsoft.Playwright.Transport.Connection.InnerSendMessageToServerAsync[T](String guid, String method, Object args) in /_/src/Playwright/Transport/Connection.cs:line 163
+   at Microsoft.Playwright.Transport.Connection.WrapApiCallAsync[T](Func`1 action, Boolean isInternal) in /_/src/Playwright/Transport/Connection.cs:line 482
+   at Microsoft.Playwright.Core.Frame.GotoAsync(String url, FrameGotoOptions options) in /_/src/Playwright/Core/Frame.cs:line 544
+   at MultiRoomAudio.E2ETests.TriggersE2ETests.AllChannels_DisplayedInUI() in /opt/multiroom-repo/tests/E2EProject/TriggersE2ETests.cs:line 544
+--- End of stack trace from previous location ---
+
+Fehler!      : Fehler:    23, erfolgreich:    12, übersprungen:     0, gesamt:    35, Dauer: 5 s - E2EProject.dll (net8.0)

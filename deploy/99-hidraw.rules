@@ -1,2 +1,5 @@
-# Allow multiroom-audio user access to HID devices (relay boards)
+# Allow multiroom-audio user access to HID devices (relay boards) and USB-serial adapters
+# hidraw devices (HID relay boards)
 KERNEL=="hidraw*", MODE="0660", GROUP="multiroom-audio"
+# ttyUSB devices (CH340 / FTDI serial adapters used by relay boards)
+KERNEL=="ttyUSB*", SUBSYSTEM=="tty", MODE="0660", GROUP="multiroom-audio"

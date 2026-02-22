@@ -94,12 +94,12 @@ public class CustomSinksE2ETests : IAsyncLifetime
         // Modal should be visible
         var modal = _page.Locator("#customSinksModal.show").First;
         var isVisible = await modal.IsVisibleAsync();
-        isVisible.Should().BeTrue("Custom Sinks modal should be visible after clicking menu item");
+        Assert.True(isVisible, "Custom Sinks modal should be visible after clicking menu item");
 
         // Modal should have title
         var title = _page.Locator("#customSinksModal .modal-title").First;
         var titleText = await title.TextContentAsync();
-        titleText.Should().Contain("Custom Sinks");
+        Assert.Contains("Custom Sinks", titleText);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class CustomSinksE2ETests : IAsyncLifetime
         var remapSinkBtn = _page.Locator("button:has-text('New Remap Sink'), button:has-text('Remap Sink')").First;
         var hasRemap = await remapSinkBtn.IsVisibleAsync();
 
-        (hasCombine || hasRemap).Should().BeTrue(
+        Assert.True(hasCombine || hasRemap,
             "Custom Sinks modal should have buttons to create combine or remap sinks");
     }
 
@@ -229,7 +229,7 @@ public class CustomSinksE2ETests : IAsyncLifetime
 
         if (createResponse.IsSuccessStatusCode)
         {
-            sinkVisible.Should().BeTrue("Sink created via API should appear in UI");
+            Assert.True(sinkVisible, "Sink created via API should appear in UI");
         }
     }
 
@@ -298,7 +298,7 @@ public class CustomSinksE2ETests : IAsyncLifetime
                  pageContent.Contains("front-left", StringComparison.OrdinalIgnoreCase) ||
                  pageContent.Contains("output", StringComparison.OrdinalIgnoreCase));
 
-            hasChannelMapping.Should().BeTrue(
+            Assert.True(hasChannelMapping,
                 "Remap sink form should have channel mapping configuration");
         }
     }
@@ -349,7 +349,7 @@ public class CustomSinksE2ETests : IAsyncLifetime
             // Verify sink is gone from list
             var pageContent = await _page.ContentAsync();
             var sinkStillVisible = pageContent.Contains("Delete_Test_Sink");
-            sinkStillVisible.Should().BeFalse("Deleted sink should not appear in list");
+            Assert.False(sinkStillVisible, "Deleted sink should not appear in list");
 
             _createdSinks.Remove("Delete_Test_Sink");
         }
@@ -418,7 +418,7 @@ public class CustomSinksE2ETests : IAsyncLifetime
         var statusCode = (int)testToneResponse.StatusCode;
         var content = await testToneResponse.Content.ReadAsStringAsync();
 
-        testToneResponse.IsSuccessStatusCode.Should().BeTrue(
+        Assert.True(testToneResponse.IsSuccessStatusCode,
             $"Test tone should succeed in mock mode. Status: {statusCode}, Response: {content.Substring(0, Math.Min(200, content.Length))}");
     }
 
@@ -527,7 +527,7 @@ public class CustomSinksE2ETests : IAsyncLifetime
         var content = await playerResponse.Content.ReadAsStringAsync();
 
         // Custom sinks should now be recognized as valid devices in mock mode
-        playerResponse.IsSuccessStatusCode.Should().BeTrue(
+        Assert.True(playerResponse.IsSuccessStatusCode,
             $"Player creation with custom sink should succeed. Status: {statusCode}, Content: {content.Substring(0, Math.Min(200, content.Length))}");
 
         // Cleanup

@@ -589,3 +589,29 @@ Set `MOCK_HARDWARE=true` to enable mock relay boards that simulate real hardware
 
 - [Home Assistant Add-on Docs](https://developers.home-assistant.io/docs/add-ons/configuration/)
 - [API Documentation](http://localhost:8096/docs) (when running)
+
+## Agent Notes: SSH usage and Pulse workaround
+
+- **SSH command pattern (use on Windows PowerShell):** prefer single-quoted, inline commands. Example:
+
+  ssh root@192.168.10.182 'ls -la /var/run/pulse; pactl info || true'
+
+  - Avoid using a here-doc (`<<'EOF'`) from PowerShell — it is interpreted by the local shell and fails. If you need multi-line remote scripts from PowerShell, use `printf`/`cat` with quoted arguments or push a file via `scp` instead.
+
+- **How I exposed PulseAudio for the service:** PipeWire provides a PulseAudio-compatible socket under `/run/user/<UID>/pulse/native` (per-user). The service expects `/var/run/pulse/native`. I created a temporary symlink:
+
+  /var/run/pulse/native -> /run/user/110/pulse/native
+
+  and added a systemd drop-in to set `PULSE_SERVER` for the `multiroom-audio` service so it always uses the PipeWire-provided socket.
+
+- **Systemd drop-in location and content:**
+
+  File: /etc/systemd/system/multiroom-audio.service.d/pulse-socket.conf
+
+  Content:
+
+  [Service]
+  Environment=PULSE_SERVER=unix:/run/user/110/pulse/native
+
+  (After creating this file the commands run were: `systemctl daemon-reload` and `systemctl restart multiroom-audio`.)
+
