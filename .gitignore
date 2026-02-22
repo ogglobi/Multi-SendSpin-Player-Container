@@ -1,3 +1,17 @@
+# Ignore E2E artifacts and large test logs
+# Directories created by local E2E runs
+e2e_artifacts*/
+e2e_artifacts_*/
+e2e_artifacts_downloaded/
+
+# E2E archive bundles
+e2e_artifacts_*.tar.gz
+
+# Test result files
+*.trx
+
+# Logs inside E2E artifact folders
+e2e_artifacts*/**/*.log
 # .gitignore for Squeezelite Multi-Room Docker
 
 # Runtime data
