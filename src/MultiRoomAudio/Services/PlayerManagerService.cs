@@ -826,10 +826,25 @@ public class PlayerManagerService : IAsyncDisposable, IDisposable
             throw new ObjectDisposedException(nameof(PlayerManagerService));
         }
 
-        // Validate device if specified
+        // Validate device if specified. If validation fails, try one refresh
+        // to handle races where a remap/combined sink was just created and
+        // pactl hasn't exposed it to the process yet.
         if (!_backendFactory.ValidateDevice(request.Device, out var deviceError))
         {
-            throw new ArgumentException(deviceError);
+            _logger.LogDebug("Initial device validation failed for '{Device}': {Error}. Refreshing devices and retrying.", request.Device, deviceError);
+            try
+            {
+                _backendFactory.RefreshDevices();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "RefreshDevices threw while retrying device validation");
+            }
+
+            if (!_backendFactory.ValidateDevice(request.Device, out deviceError))
+            {
+                throw new ArgumentException(deviceError);
+            }
         }
 
         _logger.LogInformation("Creating player '{Name}' with device '{Device}'",
